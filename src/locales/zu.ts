@@ -13,6 +13,7 @@ export const zu: Translations = {
     offline: 'Ayikho i-inthanethi',
     online: 'I-inthanethi ikhona',
     installApp: 'Faka Uhlelo (PWA)',
+    language: 'Ulimi',
   },
   auth: {
     subtitle: 'Ngena ukuze impahla yakho iphephe futhi ifane kuwo wonke amafoni akho.',

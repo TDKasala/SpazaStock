@@ -4,6 +4,8 @@
  * (UTC+2) on the previous day, so calendar dates must never be derived from it.
  */
 
+import { intlTag, isLocale } from './languages';
+
 function pad(n: number): string {
   return String(n).padStart(2, '0');
 }
@@ -46,7 +48,7 @@ export function getDaysUntilExpiry(expiryDate: string | null, now: Date = new Da
 export function formatShortDate(isoTimestamp: string, locale: string): string {
   const date = new Date(isoTimestamp);
   if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleDateString(locale === 'zu' ? 'zu-ZA' : 'en-ZA', {
+  return date.toLocaleDateString(isLocale(locale) ? intlTag(locale) : 'en-ZA', {
     day: 'numeric',
     month: 'short',
     year: 'numeric',

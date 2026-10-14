@@ -11,6 +11,7 @@ export const en = {
     offline: 'Offline',
     online: 'Online',
     installApp: 'Install App',
+    language: 'Language',
   },
   auth: {
     subtitle: 'Sign in to keep your stock safe and synced across your phones.',

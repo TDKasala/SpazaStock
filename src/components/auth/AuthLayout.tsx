@@ -1,6 +1,7 @@
 import React from 'react';
 import { Package } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
+import { LanguagePicker } from '../ui/LanguagePicker';
 
 interface AuthLayoutProps {
   title?: string;
@@ -12,7 +13,7 @@ interface AuthLayoutProps {
 }
 
 export const AuthLayout: React.FC<AuthLayoutProps> = ({ title, subtitle, banner, children, footer }) => {
-  const { t, locale, setLocale } = useLanguage();
+  const { t } = useLanguage();
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col items-center justify-center px-5 py-10">
       <div className="w-full max-w-sm space-y-6">
@@ -32,13 +33,9 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({ title, subtitle, banner,
 
         {footer}
 
-        <button
-          type="button"
-          onClick={() => setLocale(locale === 'en' ? 'zu' : 'en')}
-          className="w-full text-xs text-zinc-500 hover:text-zinc-300"
-        >
-          {locale === 'en' ? 'isiZulu' : 'English'}
-        </button>
+        <div className="flex justify-center">
+          <LanguagePicker />
+        </div>
       </div>
     </div>
   );

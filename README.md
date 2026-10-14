@@ -1,6 +1,8 @@
 # SpazaStock
 
-SpazaStock is a mobile-first Progressive Web App for spaza shop owners in South Africa. It records deliveries as expiry-dated batches, sells by barcode scan, warns about stock nearing expiry, and works without an internet connection. It is available in English and isiZulu.
+SpazaStock is a mobile-first Progressive Web App for spaza shop owners in South Africa. It records deliveries as expiry-dated batches, sells by barcode scan, warns about stock nearing expiry, and works without an internet connection. It is available in English, isiZulu, Amharic (አማርኛ) and Somali (Soomaali).
+
+**Languages.** The language picker (globe icon) is in the header, on the landing page and on the sign-in screens. On the first visit the app picks the phone's language if it is one of the four, otherwise English, and remembers the choice on that phone. Text lives in `src/locales/` (`en.ts` is the source; the others must have exactly the same keys, which TypeScript and `src/test/i18n.test.ts` enforce). The Amharic and Somali text has not yet been reviewed by native speakers, so have it checked before relying on it with customers. Notifications created on the server, such as push alerts, are still in English.
 
 ## How it works
 
@@ -240,7 +242,7 @@ Guarantees, checked by the database tests:
   - PGlite runs a single connection, so row locking under truly concurrent sessions is not exercised.
 - `expiry`, `expiryPush`: shop-local dates (including daylight saving and UTC+14), reminder stages, expired stock refused on the phone, resolving, one-time alert sounds, and the Edge Function's retry and authentication logic.
 - `secrets`: no service-role or secret key in the source, public assets or built bundle.
-- `dates`, `legacyMigration`, `i18n`: local-date helpers, the one-time localStorage import, and key and `{{placeholder}}` parity between English and isiZulu, plus a check that every `t('...')` key used in the code exists.
+- `dates`, `legacyMigration`, `i18n`: local-date helpers, the one-time localStorage import, and key and `{{placeholder}}` parity between English and every other language (isiZulu, Amharic, Somali), checks that each one is actually translated (Amharic in Ethiopic script), the phone-language detection, plus a check that every `t('...')` key used in the code exists.
 
 ## Project layout
 

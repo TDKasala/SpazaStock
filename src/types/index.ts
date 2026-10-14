@@ -1,4 +1,4 @@
-export type Locale = 'en' | 'zu';
+export type { Locale } from '../lib/languages';
 
 export type StockActionType = 'add_stock' | 'quick_sale' | 'expiry_alerts' | 'view_stock';
 

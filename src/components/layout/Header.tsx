@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Package, Globe, Cloud, CloudOff, RefreshCw, AlertTriangle, ChevronDown } from 'lucide-react';
+import { Package, Cloud, CloudOff, RefreshCw, AlertTriangle, ChevronDown } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
+import { LanguagePicker } from '../ui/LanguagePicker';
 import { useAuth } from '../../context/AuthContext';
 import { useShop } from '../../context/ShopContext';
 import { useSyncStatus } from '../../hooks/useSyncStatus';
@@ -9,7 +10,7 @@ import { ShopMenu } from './ShopMenu';
 import { AccountDialog } from '../account/AccountDialog';
 
 export const Header: React.FC<{ onOpenTeam: () => void }> = ({ onOpenTeam }) => {
-  const { locale, setLocale, t } = useLanguage();
+  const { t } = useLanguage();
   const { mode, signOut } = useAuth();
   const { shop } = useShop();
   const { status, syncNow } = useSyncStatus();
@@ -99,14 +100,7 @@ export const Header: React.FC<{ onOpenTeam: () => void }> = ({ onOpenTeam }) => 
               </button>
             )}
 
-            <button
-              onClick={() => setLocale(locale === 'en' ? 'zu' : 'en')}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-zinc-200 hover:text-white transition-colors cursor-pointer"
-              aria-label={locale === 'en' ? 'Switch to isiZulu' : 'Shintshela esiNgisini'}
-            >
-              <Globe className="w-3.5 h-3.5 text-emerald-400" />
-              <span>{locale === 'en' ? 'ZU' : 'EN'}</span>
-            </button>
+            <LanguagePicker compact />
 
             <PWAInstallButton compact />
           </div>

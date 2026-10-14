@@ -1,7 +1,8 @@
 import React, { useRef, useState } from 'react';
-import { BellRing, Globe, Package, RefreshCw, ScanBarcode, Users } from 'lucide-react';
+import { BellRing, Package, RefreshCw, ScanBarcode, Users } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { Button } from '../ui/Button';
+import { LanguagePicker } from '../ui/LanguagePicker';
 import { ErrorMessage } from '../ui/ErrorMessage';
 import { SignInPanel, type PanelFrame, type SignInView } from './SignInScreen';
 
@@ -18,7 +19,7 @@ const FEATURES = [
 ] as const;
 
 export const LandingPage: React.FC<LandingPageProps> = ({ notConfigured = false }) => {
-  const { t, locale, setLocale } = useLanguage();
+  const { t } = useLanguage();
   const [view, setView] = useState<SignInView>('password');
   const cardRef = useRef<HTMLDivElement>(null);
 
@@ -46,14 +47,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ notConfigured = false 
           </div>
           <span className="font-bold text-lg">{t('common.appName')}</span>
         </div>
-        <button
-          type="button"
-          onClick={() => setLocale(locale === 'en' ? 'zu' : 'en')}
-          className="inline-flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-200 px-2 py-1.5 rounded-lg"
-        >
-          <Globe className="w-3.5 h-3.5" />
-          {locale === 'en' ? 'isiZulu' : 'English'}
-        </button>
+        <LanguagePicker />
       </header>
 
       <main className="flex-1 w-full max-w-5xl mx-auto px-5 pb-10 pt-4 md:pt-12 grid gap-10 md:grid-cols-2 md:items-start">

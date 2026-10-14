@@ -1,7 +1,11 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { Locale } from '../types';
+import { detectLocale, isLocale, type Locale } from '../lib/languages';
 import { en, Translations } from '../locales/en';
 import { zu } from '../locales/zu';
+import { am } from '../locales/am';
+import { so } from '../locales/so';
+
+const STORAGE_KEY = 'spazastock_locale';
 
 export type TranslateVars = Record<string, string | number>;
 
@@ -31,22 +35,32 @@ export function interpolate(template: string, vars?: TranslateVars): string {
   );
 }
 
-const dictionaries: Record<Locale, Translations> = {
-  en,
-  zu,
-};
+const dictionaries: Record<Locale, Translations> = { en, zu, am, so };
+
+/** The saved choice, else the phone's language when the app supports it, else English. */
+function initialLocale(): Locale {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (isLocale(saved)) return saved;
+  } catch {
+    // Storage unavailable (private mode); fall through.
+  }
+  if (typeof navigator === 'undefined') return 'en';
+  return detectLocale(navigator.languages?.length ? navigator.languages : [navigator.language ?? 'en']);
+}
 
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
 export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [locale, setLocaleState] = useState<Locale>(() => {
-    const saved = localStorage.getItem('spazastock_locale') as Locale;
-    return saved === 'zu' || saved === 'en' ? saved : 'en';
-  });
+  const [locale, setLocaleState] = useState<Locale>(initialLocale);
 
   const setLocale = (newLocale: Locale) => {
     setLocaleState(newLocale);
-    localStorage.setItem('spazastock_locale', newLocale);
+    try {
+      localStorage.setItem(STORAGE_KEY, newLocale);
+    } catch {
+      // Not remembered across visits, but the switch still applies now.
+    }
   };
 
   useEffect(() => {
