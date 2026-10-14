@@ -132,6 +132,7 @@ export const zu: Translations = {
     yourShops: 'Izitolo zakho',
     current: 'Esamanje',
     addShop: 'Engeza esinye isitolo',
+    adminConsole: 'Abaphathi bepulatifomu',
     team: 'Ithimba',
     account: 'I-akhawunti',
     accessRemoved:
@@ -229,6 +230,8 @@ export const zu: Translations = {
       ownerProtected:
         'Umnikazi we-akhawunti akakwazi ukususwa, ukwehliswa noma ukuvinjwa, futhi isitolo kumele sihlale sinomnikazi.',
       notYourself: 'Awukwazi ukushintsha indima yakho noma ukufinyelela kwakho.',
+      shopSuspended: 'Lesi sitolo simisiwe okwesikhashana. Izinguquko zethimba zimisiwe size sivulwe futhi.',
+      memberLimit: 'Umkhawulo wethimba wohlelo lwakho usufinyelelwe. Susa othile noma ushintshe uhlelo ukuze umeme abanye.',
       generic: 'Lokho akuphumelelanga. Sicela uzame futhi.',
     },
   },
@@ -250,6 +253,8 @@ export const zu: Translations = {
       unconfirmed: 'Qinisekisa ikheli lakho le-imeyili ngaphambi kokujoyina.',
       alreadyMember: 'Usevele uyilungu lalesi sitolo.',
       offline: 'Xhuma ku-inthanethi ukuze wamukele isimemo.',
+      shopSuspended: 'Lesi sitolo simisiwe okwesikhashana. Zama futhi uma sesivuliwe.',
+      teamFull: 'Ithimba lalesi sitolo ligcwele. Cela umnikazi ukuthi enze isikhala.',
       generic: 'Asikwazanga ukwamukela isimemo. Sicela uzame futhi.',
     },
   },
@@ -264,6 +269,8 @@ export const zu: Translations = {
     failedCount:
       'Izinguquko eziyi-{{count}} azikwazanga ukugcinwa efwini. Cindezela uzame futhi, noma ubheke amanani empahla yakho.',
     queuedOffline: 'Kugcinwe ngaphandle kwe-inthanethi',
+    suspended: 'Lesi sitolo simisiwe okwesikhashana. Izinguquko zakho zigcinwe kule foni futhi zizovumelaniswa uma sesivuliwe futhi.',
+    planLimit: 'Ezinye izinguquko zidlula umkhawulo wohlelo lwakho. Zigcinwe kule foni futhi zizovumelaniswa uma umkhawulo uvuma.',
   },
   dashboard: {
     glanceHeading: 'Isitolo sakho ngokushesha',

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Check, LogOut, Plus, Store, UserCog, Users } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Check, LogOut, Plus, ShieldCheck, Store, UserCog, Users } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
 import { useShop } from '../../context/ShopContext';
@@ -8,6 +8,7 @@ import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { ErrorMessage } from '../ui/ErrorMessage';
 import { can } from '../../lib/permissions';
+import { fetchPlatformRole } from '../../lib/platformAdmin';
 
 interface ShopMenuProps {
   isOpen: boolean;
@@ -25,6 +26,18 @@ export const ShopMenu: React.FC<ShopMenuProps> = ({ isOpen, onClose, onOpenTeam,
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
+  const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen || !navigator.onLine) return;
+    let cancelled = false;
+    void fetchPlatformRole().then((role) => {
+      if (!cancelled) setIsPlatformAdmin(role !== null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
 
   const close = () => {
     setIsAdding(false);
@@ -125,6 +138,12 @@ export const ShopMenu: React.FC<ShopMenuProps> = ({ isOpen, onClose, onOpenTeam,
             <UserCog className="w-4 h-4 text-zinc-400 shrink-0" />
             {t('shops.account')}
           </button>
+          {isPlatformAdmin && (
+            <a className={rowClass} href="/admin">
+              <ShieldCheck className="w-4 h-4 text-zinc-400 shrink-0" />
+              {t('shops.adminConsole')}
+            </a>
+          )}
           <button
             className={rowClass}
             onClick={() => {

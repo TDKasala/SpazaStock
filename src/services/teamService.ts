@@ -74,6 +74,10 @@ export function teamErrorKey(error: ServiceError | undefined): string {
       return 'team.errors.alreadyMember';
     case '54000':
       return 'team.errors.tooManyInvites';
+    case 'SP001':
+      return 'team.errors.shopSuspended';
+    case 'SP002':
+      return 'team.errors.memberLimit';
     case '22023':
       if (message.includes('owner')) return 'team.errors.ownerProtected';
       if (message.includes('your own')) return 'team.errors.notYourself';
@@ -97,6 +101,10 @@ export function inviteErrorKey(error: ServiceError | undefined): string {
       return 'invite.errors.unconfirmed';
     case 'SS005':
       return 'invite.errors.alreadyMember';
+    case 'SP001':
+      return 'invite.errors.shopSuspended';
+    case 'SP002':
+      return 'invite.errors.teamFull';
     default:
       return 'invite.errors.generic';
   }

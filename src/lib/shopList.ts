@@ -1,4 +1,4 @@
-import type { Shop, ShopRole } from '../types';
+import type { Shop, ShopEntitlements, ShopRole, ShopStatus } from '../types';
 
 /** A row from the my_shops / create_shop functions. */
 export interface ShopRow {
@@ -8,6 +8,17 @@ export interface ShopRow {
   expiry_reminder_days?: number[] | null;
   role?: ShopRole | null;
   is_account_owner?: boolean | null;
+  status?: ShopStatus | null;
+  entitlements?: { plan?: string; expiry_push?: boolean; team_max_members?: number | null } | null;
+}
+
+function entitlementsFromRow(row: ShopRow['entitlements']): ShopEntitlements | undefined {
+  if (!row) return undefined;
+  return {
+    plan: row.plan ?? 'free',
+    expiryPush: row.expiry_push ?? true,
+    teamMaxMembers: row.team_max_members ?? null,
+  };
 }
 
 export function shopFromRow(row: ShopRow): Shop {
@@ -18,6 +29,8 @@ export function shopFromRow(row: ShopRow): Shop {
     reminderDays: row.expiry_reminder_days ?? undefined,
     role: row.role ?? undefined,
     isAccountOwner: row.is_account_owner ?? undefined,
+    status: row.status ?? undefined,
+    entitlements: entitlementsFromRow(row.entitlements),
   };
 }
 

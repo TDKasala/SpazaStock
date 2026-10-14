@@ -30,6 +30,7 @@ SpazaStock is a mobile-first Progressive Web App for spaza shop owners in South 
 | Back online, app opened, tab focused, every 60 s, or 1.5 s after a local change | A sync runs. Only one browser tab syncs at a time (Web Locks). |
 | Network error, timeout or expired session | The item stays queued and retries with exponential backoff (5 s up to 10 min). Later items wait behind it so their order is kept. |
 | Server rejects the change (Postgres error class 22, 23, 42 or P0) | The item is marked **failed** and shown in a red banner with a Retry button. It is never silently dropped. |
+| Shop suspended (`SP001`) or plan limit reached (`SP002`) | The item stays queued, in order, and is retried every 10 minutes without counting as an attempt. A notice explains why. Phones report changes that failed for good (change type and error code only) so operators can spot a broken release. |
 | Two phones registered the same barcode offline | The server keeps the first product. The second phone remaps its local product, batches and queued items to that product's ID. |
 | Two phones sold the same last units offline | Both sales are kept, because the goods have left the shop. The server records a **stock discrepancy**, which appears under Alerts → "Needs recount". |
 | Pull | Incremental by `updated_at`, in 500-row pages with a 2-minute overlap. It is skipped while local changes are still waiting to be pushed. |
@@ -77,6 +78,91 @@ Every batch with stock and an expiry date is checked against the shop's **remind
 - **Resolving.** An owner or manager resolves an expired batch as *thrown away*, *returned to supplier* or *wrong date* (which corrects the expiry date). Thrown away and returned remove every unit left with a `write_off_expired` or `supplier_return` stock movement. Each resolution keeps a permanent `expiry_resolutions` record of who did it, when, how many units, the old and new dates, and a note.
 
 Push notifications need permission. On Android and desktop, tap *Turn on alerts*. On iPhone (iOS 16.4 or later), add SpazaStock to the Home Screen first.
+
+## Platform administration
+
+SpazaStock staff manage the platform at **`/admin`**, in English or isiZulu. Signed-in users with a platform role see a *Platform admin* link in the shop menu; everyone else gets "Not authorised" at that address. The console is a separate, lazily loaded part of the app: it is not cached for offline use, is marked `noindex`, and is never served from cache (`vercel.json`). It needs a connection, because every screen reads live data.
+
+**Platform roles are separate from shop roles.** A platform administrator gets no access to any shop's stock, sales or team through the shop app, and there is no way to sign in as another user. Admin screens read through `admin_*` database functions only. Each function checks the caller's platform role on every call, so hiding a button is never the only protection.
+
+| Permission | Superadmin | Support | Billing | Analyst |
+| --- | :-: | :-: | :-: | :-: |
+| Overview (platform-wide counts) | ✓ | ✓ | ✓ | ✓ |
+| `tenants.view`: shop list and detail, including owner and member emails | ✓ | ✓ | ✓ | |
+| `tenants.manage`: suspend, reactivate, create a shop for an existing account | ✓ | | | |
+| `tenants.export`: CSV export of the shop list | ✓ | | | |
+| `billing.view`, `billing.manage`: plans and per-shop subscriptions | ✓ | | ✓ | |
+| `plans.manage`: plans, plan entitlements, global feature switches | ✓ | | | |
+| `analytics.view`: aggregates only, no names or emails | ✓ | | | ✓ |
+| `operations.view`: scheduler, push and sync health | ✓ | ✓ | | |
+| `admins.manage`, `audit.view`: administrators and the audit log | ✓ | | | |
+
+The matrix lives in `private.platform_role_permissions` and is mirrored in `src/admin/permissions.ts` for the screens; `db/platformAdmin.test.ts` fails if they differ.
+
+**Audit log.** `platform_audit_log` records every administrative change with who did it, their role, the target, the shop, the reason and a before/after summary. It also records each view of a shop's detail, each export, and every refused call (at most once per 10 seconds per person and action). Rows can never be changed or deleted, not even by the database owner, and clients cannot read the table directly. Superadmins read it under *Audit log*. Every change needs a reason of 10 to 500 characters.
+
+### First platform administrator
+
+There is no administrator until the database owner creates one, and no account is hard-coded. Pick an account that already exists and has confirmed its email (sign up through the app first), then run this once in the Supabase SQL editor:
+
+```sql
+select private.bootstrap_superadmin('you@example.com', 'First platform administrator');
+```
+
+It refuses an unknown or unconfirmed email, and refuses to run again once an active superadmin exists. Signed-in users, anonymous callers and the service role cannot call it. Every later administrator is added in the console under *Administrators → Grant access*, again only for an existing account with a confirmed email.
+
+### Suspending a shop
+
+*Tenants → shop → Suspend shop* (type the shop name and give a reason). While a shop is suspended:
+
+- Its members can still sign in and **read** everything, but every write is refused with error `SP001`. That covers sales, stock, products, settings, invites, joining and team changes, whether it comes from a database function or a direct table write.
+- Phones keep changes in their outbox instead of failing them. The app shows "This shop is suspended" and retries every 10 minutes without using up retry attempts. After reactivation the queued changes sync on their own.
+- Push notifications for the shop stop. Owners and managers get an in-app notification when the shop is suspended and when it is reactivated.
+- Members cannot see who suspended the shop or why; administrators see both on the shop detail page.
+
+Other shops are not affected. *Reactivate shop* (with a reason) restores writes at once.
+
+### Plans and entitlements
+
+`plans` lists the plans (`free` and `pro` to start). `plan_entitlements` switches features on or off and sets limits per plan, and `platform_features` can turn a feature off for every plan. The **effective plan** of a shop is its subscribed plan while the subscription is `active`, `trialing` (until `trial_ends_at`), or `past_due` within the plan's grace days after `current_period_end`. Otherwise it is `free`.
+
+| Entitlement | Enforced where |
+| --- | --- |
+| `expiry_push` (on/off) | `claim_push_batch` skips pushes for shops whose plan or the global switch has it off. In-app alerts still appear. |
+| `team.max_members` (number, empty = unlimited) | `invite_shop_member` and `accept_shop_invite` refuse with `SP002` once joined members plus unexpired invites (owner included) reach the limit. The team screen explains it. |
+
+Every subscription change is written to `subscription_events` by a trigger and to the audit log. **No payment provider is connected yet**: subscriptions are changed by hand on the shop page (*Change subscription*), and no invoice or payment is ever created or shown. Revenue is reported as "not available".
+
+### What the numbers mean
+
+All counts come straight from the tables at the moment the page loads; nothing is estimated or sampled. Date ranges are `[from, to)` and at most 366 days; days, weeks (starting Monday) and months are South African time (`Africa/Johannesburg`).
+
+| Metric | Definition |
+| --- | --- |
+| Shops: total, active, suspended | All shops now, by status |
+| New shops, new users | Created within the range |
+| Active shops | Shops with at least one stock movement (stock-in, sale, adjustment, void, write-off) in the range |
+| Active users | Distinct people who recorded a stock movement in the range |
+| Stock in / out | Sum of positive and negative movement quantities in the range |
+| Sales | Sale headers created in the range |
+| Trials started, converted, lapsed | Subscription events in the range: into `trialing`; `trialing` → `active`; `trialing` → `past_due` or `canceled` |
+| Cancellations | Subscription events in the range that changed the status to `canceled` |
+| Retention | For each of the last six months, shops created that month and how many of them recorded a stock movement in that month and each month after |
+| Feature adoption | Shops where a member has push alerts on; shops with more than one active member; shops with at least one expiry-dated batch |
+| Sync failures | Changes phones reported as refused for good: type of change and error code only, never the data |
+| Scheduler failures | Failed `expiry-alerts-*` runs in `cron.job_run_details`; "not available" if that cannot be read |
+
+### Procedures
+
+- **Support request about a shop.** Search by shop name, owner email or shop ID under *Tenants*. Opening the shop is logged. The page shows members, subscription, usage, recent sync failures and the shop's history; it does not show stock or sales lines.
+- **Abuse or non-payment.** Suspend with a clear reason, and reactivate once resolved. Suspension never deletes data.
+- **Changing a shop's plan.** Shop page → *Change subscription*. Trials without an end date get the plan's default trial length. Plans, prices and what each plan includes are edited under *Billing and plans*.
+- **Turning a feature off for everyone** (for example while push delivery is broken): *Billing and plans → Platform-wide switches*.
+- **Removing an administrator.** *Administrators → Revoke*; it takes effect on their next request. Nobody can change or revoke their own access, and the last superadmin cannot be demoted or removed.
+- **Data requests.** The CSV export needs a reason and is logged with the filters used. It is limited to 5,000 rows, and formulas in names are neutralised.
+
+**Not in Phase 1:** a payment provider, invoices and revenue; product-count limits; administrator access to a shop's stock or sales lines; impersonation (deliberately absent); per-administrator notification of audit events.
+
 ## Setup
 
 Requirements: Node.js 24 and npm.
@@ -210,7 +296,14 @@ Earlier builds stored data in `localStorage`. On first launch, products and rema
 | `expiry_alerts` | One row per batch, expiry date, kind (`reminder` or `expired`) and threshold, with how it was resolved |
 | `expiry_resolutions` | Permanent record of expired stock being thrown away, returned or having its date corrected |
 | `push_subscriptions` | One Web Push endpoint per browser, visible only to its user |
-| `subscriptions` | Plan and billing status per shop; only the service role can write it |
+| `subscriptions` | Plan and billing status per shop (`trial_ends_at`, `current_period_end`). Clients cannot write it; billing administrators change it through `admin_update_subscription` |
+| `subscription_events` | Append-only history of every subscription change, written by a trigger |
+| `plans`, `plan_entitlements`, `platform_features` | Plans, what each includes, and platform-wide feature switches (see [Plans and entitlements](#plans-and-entitlements)) |
+| `sync_failure_reports` | Per user and day: the type of change a phone could not sync and the error code, with a count. No data or messages |
+| `platform_audit_log` | Append-only record of administrative actions, shop views, exports and refused calls |
+| `private.platform_admins`, `private.platform_role_permissions` | Platform administrators and their role permissions; not reachable by any client |
+
+`shops.status` is `active` or `suspended`; `suspended_at`, `suspended_by` and `suspension_reason` are visible to administrators only.
 
 **Who can do what.** Every active member can read their shop's data, register products, receive stock and sell. Owners and managers can also edit products, adjust stock, handle expiry and resolve discrepancies. Only owners can manage the team, rename the shop and see the subscription. Deactivated members can do nothing. The permission matrix lives in `private.role_permissions` (used by `private.has_permission` in the team functions) and is mirrored in `src/lib/permissions.ts` for the UI; a test fails if the two differ. To change a permission, add a migration that edits the table and update the TypeScript copy.
 
@@ -222,6 +315,10 @@ Earlier builds stored data in `localStorage`. On first launch, products and rema
 - Team (owners only): `invite_shop_member` and `resend_shop_invite` return the invite token once, plus `list_shop_team`, `update_member_role`, `set_member_status` and `remove_shop_member` (owners, or a member leaving). `accept_shop_invite` is for the invited person, and `preview_shop_invite` can be called before signing in so the invitee sees which shop and email the link is for. `my_shops` and `create_shop` cover the signed-in user's own shops.
 - `update_shop_alert_settings` and `resolve_expired_batch` (owners and managers), and `save_push_subscription`, `delete_push_subscription` and `get_push_public_key` (the signed-in user).
 - `push_config`, `claim_push_batch` and `complete_push` can be called by the service role only, which means the Edge Function.
+- `report_sync_failures` (any active member, also while the shop is suspended): at most 50 entries of change type, error code and count.
+- `admin_*` (platform administrators): each checks the caller's platform permission, validates input, requires a reason for changes, and writes the audit log. A refusal is returned as `{ "ok": false, "code": "forbidden" }` rather than raised, so the audit row is kept. `admin_whoami` tells any signed-in user their own platform role, if any.
+
+Writes to a suspended shop fail with `SP001`, and a plan limit with `SP002`. The sync engine holds such changes in the outbox instead of marking them failed.
 
 Guarantees, checked by the database tests:
 
@@ -259,8 +356,14 @@ Guarantees, checked by the database tests:
   - Stock consistency: first-expired-first-out deduction, multi-line sales that roll back as a whole, oversell discrepancies, strict adjustments, voids and idempotent replays. It also checks that the database and the app agree on where voided units go. A seeded random workload checks the ledger invariant.
   - `db/expiryAlerts`: the alert generator at threshold and midnight boundaries, in several time zones; no duplicates across re-runs or a clock going back; 07:00 push hold; notification content; settings validation and permissions; push claiming, retries, backoff, giving up and gone subscriptions; expired batches skipped by sales; and resolutions with their records. `pg_cron`, `pg_net` and Vault aren't available in PGlite, so the schedule migration is skipped and was smoke-tested in production.
   - `db/productEditArchive`: who can edit and archive, barcode normalisation and uniqueness (including archived products), field validation, direct table updates refused, idempotent archive and restore, sales and stock-in of archived products still recorded, and the alert generator closing and skipping archived products.
+  - `db/platformAdmin`: the bootstrap (once, confirmed accounts only, not callable by any client or the service role), every admin function refused and audited for shop users and refused to anonymous callers, each role's limits, the analyst seeing no names or emails, throttled refusal logging, reasons, no self-changes and never losing the last superadmin, immediate revocation, the append-only audit log, platform tables closed to clients, no shop access from a platform role, audit filters and paging, and the permission matrix matching `src/admin/permissions.ts`.
+  - `db/shopSuspension`: suspension needs `tenants.manage` and a reason and notifies owners and managers; every write (15 functions and direct table writes) fails with `SP001` and changes nothing; reads, the team list and sync failure reports keep working; other shops are unaffected; deleting the suspending administrator's account still works; reactivation restores writes and pending invites.
+  - `db/planEntitlements`: the team limit at invite and at accept (`SP002`), disabled and unlimited limits, effective plans for trials, grace periods and cancellations, subscription events and audit entries, pushes skipped by plan, by the global switch and for suspended shops, and plan, entitlement and feature validation.
+  - `db/platformMetrics`: overview and analytics counts against seeded rows, range boundaries and the 366-day cap, day/week/month buckets in South African time, tenant search (wildcards taken literally), filters, sorting and paging, the audited export, sync failure aggregation and validation, and operations health reporting unavailable parts (no `pg_cron` in PGlite) without secret values.
   - PGlite runs a single connection, so row locking under truly concurrent sessions is not exercised.
 - `expiry`, `expiryPush`: shop-local dates (including daylight saving and UTC+14), reminder stages, expired stock refused on the phone, resolving, one-time alert sounds, and the Edge Function's retry and authentication logic.
+- `syncBlocked`: suspended and plan-limited changes held in order without using up attempts, then sent after reactivation; failure reports carrying only change types and codes, sent once and retried if reporting fails.
+- `admin`, `adminI18n`: role and section access, the guard trusting only the server's role, error mapping, routes, CSV formula neutralising, date ranges in South African days, price parsing and reason rules; English and isiZulu parity, every `at('...')` key defined, and a label for every audit action.
 - `secrets`: no service-role or secret key in the source, public assets or built bundle.
 - `dates`, `legacyMigration`, `i18n`: local-date helpers, the one-time localStorage import, and key and `{{placeholder}}` parity between English and every other language (isiZulu, Amharic, Somali), checks that each one is actually translated (Amharic in Ethiopic script), the phone-language detection, plus a check that every `t('...')` key used in the code exists.
 
@@ -268,7 +371,7 @@ Guarantees, checked by the database tests:
 
 ```
 supabase/
-  migrations/              schema, tenancy, ledger, RLS policies, stock functions, expiry alerts and their schedule, team management, product editing and archiving (forward-only)
+  migrations/              schema, tenancy, ledger, RLS policies, stock functions, expiry alerts and their schedule, team management, product editing and archiving, platform administration, suspension and plans (forward-only)
   functions/expiry-push/   Edge Function that sends expiry Web Push messages (logic.ts is unit-tested)
   templates/               sign-in, sign-up confirmation and password reset emails with the 6-digit code
   seed.sql                 intentionally empty (no invented users or credentials)
@@ -294,7 +397,8 @@ src/
   components/stock/        product form fields, edit and archive dialogs, stock detail and stock-in
   hooks/useSaleRegister.ts shared scan-to-sell state for the scanner panel and the Sales tab
   components/              UI: auth, dashboard, views, scanner (lazy-loaded), stock, sales, sync banner
-  locales/                 en.ts and zu.ts
+  admin/                   platform administration at /admin (lazy-loaded): guard, layout, pages, API wrappers, en/zu text
+  locales/                 en.ts, zu.ts, am.ts and so.ts
   test/                    Vitest suites
 public/                    icon.svg, generated PWA icons, push-handler.js (service worker push and click handlers)
 ```

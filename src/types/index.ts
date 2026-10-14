@@ -36,6 +36,19 @@ export interface Shop {
   role?: ShopRole;
   /** True for the person who created the shop; they can never be removed. */
   isAccountOwner?: boolean;
+  /** Suspended shops can be viewed but the server refuses changes until reactivated. */
+  status?: ShopStatus;
+  /** What the shop's current plan allows, as enforced by the server. */
+  entitlements?: ShopEntitlements;
+}
+
+export type ShopStatus = 'active' | 'suspended';
+
+export interface ShopEntitlements {
+  plan: string;
+  expiryPush: boolean;
+  /** Joined plus invited team members allowed; null is unlimited. */
+  teamMaxMembers: number | null;
 }
 
 /** Settings the services need offline, cached per shop on the device. */

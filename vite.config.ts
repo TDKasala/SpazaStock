@@ -37,6 +37,8 @@ export default defineConfig(() => {
         workbox: {
           importScripts: ['push-handler.js'],
           globPatterns: ['**/*.{js,css,html,wasm,svg,png,ico}'],
+          // Platform admin code (/admin) is fetched on demand; shop phones never download it.
+          globIgnores: ['**/AdminApp-*.js'],
           maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
         },
         devOptions: {

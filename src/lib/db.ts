@@ -44,6 +44,12 @@ export type OutboxItem = OutboxOperation & {
   attempts: number;
   nextAttemptAt: number;
   lastError?: string;
+  /** Postgres error code of the last refusal, reported to the platform without the data. */
+  lastErrorCode?: string;
+  /** Set once a failed item has been counted in report_sync_failures. */
+  failureReported?: boolean;
+  /** The server is holding this item back (shop suspended, plan limit) until the block lifts. */
+  blocked?: 'suspended' | 'plan_limit';
   createdAt: string;
 };
 

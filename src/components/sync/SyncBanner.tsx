@@ -11,6 +11,18 @@ export const SyncBanner: React.FC = () => {
 
   if (!status.enabled) return null;
 
+  // SuspendedNotice explains a suspension; repeating the queue count here would only alarm.
+  if (status.blocked === 'suspended') return null;
+
+  if (status.blocked === 'plan_limit') {
+    return (
+      <div className="mb-4 p-3.5 bg-amber-950/40 border border-amber-800/80 rounded-2xl flex items-start gap-2.5 text-amber-200">
+        <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+        <span className="text-xs font-medium">{t('sync.planLimit')}</span>
+      </div>
+    );
+  }
+
   if (status.failed > 0) {
     return (
       <div className="mb-4 p-3.5 bg-rose-950/40 border border-rose-800/80 rounded-2xl flex items-center justify-between gap-3 text-rose-200">

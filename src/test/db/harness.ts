@@ -24,7 +24,9 @@ const SUPABASE_STANDINS = `
     id uuid primary key,
     email text,
     email_confirmed_at timestamptz,
-    raw_user_meta_data jsonb not null default '{}'::jsonb
+    raw_user_meta_data jsonb not null default '{}'::jsonb,
+    created_at timestamptz not null default now(),
+    last_sign_in_at timestamptz
   );
   create function auth.jwt() returns jsonb language sql stable as $$
     select coalesce(nullif(current_setting('request.jwt.claims', true), ''), '{}')::jsonb
@@ -286,6 +288,54 @@ export async function voidItem(
     p_occurred_at: (options.occurredAt ?? new Date()).toISOString(),
     p_idempotency_key: options.key ?? randomUUID(),
   });
+}
+
+// Platform administration ----------------------------------------------------------
+
+/** A reason long enough for private.require_reason. */
+export const REASON = 'Requested by the owner by email, ticket 1042';
+
+/** The README runbook: the database owner, not an API caller, grants the first superadmin. */
+export async function bootstrapSuperadmin(pg: PGlite, user: User): Promise<void> {
+  await pg.query('select private.bootstrap_superadmin($1, $2)', [user.email, 'First platform administrator']);
+}
+
+export async function grantAdmin(pg: PGlite, by: User, user: User, role: string): Promise<void> {
+  const result = await rpc<{ ok: boolean }>(pg, by, 'admin_grant_admin', {
+    p_email: user.email,
+    p_role: role,
+    p_reason: REASON,
+  });
+  if (!result.ok) throw new Error(`Granting ${role} to ${user.email} was refused`);
+}
+
+export interface AuditRow {
+  id: number;
+  actor_id: string | null;
+  actor_email: string | null;
+  actor_role: string | null;
+  action: string;
+  target_type: string | null;
+  target_id: string | null;
+  shop_id: string | null;
+  reason: string | null;
+  outcome: 'success' | 'denied';
+  details: Record<string, unknown>;
+}
+
+/** Audit rows, read as the database owner (clients cannot read the log directly). */
+export async function auditRows(
+  pg: PGlite,
+  filter: { actor?: User; action?: string; outcome?: 'success' | 'denied' } = {}
+): Promise<AuditRow[]> {
+  const { rows } = await pg.query<AuditRow>(
+    `select * from public.platform_audit_log
+     where ($1::uuid is null or actor_id = $1) and ($2::text is null or action = $2)
+       and ($3::text is null or outcome = $3)
+     order by id`,
+    [filter.actor?.id ?? null, filter.action ?? null, filter.outcome ?? null]
+  );
+  return rows;
 }
 
 export async function adjust(

@@ -19,6 +19,7 @@ const IDLE_STATUS: SyncStatus = {
   failed: 0,
   lastSyncedAt: null,
   lastError: null,
+  blocked: null,
 };
 
 const SyncContext = createContext<SyncContextValue | undefined>(undefined);

@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { getMeta, setMeta } from '../lib/db';
 import { emitDataChanged, onDataChanged } from '../lib/events';
 import { countOutbox } from './outbox';
-import { pullChanges, pushOutbox } from './syncEngine';
+import { pullChanges, pushOutbox, reportSyncFailures, type SyncBlock } from './syncEngine';
 
 export interface SyncStatus {
   enabled: boolean;
@@ -12,6 +12,8 @@ export interface SyncStatus {
   failed: number;
   lastSyncedAt: string | null;
   lastError: string | null;
+  /** The server is holding changes back (shop suspended or plan limit); they stay queued. */
+  blocked: SyncBlock | null;
 }
 
 const PERIODIC_SYNC_MS = 60_000;
@@ -56,6 +58,7 @@ export class SyncController {
       failed: 0,
       lastSyncedAt: null,
       lastError: null,
+      blocked: null,
     };
   }
 
@@ -154,6 +157,7 @@ export class SyncController {
     try {
       await withSyncLock(async () => {
         const push = await pushOutbox(client, this.shopId);
+        if (push.failed > 0 || this.status.failed > 0) await reportSyncFailures(client, this.shopId);
         const pulled = await pullChanges(client, this.shopId);
         if (push.pushed > 0 || pulled > 0) emitDataChanged('remote');
         if (push.retryAt !== null) this.scheduleRetry(push.retryAt);
@@ -161,12 +165,13 @@ export class SyncController {
         const counts = await countOutbox(this.shopId);
         const lastError =
           push.retryAt !== null ? 'Some changes could not be sent yet. Retrying automatically.' : null;
+        const blocked = push.blocked ?? null;
         if (counts.pending === 0) {
           const lastSyncedAt = new Date().toISOString();
           await setMeta(this.lastSyncKey(), lastSyncedAt);
-          this.update({ lastSyncedAt, lastError });
+          this.update({ lastSyncedAt, lastError, blocked });
         } else {
-          this.update({ lastError });
+          this.update({ lastError, blocked });
         }
       });
     } catch (err) {

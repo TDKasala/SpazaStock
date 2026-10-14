@@ -21,6 +21,7 @@ import { InviteAcceptScreen } from './components/auth/InviteAcceptScreen';
 import { NewPasswordScreen } from './components/auth/ResetPasswordScreen';
 import { TeamView } from './components/team/TeamView';
 import { RevokedNotice } from './components/layout/RevokedNotice';
+import { SuspendedNotice } from './components/layout/SuspendedNotice';
 import { LoadingState } from './components/ui/LoadingState';
 import { RapidSellPanel } from './components/sales/RapidSellPanel';
 import { useSaleRegister } from './hooks/useSaleRegister';
@@ -36,6 +37,13 @@ import type { Product, ScanMode } from './types';
 const BarcodeScannerModal = lazy(() =>
   import('./components/scanner/BarcodeScannerModal').then((m) => ({ default: m.BarcodeScannerModal }))
 );
+
+// Platform administration lives at /admin and is never downloaded by shop phones.
+const AdminApp = lazy(() => import('./admin/AdminApp').then((m) => ({ default: m.AdminApp })));
+
+function isAdminPath(): boolean {
+  return typeof window !== 'undefined' && /^\/admin(\/|$)/.test(window.location.pathname);
+}
 
 /** 'team' is reached from the shop menu, not the bottom navigation. */
 export type AppTab = 'dashboard' | 'stock' | 'sales' | 'alerts' | 'team';
@@ -142,6 +150,7 @@ export function AppContent() {
 
       <main className="flex-1 w-full max-w-md sm:max-w-xl mx-auto px-4 py-5">
         <RevokedNotice className="mb-4" />
+        <SuspendedNotice />
         <SyncBanner />
         {currentTab === 'team' && mode === 'cloud' && can(settings.role, 'team.manage') && (
           <TeamView onBack={() => setCurrentTab('dashboard')} />
@@ -296,12 +305,23 @@ function AuthGate() {
   );
 }
 
+/** Admins sign in like everyone else; the server decides what they may see. */
+function AdminGate() {
+  const { mode, isLoading, user } = useAuth();
+  if (mode === 'device') return <LandingPage notConfigured />;
+  if (isLoading) return <FullScreenLoading />;
+  if (!user) return <LandingPage />;
+  return (
+    <Suspense fallback={<FullScreenLoading />}>
+      <AdminApp />
+    </Suspense>
+  );
+}
+
 export default function App() {
   return (
     <LanguageProvider>
-      <AuthProvider>
-        <AuthGate />
-      </AuthProvider>
+      <AuthProvider>{isAdminPath() ? <AdminGate /> : <AuthGate />}</AuthProvider>
     </LanguageProvider>
   );
 }

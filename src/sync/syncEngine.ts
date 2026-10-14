@@ -37,6 +37,19 @@ export function isPermanentError(error: SyncErrorLike): boolean {
   return ['22', '23', '42', 'P0'].some((prefix) => code.startsWith(prefix));
 }
 
+/** Why the server is holding changes back until an administrator or a plan change lifts it. */
+export type SyncBlock = 'suspended' | 'plan_limit';
+
+/** SP001: the shop is suspended. SP002: the shop's plan does not allow the change. */
+export function blockedReason(error: SyncErrorLike): SyncBlock | null {
+  if (error.code === 'SP001') return 'suspended';
+  if (error.code === 'SP002') return 'plan_limit';
+  return null;
+}
+
+/** How long a blocked queue waits before asking the server again. */
+export const BLOCKED_RETRY_MS = 10 * 60 * 1000;
+
 export function backoffMs(attempts: number): number {
   return Math.min(5_000 * 2 ** Math.max(0, attempts - 1), 10 * 60 * 1000);
 }
@@ -142,12 +155,18 @@ export function mapExpiryAlertRow(row: Row): ExpiryAlert {
 type SendOutcome =
   | { kind: 'ok'; apply?: () => Promise<void> }
   | { kind: 'retry'; error: string }
+  /** Held back by the server (suspension, plan limit): kept as is, never given up on. */
+  | { kind: 'blocked'; error: string; reason: SyncBlock }
   /** `apply` brings the local copy back in line with the server after a rejected change. */
-  | { kind: 'fail'; error: string; apply?: () => Promise<void> };
+  | { kind: 'fail'; error: string; code?: string; apply?: () => Promise<void> };
 
 function outcomeFromError(error: SyncErrorLike): SendOutcome {
   const message = error.message || 'Unknown sync error';
-  return isPermanentError(error) ? { kind: 'fail', error: message } : { kind: 'retry', error: message };
+  const reason = blockedReason(error);
+  if (reason) return { kind: 'blocked', error: message, reason };
+  return isPermanentError(error)
+    ? { kind: 'fail', error: message, code: error.code }
+    : { kind: 'retry', error: message };
 }
 
 /**
@@ -398,6 +417,8 @@ export interface PushResult {
   failed: number;
   /** Earliest time a retry is due, if the queue stopped on a retryable error. */
   retryAt: number | null;
+  /** Set when the server is holding the queue back; nothing is lost and it resumes on its own. */
+  blocked?: SyncBlock;
 }
 
 /**
@@ -419,6 +440,7 @@ export async function pushOutbox(
 
     if (item.nextAttemptAt > now) {
       result.retryAt = item.nextAttemptAt;
+      if (item.blocked) result.blocked = item.blocked;
       break;
     }
 
@@ -443,10 +465,22 @@ export async function pushOutbox(
       await withWriteLock(() =>
         db.transaction('rw', WRITE_TABLES, async () => {
           await apply?.();
-          await db.outbox.update(seq!, { status: 'failed', lastError: outcome.error });
+          await db.outbox.update(seq!, {
+            status: 'failed',
+            lastError: outcome.error,
+            lastErrorCode: outcome.code ?? 'unknown',
+            failureReported: false,
+          });
         })
       );
       result.failed++;
+    } else if (outcome.kind === 'blocked') {
+      // Attempts are not counted: the change is valid and goes through once the block is lifted.
+      const nextAttemptAt = now + BLOCKED_RETRY_MS;
+      await db.outbox.update(seq!, { nextAttemptAt, lastError: outcome.error, blocked: outcome.reason });
+      result.retryAt = nextAttemptAt;
+      result.blocked = outcome.reason;
+      break;
     } else {
       const attempts = item.attempts + 1;
       if (attempts >= MAX_ATTEMPTS) {
@@ -455,13 +489,46 @@ export async function pushOutbox(
         continue;
       }
       const nextAttemptAt = now + backoffMs(attempts);
-      await db.outbox.update(seq!, { attempts, nextAttemptAt, lastError: outcome.error });
+      await db.outbox.update(seq!, { attempts, nextAttemptAt, lastError: outcome.error, blocked: undefined });
       result.retryAt = nextAttemptAt;
       break;
     }
   }
 
   return result;
+}
+
+/**
+ * Tells the platform which kinds of change the server refused for good, so operators can spot
+ * a broken release. Only the operation type and error code are sent, never the change itself.
+ * Returns how many items were reported; failures to report are retried on the next sync.
+ */
+export async function reportSyncFailures(client: SupabaseClient, shopId: string): Promise<number> {
+  const unreported = (await db.outbox.where('[shopId+status]').equals([shopId, 'failed']).toArray()).filter(
+    (item) => !item.failureReported
+  );
+  if (unreported.length === 0) return 0;
+
+  const counts = new Map<string, { op_type: string; error_code: string; count: number }>();
+  for (const item of unreported) {
+    const code = /^[A-Za-z0-9_]{1,16}$/.test(item.lastErrorCode ?? '') ? item.lastErrorCode! : 'unknown';
+    const key = `${item.type}:${code}`;
+    const entry = counts.get(key) ?? { op_type: item.type, error_code: code, count: 0 };
+    entry.count++;
+    counts.set(key, entry);
+  }
+
+  try {
+    const { error } = await client.rpc('report_sync_failures', {
+      p_shop_id: shopId,
+      p_reports: [...counts.values()].slice(0, 50),
+    });
+    if (error) return 0;
+  } catch {
+    return 0;
+  }
+  await db.outbox.bulkUpdate(unreported.map((item) => ({ key: item.seq!, changes: { failureReported: true } })));
+  return unreported.length;
 }
 
 // Pull -----------------------------------------------------------------------------
