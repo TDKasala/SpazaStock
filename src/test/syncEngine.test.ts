@@ -94,7 +94,11 @@ describe('pushOutbox', () => {
       p_expiry_date: '2026-11-30',
       p_idempotency_key: 'd1',
     });
-    expect(fake.rpc.mock.calls[2][1]).toMatchObject({ p_quantity: 2, p_idempotency_key: 's1', p_unit_price: 15 });
+    const saleArgs = fake.rpc.mock.calls[2][1] as { p_sale_id: string; p_items: unknown[] };
+    expect(saleArgs).toMatchObject({ p_shop_id: SHOP_ID, p_idempotency_key: 's1' });
+    expect(saleArgs.p_items).toEqual([
+      { id: saleArgs.p_sale_id, product_id: product.id, quantity: 2, unit_price: 15 },
+    ]);
     expect(await db.outbox.count()).toBe(0);
   });
 
@@ -187,14 +191,23 @@ describe('pushOutbox', () => {
             sale: {
               id: sale!.sale.id,
               shop_id: SHOP_ID,
-              product_id: product.id,
-              quantity: 1,
-              unit_price: '15.00',
               total_amount: '15.00',
-              allocations: serverAllocations,
+              item_count: 1,
               idempotency_key: sale!.sale.idempotencyKey,
               sold_at: sale!.sale.createdAt,
             },
+            items: [
+              {
+                id: sale!.sale.id,
+                shop_id: SHOP_ID,
+                sale_id: sale!.sale.id,
+                product_id: product.id,
+                quantity: 1,
+                unit_price: '15.00',
+                line_total: '15.00',
+                allocations: serverAllocations,
+              },
+            ],
             duplicate: false,
             shortfall: 0,
           },
@@ -258,6 +271,19 @@ describe('pullChanges', () => {
             updated_at: '2026-10-14T08:05:00Z',
           },
         ],
+        sale_items: [
+          {
+            id: 'line-1',
+            shop_id: SHOP_ID,
+            product_id: product.id,
+            quantity: 3,
+            unit_price: '15.00',
+            line_total: '45.00',
+            allocations: [{ batchId: batch.id, quantityDeducted: 3, batchExpiryDate: null }],
+            updated_at: '2026-10-14T08:05:00Z',
+            sales: { sold_at: '2026-10-14T08:04:00Z', idempotency_key: 'other-phone-1' },
+          },
+        ],
         stock_discrepancies: [
           {
             id: 'd9',
@@ -274,8 +300,15 @@ describe('pullChanges', () => {
     });
 
     const applied = await pullChanges(fake.client, SHOP_ID);
-    expect(applied).toBe(3);
+    expect(applied).toBe(4);
     expect(await getProductTotalStock(product.id, SHOP_ID)).toBe(7);
+    expect(await db.sales.get('line-1')).toMatchObject({
+      productId: product.id,
+      quantity: 3,
+      totalAmount: 45,
+      idempotencyKey: 'other-phone-1',
+      createdAt: '2026-10-14T08:04:00.000Z',
+    });
     expect((await db.products.get(product.id))?.name).toBe('Simba Chips 120g');
     expect(await db.discrepancies.count()).toBe(1);
     expect(await getMeta(`pull:${SHOP_ID}:stock_batches`)).toBe('2026-10-14T08:05:00.000Z');

@@ -82,17 +82,22 @@ export function mapBatchRow(row: Row): StockBatch {
   };
 }
 
-export function mapSaleRow(row: Row): Sale {
+/**
+ * A local sale is one sale line. `header` is the server's sales row (sold_at, idempotency_key);
+ * when omitted it is read from the embedded `sales` relation of a pulled sale_items row.
+ */
+export function mapSaleItemRow(item: Row, header?: Row): Sale {
+  const sale = header ?? (item.sales as Row);
   return {
-    id: String(row.id),
-    shopId: String(row.shop_id),
-    productId: String(row.product_id),
-    quantity: Number(row.quantity),
-    unitPrice: Number(row.unit_price),
-    totalAmount: Number(row.total_amount),
-    allocations: (row.allocations as BatchAllocation[]) ?? [],
-    idempotencyKey: String(row.idempotency_key),
-    createdAt: toIso(row.sold_at),
+    id: String(item.id),
+    shopId: String(item.shop_id),
+    productId: String(item.product_id),
+    quantity: Number(item.quantity),
+    unitPrice: Number(item.unit_price),
+    totalAmount: Number(item.line_total),
+    allocations: (item.allocations as BatchAllocation[]) ?? [],
+    idempotencyKey: String(sale.idempotency_key),
+    createdAt: toIso(sale.sold_at),
   };
 }
 
@@ -169,39 +174,38 @@ async function sendItem(client: SupabaseClient, item: OutboxItem): Promise<SendO
     }
 
     case 'stock_in': {
-      const { batch, movementId, idempotencyKey } = item.payload;
+      const { batch, idempotencyKey } = item.payload;
       const { error } = await client.rpc('record_stock_in', {
         p_batch_id: batch.id,
-        p_movement_id: movementId,
         p_shop_id: item.shopId,
         p_product_id: batch.productId,
         p_quantity: batch.initialQuantity,
         p_expiry_date: batch.expiryDate,
         p_cost_price_per_unit: batch.costPricePerUnit ?? null,
         p_received_at: batch.receivedAt,
-        p_idempotency_key: idempotencyKey ?? null,
+        p_idempotency_key: idempotencyKey ?? batch.id,
       });
       return error ? outcomeFromError(error) : { kind: 'ok' };
     }
 
     case 'sale': {
-      const { sale, movementId } = item.payload;
+      // Each local sale is a one-line server sale; the line reuses the sale id so pulled
+      // sale_items rows map back onto the same local record.
+      const { sale } = item.payload;
       const { data, error } = await client.rpc('record_sale', {
         p_sale_id: sale.id,
-        p_movement_id: movementId,
         p_shop_id: item.shopId,
-        p_product_id: sale.productId,
-        p_quantity: sale.quantity,
-        p_unit_price: sale.unitPrice,
         p_idempotency_key: sale.idempotencyKey,
         p_sold_at: sale.createdAt,
+        p_items: [{ id: sale.id, product_id: sale.productId, quantity: sale.quantity, unit_price: sale.unitPrice }],
       });
       if (error) return outcomeFromError(error);
-      const serverSale = (data as { sale?: Row } | null)?.sale;
+      const result = data as { sale?: Row; items?: Row[] } | null;
+      const line = result?.items?.find((row) => row.id === sale.id);
       return {
         kind: 'ok',
         apply: async () => {
-          if (serverSale) await db.sales.put(mapSaleRow(serverSale));
+          if (result?.sale && line) await db.sales.put(mapSaleItemRow(line, result.sale));
         },
       };
     }
@@ -309,12 +313,12 @@ const PULL_SPECS: PullSpec[] = [
     },
   },
   {
-    table: 'sales',
+    table: 'sale_items',
     columns:
-      'id, shop_id, product_id, quantity, unit_price, total_amount, allocations, idempotency_key, sold_at, updated_at',
+      'id, shop_id, product_id, quantity, unit_price, line_total, allocations, updated_at, sales(sold_at, idempotency_key)',
     initialCursor: () => new Date(Date.now() - SALES_HISTORY_DAYS * 86_400_000).toISOString(),
     apply: async (rows) => {
-      await db.sales.bulkPut(rows.map(mapSaleRow));
+      await db.sales.bulkPut(rows.map((row) => mapSaleItemRow(row)));
     },
   },
   {

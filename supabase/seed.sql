@@ -1,0 +1,3 @@
+-- Runs after migrations on `npx supabase db reset` (local stack only).
+-- Intentionally empty: create users by signing in through the app (read the code in Inbucket),
+-- then create a shop from the app. Never add real credentials or production data here.

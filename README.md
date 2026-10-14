@@ -8,7 +8,7 @@ SpazaStock is a mobile-first Progressive Web App for spaza shop owners in South 
 
 **Supabase is the shared source of truth.** When the phone is online, the sync engine sends outbox items to Supabase in order, through idempotent Postgres functions, and then pulls rows other devices have changed. Every row ID is a UUID generated on the device, so retries never create duplicates.
 
-**Each owner sees only their own shop.** Users sign in with a 6-digit code sent by email (Supabase Auth). Row Level Security limits every table to shops the signed-in user owns.
+**Each shop's data is private to its members.** Users sign in with a 6-digit code sent by email (Supabase Auth). The owner can invite managers and staff by email. Row Level Security limits every table to shops the signed-in user is a member of, and stock can only change through checked database functions (see [Database design](#database-design)).
 
 **Device-only mode.** If no Supabase credentials are configured, the app skips sign-in and keeps everything on the phone. A banner explains that the data is not backed up.
 
@@ -41,12 +41,12 @@ Leave `.env.local` unset to run in device-only mode.
 ### Connecting Supabase
 
 1. Create a Supabase project.
-2. Apply the migrations in `supabase/migrations` (schema, RLS policies, write functions):
+2. Apply the migrations in `supabase/migrations`:
    ```bash
    npx supabase link --project-ref <project-ref>
    npx supabase db push
    ```
-   You can also paste the three files, in filename order, into the SQL editor.
+   You can also paste the files, in filename order, into the SQL editor. Migrations only move forward; never edit one that has already been applied, add a new file instead.
 3. **Email template (required).** By default Supabase emails a magic link, but the app asks for a 6-digit code. In *Authentication → Email Templates → Magic Link*, use the contents of `supabase/templates/magic_link.html`, or any template that includes `{{ .Token }}`. Local development (`supabase start`) picks this up from `supabase/config.toml`.
 4. In *Project Settings → API*, copy the Project URL and the anon public key into `.env.local`:
    ```env
@@ -55,7 +55,24 @@ Leave `.env.local` unset to run in device-only mode.
    ```
 5. Rebuild and redeploy. On first sign-in the owner is asked to name their shop.
 
-Run the database advisors after applying the migrations (*Advisors* in the dashboard, or `npx supabase db lint`).
+Run the database advisors after applying the migrations (*Advisors* in the dashboard, or `npx supabase db lint`). They warn that signed-in users can execute security-definer functions; that is intended for the functions listed under [Database design](#database-design), which check shop membership themselves.
+
+**Keep privileged keys on the server.** The app only ever uses the public anon or `sb_publishable_…` key. The service-role and `sb_secret_…` keys bypass RLS: keep them in Supabase secrets (for example for a future payment webhook that updates `subscriptions`) and never put them in `.env.local`, Vercel `VITE_*` variables or the repo. `src/test/secrets.test.ts` fails if one appears in the source or the built bundle.
+
+### Local Supabase (for database work)
+
+Requires Docker and the Supabase CLI (`npx supabase`).
+
+```bash
+npx supabase start     # local Postgres, Auth, API and Studio; applies supabase/migrations
+npx supabase status    # prints the local API URL and anon key
+```
+
+Put the printed values in `.env.local` (`VITE_SUPABASE_URL=http://127.0.0.1:54321`, `VITE_SUPABASE_ANON_KEY=<anon key>`) and run `npm run dev`. Sign-in emails are not really sent locally: open Inbucket at <http://127.0.0.1:54324> to read the 6-digit code.
+
+To rebuild the local database from the migrations, run `npx supabase db reset`. **This deletes all data. Only run it against the local stack, never with `--linked` or against production.** `supabase/seed.sql` is intentionally empty: create test users by signing in through the app.
+
+To add a schema change, create a new file with `npx supabase migration new <name>`, run `npm test` (the database tests apply every migration to PGlite), then `npx supabase db push` once it is reviewed.
 
 ### Deploying to Vercel
 
@@ -77,6 +94,35 @@ Run the database advisors after applying the migrations (*Advisors* in the dashb
 
 Earlier builds stored data in `localStorage`. On first launch, products and remaining batch quantities are imported once into the current shop and queued for sync. Old sales history is not imported, because its effect is already reflected in the remaining batch quantities.
 
+## Database design
+
+| Table | Purpose |
+| --- | --- |
+| `profiles` | One per user (display name, phone), created by a trigger on sign-up |
+| `shops` | A shop; `owner_id` is the account owner, who can never be removed or demoted |
+| `shop_members` | `owner`, `manager` or `staff` membership; a row with no `user_id` is a pending email invite |
+| `products` | Barcode unique within a shop, prices |
+| `stock_batches` | One delivery: quantity left, initial quantity, expiry date, purchase cost per unit |
+| `stock_movements` | Append-only audit trail: quantity change, reason, actor, device time, server time, unique idempotency key |
+| `sales`, `sale_items` | A sale header and its lines, each with its batch allocation |
+| `stock_discrepancies` | Units sold that the server had no stock for (needs a recount) |
+| `notifications` | Per-user messages, such as discrepancy alerts to owners and managers |
+| `subscriptions` | Plan and billing status per shop; only the service role can write it |
+
+**Who can do what.** Every member can read their shop's data, register products, receive stock and sell. Owners and managers can also edit products, adjust stock and resolve discrepancies. Only owners can invite, change or remove members, rename the shop and see the subscription.
+
+**Stock only changes through functions.** Clients have read-only access to the ledger tables. These functions are `security definer`. Each one checks the caller's role, validates input, and locks the product rows before changing stock:
+
+- `upsert_product`, `record_stock_in`, `record_sale` (several lines, first-expired-first-out) and `record_stock_adjustment` (owners and managers; write-offs, corrections and returns).
+- `invite_shop_member`, `accept_pending_invites`, `update_member_role` and `remove_shop_member`.
+
+Guarantees, checked by the database tests:
+
+- Batch quantities never go below zero. An adjustment that would make stock negative is rejected.
+- A sale synced after another phone already sold the last units is still recorded, because the goods have left the shop. The batch stops at zero, and the shortfall becomes a discrepancy and a notification.
+- Replaying any operation with the same IDs or idempotency key changes nothing.
+- For every product, the batch quantities add up to the sum of its stock movements.
+
 ## Scripts
 
 | Command | Purpose |
@@ -94,15 +140,20 @@ Earlier builds stored data in `localStorage`. On first launch, products and rema
 
 - `productService`, `stockService`, `salesService`: local repositories, including idempotency across reloads, concurrent sales of the last units, and "today" just after local midnight.
 - `syncEngine`, `syncController`: push and pull against a fake Supabase client. Covers rejected and retryable errors, backoff, product ID remapping, and online/offline behaviour.
-- `migrations`: applies the real migrations to [PGlite](https://pglite.dev) (Postgres in WebAssembly) and checks RLS isolation between owners, anonymous access, idempotent RPCs, FEFO deduction and discrepancy creation.
+- `db/tenantIsolation`, `db/stockConsistency`: apply the real migrations to [PGlite](https://pglite.dev) (Postgres in WebAssembly) with stand-ins for Supabase's roles and `auth` functions.
+  - Tenant isolation: another shop's members and anonymous callers see nothing and can call nothing. Role limits for staff and managers are enforced, and the ledger tables reject direct writes. Invites can only be claimed by the invited email address, and the account owner can't be removed.
+  - Stock consistency: first-expired-first-out deduction, multi-line sales that roll back as a whole, oversell discrepancies, strict adjustments and idempotent replays. A seeded random workload checks the ledger invariant.
+  - PGlite runs a single connection, so row locking under truly concurrent sessions is not exercised.
+- `secrets`: no service-role or secret key in the source, public assets or built bundle.
 - `dates`, `legacyMigration`, `i18n`: local-date helpers, the one-time localStorage import, and key and `{{placeholder}}` parity between English and isiZulu, plus a check that every `t('...')` key used in the code exists.
 
 ## Project layout
 
 ```
 supabase/
-  migrations/              schema, RLS policies, write functions (upsert_product, record_stock_in, record_sale)
+  migrations/              schema, tenancy, ledger, RLS policies and stock functions (forward-only)
   templates/magic_link.html  sign-in email with the 6-digit code
+  seed.sql                 intentionally empty (no invented users or credentials)
 src/
   lib/db.ts                Dexie (IndexedDB) schema, outbox types, write lock
   lib/dates.ts             local-time-zone date helpers

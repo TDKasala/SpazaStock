@@ -63,25 +63,31 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     setIsLoading(!cached);
-    supabase
-      .from('shops')
-      .select('id, name')
-      .order('created_at', { ascending: true })
-      .limit(1)
-      .then(({ data, error: queryError }) => {
-        if (!active) return;
-        if (queryError) {
-          if (!cached) setError(queryError.message);
-        } else if (data && data.length > 0) {
-          const next: Shop = { id: data[0].id, name: data[0].name };
-          localStorage.setItem(cacheKey(userId), JSON.stringify(next));
-          setShop(next);
-        } else {
-          localStorage.removeItem(cacheKey(userId));
-          setShop(null);
-        }
-        setIsLoading(false);
-      });
+    const load = async () => {
+      // Staff invited by email join their shop here on first sign-in. A failure must not stop
+      // the user reaching shops they already belong to.
+      const { error: inviteError } = await supabase.rpc('accept_pending_invites');
+      if (inviteError) console.warn('Could not accept shop invites:', inviteError.message);
+
+      const { data, error: queryError } = await supabase
+        .from('shops')
+        .select('id, name')
+        .order('created_at', { ascending: true })
+        .limit(1);
+      if (!active) return;
+      if (queryError) {
+        if (!cached) setError(queryError.message);
+      } else if (data && data.length > 0) {
+        const next: Shop = { id: data[0].id, name: data[0].name };
+        localStorage.setItem(cacheKey(userId), JSON.stringify(next));
+        setShop(next);
+      } else {
+        localStorage.removeItem(cacheKey(userId));
+        setShop(null);
+      }
+      setIsLoading(false);
+    };
+    void load();
 
     return () => {
       active = false;
