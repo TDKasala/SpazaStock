@@ -82,6 +82,35 @@ export const zu: Translations = {
       generic: 'Kukhona okungahambanga kahle. Sicela uzame futhi.',
     },
   },
+  landing: {
+    headline: 'Yazi impahla yakho. Dayisa ngokushesha. Chitha kancane.',
+    intro:
+      'I-SpazaStock isiza ama-spaza nezitolo ezincane ukulandelela impahla, ukurekhoda ukuthengisa nokubona izimpahla eziphelelwa yisikhathi, kusukela efonini.',
+    createAccount: 'Vula i-akhawunti mahhala',
+    haveAccount: 'Senginayo i-akhawunti',
+    features: {
+      scan: {
+        title: 'Skena ukuze udayise futhi wamukele',
+        body: 'Sebenzisa ikhamera yefoni yakho ukuskena amabhakhodi ekhawuntareni nalapho impahla ifika.',
+      },
+      expiry: {
+        title: 'Izexwayiso zokuphelelwa yisikhathi',
+        body: 'Ukhunjuzwa ngaphambi kokuthi izimpahla ziphelelwe yisikhathi, ukuze uzidayise kuqala.',
+      },
+      offline: {
+        title: 'Isebenza ngaphandle kwe-inthanethi',
+        body: 'Qhubeka udayisa ngaphandle kwedatha. Konke kuyavumelaniswa uma usubuyele ku-inthanethi.',
+      },
+      team: {
+        title: 'Ithimba lakho',
+        body: 'Mema abasebenzi ngesixhumanisi bese ukhetha ukuthi umuntu ngamunye angenzani.',
+      },
+    },
+    notConfiguredTitle: 'Ama-akhawunti awakasethwa kule sayithi',
+    notConfiguredBody:
+      'Le khophi ye-SpazaStock ayixhunyiwe kuseva yayo, ngakho akekho ongangena noma abhalise. Umnikazi wesayithi kufanele afake izilungiselelo ze-Supabase bese eyishicilela futhi.',
+    footer: 'I-SpazaStock: impahla nokuthengisa kwama-spaza.',
+  },
   onboarding: {
     title: 'Setha isitolo sakho',
     subtitle: 'Nika isitolo sakho igama. Impahla nokudayisa kwakho kuzogcinwa ngaphansi kwalo.',

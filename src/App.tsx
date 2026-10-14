@@ -15,7 +15,7 @@ import { ProductFoundDialog } from './components/scanner/ProductFoundDialog';
 import { ProductRegisterDialog } from './components/scanner/ProductRegisterDialog';
 import { QuickStockInModal } from './components/stock/QuickStockInModal';
 import { ProductStockDetailDialog } from './components/stock/ProductStockDetailDialog';
-import { SignInScreen } from './components/auth/SignInScreen';
+import { LandingPage } from './components/auth/LandingPage';
 import { ShopOnboarding } from './components/auth/ShopOnboarding';
 import { InviteAcceptScreen } from './components/auth/InviteAcceptScreen';
 import { NewPasswordScreen } from './components/auth/ResetPasswordScreen';
@@ -279,12 +279,13 @@ function AuthGate() {
   const [inviteToken, setInviteToken] = useState<string | null>(() =>
     mode === 'cloud' ? captureInviteFromUrl() : null
   );
+  if (mode === 'device') return <LandingPage notConfigured />;
   if (isLoading) return <FullScreenLoading />;
-  if (mode === 'cloud' && user && isRecoveringPassword) return <NewPasswordScreen />;
-  if (mode === 'cloud' && inviteToken) {
+  if (user && isRecoveringPassword) return <NewPasswordScreen />;
+  if (inviteToken) {
     return <InviteAcceptScreen token={inviteToken} onDone={() => setInviteToken(null)} />;
   }
-  if (mode === 'cloud' && !user) return <SignInScreen />;
+  if (!user) return <LandingPage />;
   return (
     <ShopProvider>
       <ShopGate />

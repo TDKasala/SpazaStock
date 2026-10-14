@@ -80,6 +80,35 @@ export const en = {
       generic: 'Something went wrong. Please try again.',
     },
   },
+  landing: {
+    headline: 'Know your stock. Sell faster. Waste less.',
+    intro:
+      'SpazaStock helps spaza shops and small stores track stock, record sales and catch expiring goods, right from a phone.',
+    createAccount: 'Create a free account',
+    haveAccount: 'I already have an account',
+    features: {
+      scan: {
+        title: 'Scan to sell and receive',
+        body: "Use your phone's camera to scan barcodes at the counter and when stock arrives.",
+      },
+      expiry: {
+        title: 'Expiry alerts',
+        body: 'Get reminded before goods expire, so you can sell them first.',
+      },
+      offline: {
+        title: 'Works offline',
+        body: 'Keep selling without data. Everything syncs when you are back online.',
+      },
+      team: {
+        title: 'Your team',
+        body: 'Invite workers with a link and choose what each person can do.',
+      },
+    },
+    notConfiguredTitle: 'Accounts are not set up on this site yet',
+    notConfiguredBody:
+      'This copy of SpazaStock is not connected to its server, so nobody can sign in or register. The site owner needs to add the Supabase settings and publish it again.',
+    footer: 'SpazaStock: stock and sales for spaza shops.',
+  },
   onboarding: {
     title: 'Set up your shop',
     subtitle: 'Give your shop a name. Your stock and sales will be saved under it.',

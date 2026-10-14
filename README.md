@@ -18,7 +18,7 @@ SpazaStock is a mobile-first Progressive Web App for spaza shop owners in South 
 - **Managing the team.** The team screen lists each person's name, email, role and status (Active, Invite sent, Invite expired, Deactivated). The owner can change roles, deactivate and reactivate, and remove people, each after a confirmation. Deactivation and removal take effect immediately on every phone, because every policy and database function checks for an *active* membership. Queued push notifications for that person are cancelled. On their phone, the shop's local data, including unsynced changes, is deleted the next time the app is online. Nobody can change their own role or access.
 - **Audit.** Every invite, resend, cancellation, join, role change, deactivation, reactivation and removal is written to `membership_events` by a database trigger, with who did it. Owners see the recent history on the team screen.
 
-**Device-only mode.** If no Supabase credentials are configured, the app skips sign-in and keeps everything on the phone. A banner explains that the data is not backed up.
+**Landing page and sign-in.** Signed-out visitors see a short landing page with the sign-in card next to it. Anyone can create an account there (*Create a free account*), confirm the email code, and then set up their own shop. Workers should open their invite link first, so they join the right shop. Sign-in is always required: a build without the Supabase settings shows the landing page with an "Accounts are not set up on this site yet" notice instead of opening the app.
 
 ### Sync details
 
@@ -57,8 +57,7 @@ Every batch with stock and an expiry date is checked against the shop's **remind
 - **Expired stock is not sellable.** It is struck through in the stock views, excluded from "Available", and skipped when selling, both on the phone and in `record_sale`. If only expired units are left, the sale is refused on the phone with an explanation.
 - **Resolving.** An owner or manager resolves an expired batch as *thrown away*, *returned to supplier* or *wrong date* (which corrects the expiry date). Thrown away and returned remove every unit left with a `write_off_expired` or `supplier_return` stock movement. Each resolution keeps a permanent `expiry_resolutions` record of who did it, when, how many units, the old and new dates, and a note.
 
-Push notifications need permission. On Android and desktop, tap *Turn on alerts*. On iPhone (iOS 16.4 or later), add SpazaStock to the Home Screen first. In device-only mode there is no server, so alerts appear while the app is open, plus a system notification if the app is in the background.
-
+Push notifications need permission. On Android and desktop, tap *Turn on alerts*. On iPhone (iOS 16.4 or later), add SpazaStock to the Home Screen first.
 ## Setup
 
 Requirements: Node.js 24 and npm.
@@ -69,7 +68,7 @@ cp .env.example .env.local   # then fill in the values below
 npm run dev                  # http://localhost:3000
 ```
 
-Leave `.env.local` unset to run in device-only mode.
+`VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are required. Without them the app only shows the landing page with a "not set up" notice.
 
 ### Connecting Supabase
 
@@ -81,6 +80,7 @@ Leave `.env.local` unset to run in device-only mode.
    ```
    You can also paste the files, in filename order, into the SQL editor. Migrations only move forward; never edit one that has already been applied, add a new file instead.
 3. **Auth settings (required).** Local development (`supabase start`) picks these up from `supabase/config.toml`; on a hosted project set them in the dashboard:
+   - *Authentication → Sign In / Providers*: keep **Allow new users to sign up** on, so shop owners can register themselves from the landing page.
    - *Authentication → Sign In / Providers → Email*: turn on **Confirm email**. Invites can only be accepted by a confirmed email address, so without this anyone who gets hold of an invite link could register with the invited address and join without proving they own it. Set the minimum password length to **8** and require **letters and digits**, to match the app's checks.
    - *Authentication → Email Templates*: the app asks for 6-digit codes, not links. Paste `supabase/templates/confirmation.html` into **Confirm signup**, `supabase/templates/recovery.html` into **Reset password** and `supabase/templates/magic_link.html` into **Magic Link** (or any templates that include `{{ .Token }}`).
    - *Authentication → Emails → SMTP Settings*: set up a **custom SMTP provider** (for example Resend, Brevo, SendGrid or Amazon SES). Supabase's built-in email only delivers to the project's team members and is limited to a few messages an hour, so shop owners and workers would not receive their codes without it.
@@ -115,7 +115,7 @@ To add a schema change, create a new file with `npx supabase migration new <name
 `vercel.json` holds the build settings (Vite, `npm ci`, output `dist`), long-lived caching for hashed `/assets/*`, no caching for the service worker and manifest so updates reach installed apps, and security headers. `Permissions-Policy` allows the camera for this site only, which the barcode scanner needs.
 
 1. Import the GitHub repo in Vercel (or run `vercel link`). The framework is detected from `vercel.json`.
-2. Add the environment variables for **Production** and **Preview**. `VITE_*` values are baked in at build time, so redeploy after changing them:
+2. Add the environment variables for **Production** and **Preview**. They are mandatory: without them the deployed site cannot sign anyone in and only shows the "not set up" notice. `VITE_*` values are baked in at build time, so redeploy after adding or changing them:
    ```bash
    vercel env add VITE_SUPABASE_URL production
    vercel env add VITE_SUPABASE_ANON_KEY production
