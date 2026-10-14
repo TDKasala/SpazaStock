@@ -133,6 +133,30 @@ export async function getProductBatches(productId: string, shopId: string): Prom
     .sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
 }
 
+export interface BatchExpiryChange {
+  batchId: string;
+  expiryDate: string;
+}
+
+/**
+ * Compares edited expiry dates (by batch id) with the batches. A date can be added or changed but
+ * not removed, because a correction on the server always sets a date.
+ */
+export function batchExpiryChanges(
+  batches: StockBatch[],
+  drafts: Record<string, string>
+): { changes: BatchExpiryChange[]; invalid: string[] } {
+  const changes: BatchExpiryChange[] = [];
+  const invalid: string[] = [];
+  for (const batch of batches) {
+    const draft = (drafts[batch.id] ?? batch.expiryDate ?? '').trim();
+    if (draft === (batch.expiryDate ?? '')) continue;
+    if (!draft || !isValidDateFormat(draft)) invalid.push(batch.id);
+    else changes.push({ batchId: batch.id, expiryDate: draft });
+  }
+  return { changes, invalid };
+}
+
 /** The shop's calendar date now, in its own time zone. */
 export async function getShopToday(shopId: string, now: Date = new Date()): Promise<string> {
   return todayInZone((await getShopSettings(shopId)).timezone, now);

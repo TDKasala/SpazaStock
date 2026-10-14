@@ -351,6 +351,11 @@ export const en = {
     saveChanges: 'Save Changes',
     editForbidden: 'Only an owner or manager can change products.',
     duplicateBarcodeError: 'Another product already uses this barcode ("{{name}}").',
+    expiryDatesHeading: 'Expiry dates',
+    expiryDatesHint:
+      'Each delivery keeps its own date. Fix a date that was entered wrongly; the old date stays in the history.',
+    expiryBatchLabel: 'Batch #{{number}} ({{code}}): {{count}} units, received {{date}}',
+    expiryDateRequired: 'Enter a date. An expiry date can be changed but not removed.',
     archive: 'Archive',
     archiveTitle: 'Archive {{name}}?',
     archiveConfirm:

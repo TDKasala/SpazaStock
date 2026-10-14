@@ -1,12 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import { Save } from 'lucide-react';
-import type { Product } from '../../types';
+import { Calendar, Save } from 'lucide-react';
+import type { Product, ProductEditInput, StockBatch } from '../../types';
 import { useLanguage } from '../../context/LanguageContext';
 import { useShopId } from '../../context/ShopContext';
 import { Dialog } from '../ui/Dialog';
 import { Button } from '../ui/Button';
+import { Input } from '../ui/Input';
 import { ErrorMessage } from '../ui/ErrorMessage';
-import { updateProduct } from '../../services/productService';
+import { batchCode } from '../../lib/expiry';
+import { newId } from '../../lib/ids';
+import { normalizeBarcode, updateProduct } from '../../services/productService';
+import { batchExpiryChanges, getProductBatches, resolveExpiredBatch } from '../../services/stockService';
 import {
   ProductFormFields,
   parseProductForm,
@@ -22,6 +26,16 @@ export interface ProductEditDialogProps {
   onSaved: (product: Product) => void;
 }
 
+function sameDetails(product: Product, input: ProductEditInput): boolean {
+  return (
+    product.barcode === normalizeBarcode(input.barcode) &&
+    product.name === input.name.trim() &&
+    product.category === input.category &&
+    (product.buyingPrice ?? null) === (input.buyingPrice ?? null) &&
+    (product.sellingPrice ?? null) === (input.sellingPrice ?? null)
+  );
+}
+
 export const ProductEditDialog: React.FC<ProductEditDialogProps> = ({ isOpen, product, onClose, onSaved }) => {
   const { t } = useLanguage();
   const shopId = useShopId();
@@ -29,36 +43,90 @@ export const ProductEditDialog: React.FC<ProductEditDialogProps> = ({ isOpen, pr
   const [errors, setErrors] = useState<ProductFormErrors>({});
   const [serverError, setServerError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Details already saved in this dialog, so a retry after a failed date change doesn't resend them.
+  const [saved, setSaved] = useState(product);
+  const [batches, setBatches] = useState<StockBatch[]>([]);
+  const [expiryDrafts, setExpiryDrafts] = useState<Record<string, string>>({});
+  const [expiryErrors, setExpiryErrors] = useState<Record<string, string>>({});
+  // One key per batch while the dialog is open, so a double tap records each correction once.
+  const [expiryKeys, setExpiryKeys] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!isOpen) return;
     setValues(productFormFromProduct(product));
     setErrors({});
     setServerError(null);
-  }, [isOpen, product]);
+    setSaved(product);
+    setExpiryDrafts({});
+    setExpiryErrors({});
+    setExpiryKeys({});
+    let cancelled = false;
+    void getProductBatches(product.id, shopId).then((items) => {
+      if (!cancelled) setBatches(items);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, product, shopId]);
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (isSubmitting) return;
     const { input, errors: formErrors } = parseProductForm(values, t);
     setErrors(formErrors);
-    if (!input) return;
+    const { changes, invalid } = batchExpiryChanges(batches, expiryDrafts);
+    setExpiryErrors(Object.fromEntries(invalid.map((id) => [id, t('product.expiryDateRequired')])));
+    if (!input || invalid.length > 0) return;
 
     setIsSubmitting(true);
     setServerError(null);
     try {
-      const result = await updateProduct(product.id, input, shopId);
-      if (result.product) {
-        onSaved(result.product);
+      let current = saved;
+      if (!sameDetails(current, input)) {
+        const result = await updateProduct(product.id, input, shopId);
+        if (!result.product) {
+          if (result.errorCode === 'duplicate') {
+            setErrors({ barcode: t('product.duplicateBarcodeError', { name: result.conflict?.name ?? '' }) });
+          } else if (result.errorCode === 'forbidden') {
+            setServerError(t('product.editForbidden'));
+          } else {
+            setServerError(result.error ?? t('errors.generic'));
+          }
+          return;
+        }
+        current = result.product;
+        setSaved(current);
+      }
+
+      const keys = { ...expiryKeys };
+      for (const change of changes) {
+        keys[change.batchId] ??= newId();
+        const outcome = await resolveExpiredBatch(
+          {
+            batchId: change.batchId,
+            action: 'expiry_corrected',
+            newExpiryDate: change.expiryDate,
+            idempotencyKey: keys[change.batchId],
+          },
+          shopId
+        );
+        if (outcome.result || outcome.errorCode === 'duplicate') {
+          const updated = outcome.result?.batch;
+          if (updated) setBatches((list) => list.map((b) => (b.id === updated.id ? updated : b)));
+          delete keys[change.batchId];
+          continue;
+        }
+        setExpiryKeys(keys);
+        setServerError(
+          outcome.errorCode === 'forbidden'
+            ? t('product.editForbidden')
+            : outcome.errorCode === 'invalid'
+            ? t('expiry.resolveInvalidDate')
+            : outcome.error ?? t('errors.generic')
+        );
         return;
       }
-      if (result.errorCode === 'duplicate') {
-        setErrors({ barcode: t('product.duplicateBarcodeError', { name: result.conflict?.name ?? '' }) });
-      } else if (result.errorCode === 'forbidden') {
-        setServerError(t('product.editForbidden'));
-      } else {
-        setServerError(result.error ?? t('errors.generic'));
-      }
+      onSaved(current);
     } catch (err) {
       setServerError(err instanceof Error ? err.message : t('errors.generic'));
     } finally {
@@ -95,6 +163,35 @@ export const ProductEditDialog: React.FC<ProductEditDialogProps> = ({ isOpen, pr
           <ErrorMessage variant="error" message={serverError} onDismiss={() => setServerError(null)} />
         )}
         <ProductFormFields values={values} errors={errors} onChange={setValues} />
+
+        {batches.length > 0 && (
+          <fieldset className="space-y-3 pt-1">
+            <legend className="text-xs font-bold uppercase tracking-wider text-zinc-300 flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5 text-emerald-400" />
+              {t('product.expiryDatesHeading')}
+            </legend>
+            <p className="text-[11px] text-zinc-400">{t('product.expiryDatesHint')}</p>
+            {batches.map((batch, idx) => (
+              <Input
+                key={batch.id}
+                type="date"
+                label={t('product.expiryBatchLabel', {
+                  number: batches.length - idx,
+                  count: batch.quantity,
+                  date: new Date(batch.receivedAt).toLocaleDateString(),
+                  code: batchCode(batch.id),
+                })}
+                value={expiryDrafts[batch.id] ?? batch.expiryDate ?? ''}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setExpiryDrafts((drafts) => ({ ...drafts, [batch.id]: value }));
+                  setExpiryErrors(({ [batch.id]: _cleared, ...rest }) => rest);
+                }}
+                error={expiryErrors[batch.id]}
+              />
+            ))}
+          </fieldset>
+        )}
       </form>
     </Dialog>
   );

@@ -635,6 +635,46 @@ describe('expired stock', () => {
     ]);
   });
 
+  it('sets a date on a batch that had none and moves a date that has not expired yet', async () => {
+    const f = await fixture();
+    const undated = await batch(f, 2, null);
+    const later = await batch(f, 5, '2026-10-20');
+    expect(await generate('2026-10-14T10:00:00Z')).toBe(1);
+
+    const correct = (caller: typeof owner, id: string, date: string) =>
+      rpc(pg, caller, 'resolve_expired_batch', {
+        p_shop_id: f.shop,
+        p_batch_id: id,
+        p_action: 'expiry_corrected',
+        p_new_expiry_date: date,
+        p_note: null,
+        p_occurred_at: null,
+        p_idempotency_key: randomUUID(),
+      });
+    expect(await errorCode(correct(staff, later, '2027-03-01'))).toBe('42501');
+    await correct(owner, undated, '2026-10-16');
+    await correct(manager, later, '2027-03-01');
+
+    const records = await query<{ batch_id: string; previous_expiry_date: string | null; new_expiry_date: string }>(
+      pg,
+      owner,
+      `select batch_id, previous_expiry_date::text, new_expiry_date::text from public.expiry_resolutions
+       where shop_id = $1 order by created_at, new_expiry_date`,
+      [f.shop]
+    );
+    expect(records).toEqual([
+      { batch_id: undated, previous_expiry_date: null, new_expiry_date: '2026-10-16' },
+      { batch_id: later, previous_expiry_date: '2026-10-20', new_expiry_date: '2027-03-01' },
+    ]);
+
+    expect(await generate('2026-10-14T10:15:00Z')).toBe(1);
+    const all = await alerts(f.shop);
+    expect(all.map((r) => [r.batch_id, r.expiry_date, r.resolution])).toEqual([
+      [later, '2026-10-20', 'expiry_corrected'],
+      [undated, '2026-10-16', null],
+    ]);
+  });
+
   it('rejects unknown batches and actions', async () => {
     const f = await fixture();
     const base = {

@@ -353,6 +353,11 @@ export const so: Translations = {
     saveChanges: 'Kaydi isbeddelada',
     editForbidden: 'Kaliya milkiilaha ama maareeyaha ayaa beddeli kara alaabta.',
     duplicateBarcodeError: 'Alaab kale ayaa horey u isticmaalaysa barcode-kan ("{{name}}").',
+    expiryDatesHeading: 'Taariikhaha dhicitaanka',
+    expiryDatesHint:
+      'Keen kasta wuxuu leeyahay taariikhdiisa. Sax taariikh si khalad ah loo geliyay; taariikhdii hore waxay ku jiraysaa taariikhda.',
+    expiryBatchLabel: 'Raso #{{number}} ({{code}}): {{count}} xabbo, la helay {{date}}',
+    expiryDateRequired: 'Geli taariikh. Taariikhda dhicitaanka waa la beddeli karaa laakiin lama tirtiri karo.',
     archive: 'Kaydka geli',
     archiveTitle: 'Ma la gelinayaa {{name}} kaydka?',
     archiveConfirm:

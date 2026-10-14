@@ -359,6 +359,11 @@ export const zu: Translations = {
     saveChanges: 'Gcina Izinguquko',
     editForbidden: 'Ngumnikazi noma umphathi kuphela ongashintsha imikhiqizo.',
     duplicateBarcodeError: 'Omunye umkhiqizo usuvele usebenzisa le bhakhodi ("{{name}}").',
+    expiryDatesHeading: 'Izinsuku zokuphela',
+    expiryDatesHint:
+      'Ukulethwa ngakunye kugcina usuku lwakho. Lungisa usuku olufakwe kabi; usuku oludala luhlala emlandweni.',
+    expiryBatchLabel: 'Ibheji #{{number}} ({{code}}): izingcezu ezingu-{{count}}, yafika ngo-{{date}}',
+    expiryDateRequired: 'Faka usuku. Usuku lokuphela lungashintshwa kodwa alukwazi ukususwa.',
     archive: 'Faka kunqolobane',
     archiveTitle: 'Faka u-{{name}} kunqolobane?',
     archiveConfirm:

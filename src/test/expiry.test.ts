@@ -10,10 +10,16 @@ import {
 import { saveShopSettings, sanitizeShopSettings } from '../lib/shopSettings';
 import { db, resetLocalDatabase } from '../lib/db';
 import { createProduct } from '../services/productService';
-import { getExpiryAlerts, getProductTotalStock, resolveExpiredBatch, stockIn } from '../services/stockService';
+import {
+  batchExpiryChanges,
+  getExpiryAlerts,
+  getProductTotalStock,
+  resolveExpiredBatch,
+  stockIn,
+} from '../services/stockService';
 import { recordSale } from '../services/salesService';
 import { takeUnnotifiedAlerts } from '../services/alertNotifier';
-import type { Product } from '../types';
+import type { Product, StockBatch } from '../types';
 import { SHOP_ID } from './helpers';
 
 const SAST = 'Africa/Johannesburg';
@@ -109,6 +115,33 @@ describe('reminder settings', () => {
   });
 });
 
+describe('batchExpiryChanges', () => {
+  const batch = (id: string, expiryDate: string | null): StockBatch => ({
+    id,
+    shopId: SHOP_ID,
+    productId: 'p',
+    quantity: 1,
+    initialQuantity: 1,
+    expiryDate,
+    receivedAt: '2026-10-01T08:00:00Z',
+  });
+
+  it('returns only the dates that changed', () => {
+    const batches = [batch('a', '2026-11-01'), batch('b', null), batch('c', '2026-12-01')];
+    expect(batchExpiryChanges(batches, {})).toEqual({ changes: [], invalid: [] });
+    expect(batchExpiryChanges(batches, { a: '2026-11-01', b: '', c: ' 2027-01-15 ' })).toEqual({
+      changes: [{ batchId: 'c', expiryDate: '2027-01-15' }],
+      invalid: [],
+    });
+    expect(batchExpiryChanges(batches, { b: '2026-10-30' }).changes).toEqual([{ batchId: 'b', expiryDate: '2026-10-30' }]);
+  });
+
+  it('refuses removing a date or an impossible date', () => {
+    const batches = [batch('a', '2026-11-01'), batch('b', null)];
+    expect(batchExpiryChanges(batches, { a: '', b: '2026-02-30' })).toEqual({ changes: [], invalid: ['a', 'b'] });
+  });
+});
+
 describe('expired stock on this phone', () => {
   let product: Product;
 
@@ -180,6 +213,32 @@ describe('expired stock on this phone', () => {
     expect(outcome.result?.batch).toMatchObject({ quantity: 3, expiryDate: '2027-01-31' });
     expect(await db.movements.count()).toBe(movementsBefore);
     expect(await getProductTotalStock(product.id, SHOP_ID)).toBe(3);
+  });
+
+  it('moves a date that has not expired yet and adds a missing one, as the edit dialog does', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-14T08:00:00Z'));
+    const soon = (await stockIn({ productId: product.id, quantity: 3, expiryDate: '2026-10-18' }, SHOP_ID)).result!.batch;
+    const undated = (await stockIn({ productId: product.id, quantity: 2 }, SHOP_ID)).result!.batch;
+    expect((await getExpiryAlerts(SHOP_ID)).map((a) => a.batch.id)).toEqual([soon.id]);
+
+    const { changes } = batchExpiryChanges([soon, undated], { [soon.id]: '2027-02-01', [undated.id]: '2026-10-16' });
+    for (const change of changes) {
+      const outcome = await resolveExpiredBatch(
+        { batchId: change.batchId, action: 'expiry_corrected', newExpiryDate: change.expiryDate },
+        SHOP_ID
+      );
+      expect(outcome.result?.batch.expiryDate).toBe(change.expiryDate);
+    }
+
+    expect((await getExpiryAlerts(SHOP_ID)).map((a) => [a.batch.id, a.batch.expiryDate])).toEqual([
+      [undated.id, '2026-10-16'],
+    ]);
+    const queued = (await db.outbox.toArray()).filter((item) => item.type === 'expiry_resolve');
+    expect(queued.map((item) => item.payload)).toMatchObject([
+      { batchId: soon.id, action: 'expiry_corrected', newExpiryDate: '2027-02-01' },
+      { batchId: undated.id, action: 'expiry_corrected', newExpiryDate: '2026-10-16' },
+    ]);
   });
 
   it('only lets owners and managers resolve expired stock', async () => {

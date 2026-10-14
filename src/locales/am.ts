@@ -353,6 +353,10 @@ export const am: Translations = {
     saveChanges: 'ለውጦችን አስቀምጥ',
     editForbidden: 'ዕቃዎችን መቀየር የሚችሉት ባለቤት ወይም ሥራ አስኪያጅ ብቻ ናቸው።',
     duplicateBarcodeError: 'ሌላ ዕቃ ይህን ባርኮድ አስቀድሞ ይጠቀማል ("{{name}}")።',
+    expiryDatesHeading: 'የማብቂያ ቀኖች',
+    expiryDatesHint: 'እያንዳንዱ ጭነት የራሱን ቀን ይይዛል። በስህተት የገባውን ቀን ያስተካክሉ፤ የቀድሞው ቀን በታሪክ ውስጥ ይቀመጣል።',
+    expiryBatchLabel: 'ጭነት #{{number}} ({{code}})፦ {{count}} ብዛት፣ የገባው {{date}}',
+    expiryDateRequired: 'ቀን ያስገቡ። የማብቂያ ቀን መቀየር ይቻላል ግን መሰረዝ አይቻልም።',
     archive: 'ወደ ማህደር',
     archiveTitle: '{{name}} ወደ ማህደር ይግባ?',
     archiveConfirm:
