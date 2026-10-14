@@ -7,6 +7,7 @@ import { clearShopData } from '../lib/db';
 import { isValidTimezone, normalizeReminderDays } from '../lib/expiry';
 import { getShopSettings, sanitizeShopSettings, saveShopSettings } from '../lib/shopSettings';
 import { pickShop, revokedShops, shopFromRow, type ShopRow } from '../lib/shopList';
+import type { NewShopInput } from '../lib/shopDetails';
 import { emitDataChanged } from '../lib/events';
 import { useAuth } from './AuthContext';
 
@@ -24,7 +25,7 @@ interface ShopContextValue {
   /** Names of shops whose access ended since the last check; their data has been cleared. */
   revokedShopNames: string[];
   dismissRevoked: () => void;
-  createShop: (name: string) => Promise<{ error?: string }>;
+  createShop: (input: NewShopInput) => Promise<{ error?: string }>;
   switchShop: (shopId: string) => void;
   updateAlertSettings: (reminderDays: number[], timezone: string) => Promise<{ error?: string }>;
   reload: () => void;
@@ -179,13 +180,19 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
   );
 
   const createShop = useCallback(
-    async (name: string) => {
+    async (input: NewShopInput) => {
       const supabase = getSupabase();
-      const trimmed = name.trim();
+      const trimmed = input.name.trim();
       if (!supabase || !userId) return { error: 'Not signed in.' };
       if (!trimmed) return { error: 'Shop name is required.' };
 
-      const { data, error: rpcError } = await supabase.rpc('create_shop', { p_name: trimmed });
+      const { data, error: rpcError } = await supabase.rpc('create_shop', {
+        p_name: trimmed,
+        p_phone: input.phone,
+        p_address: input.address,
+        p_city: input.city,
+        p_province: input.province,
+      });
       if (rpcError || !data) return { error: rpcError?.message ?? 'Could not create shop.' };
 
       const created = shopFromRow(data as ShopRow);

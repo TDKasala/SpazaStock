@@ -40,6 +40,12 @@ export interface Shop {
   status?: ShopStatus;
   /** What the shop's current plan allows, as enforced by the server. */
   entitlements?: ShopEntitlements;
+  /** International form, e.g. +27821234567. */
+  phone?: string | null;
+  address?: string | null;
+  city?: string | null;
+  /** South African province code, e.g. GP. */
+  province?: string | null;
 }
 
 export type ShopStatus = 'active' | 'suspended';

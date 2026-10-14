@@ -18,6 +18,14 @@ import { AdminLink } from '../components/AdminLink';
 import { selectClass } from '../components/DateRangeFilter';
 import { ReasonConfirmDialog } from '../components/ReasonConfirmDialog';
 import { Field, fieldClass, PageHeader } from '../components/PageParts';
+import {
+  MAX_ADDRESS_LENGTH,
+  MAX_CITY_LENGTH,
+  MAX_SHOP_NAME_LENGTH,
+  PROVINCES,
+  normalizePhone,
+  type ProvinceCode,
+} from '../../lib/shopDetails';
 
 const PAGE_SIZE = 25;
 const SORTS: readonly TenantSort[] = ['created_desc', 'created_asc', 'name_asc', 'activity_desc'];
@@ -290,12 +298,22 @@ const CreateShopDialog: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ 
   const { at } = useAdminI18n();
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [address, setAddress] = useState('');
+  const [city, setCity] = useState('');
+  const [province, setProvince] = useState<ProvinceCode | ''>('');
 
   useEffect(() => {
     if (!isOpen) return;
     setEmail('');
     setName('');
+    setPhone('');
+    setAddress('');
+    setCity('');
+    setProvince('');
   }, [isOpen]);
+
+  const normalizedPhone = normalizePhone(phone);
 
   return (
     <ReasonConfirmDialog
@@ -303,9 +321,16 @@ const CreateShopDialog: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ 
       title={at('tenants.createTitle')}
       description={at('tenants.createDescription')}
       confirmLabel={at('tenants.create')}
-      canSubmit={EMAIL.test(email.trim()) && name.trim().length > 0}
+      canSubmit={EMAIL.test(email.trim()) && name.trim().length > 0 && normalizedPhone !== 'invalid'}
       onConfirm={async (reason) => {
-        const result = await adminApi.createShop(email.trim(), name.trim(), reason);
+        const shop = {
+          name: name.trim(),
+          phone: normalizedPhone === 'invalid' ? null : normalizedPhone,
+          address: address.replace(/\s+/g, ' ').trim() || null,
+          city: city.replace(/\s+/g, ' ').trim() || null,
+          province: province || null,
+        };
+        const result = await adminApi.createShop(email.trim(), shop, reason);
         onClose();
         navigateAdmin(adminHref('tenants', { tenantId: result.shop_id }));
       }}
@@ -326,11 +351,67 @@ const CreateShopDialog: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ 
         <input
           id="create-shop-name"
           value={name}
-          maxLength={120}
+          maxLength={MAX_SHOP_NAME_LENGTH}
           onChange={(e) => setName(e.target.value)}
           className={fieldClass}
         />
       </Field>
+      <Field id="create-shop-phone" label={at('tenants.phone')}>
+        <input
+          id="create-shop-phone"
+          type="tel"
+          autoComplete="off"
+          value={phone}
+          maxLength={24}
+          placeholder="082 123 4567"
+          aria-invalid={normalizedPhone === 'invalid'}
+          aria-describedby={normalizedPhone === 'invalid' ? 'create-shop-phone-error' : undefined}
+          onChange={(e) => setPhone(e.target.value)}
+          className={fieldClass}
+        />
+        {normalizedPhone === 'invalid' && (
+          <span id="create-shop-phone-error" className="text-xs text-rose-400">
+            {at('tenants.phoneInvalid')}
+          </span>
+        )}
+      </Field>
+      <Field id="create-shop-address" label={at('tenants.address')}>
+        <input
+          id="create-shop-address"
+          autoComplete="off"
+          value={address}
+          maxLength={MAX_ADDRESS_LENGTH}
+          onChange={(e) => setAddress(e.target.value)}
+          className={fieldClass}
+        />
+      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field id="create-shop-city" label={at('tenants.city')}>
+          <input
+            id="create-shop-city"
+            autoComplete="off"
+            value={city}
+            maxLength={MAX_CITY_LENGTH}
+            onChange={(e) => setCity(e.target.value)}
+            className={fieldClass}
+          />
+        </Field>
+        <Field id="create-shop-province" label={at('tenants.province')}>
+          <select
+            id="create-shop-province"
+            value={province}
+            onChange={(e) => setProvince(e.target.value as ProvinceCode | '')}
+            className={`${selectClass} w-full`}
+          >
+            <option value="">{at('common.none')}</option>
+            {PROVINCES.map((p) => (
+              <option key={p.code} value={p.code}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </div>
     </ReasonConfirmDialog>
   );
 };

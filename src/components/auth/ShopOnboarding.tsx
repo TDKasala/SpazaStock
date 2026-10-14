@@ -4,31 +4,32 @@ import { useShop } from '../../context/ShopContext';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { Button } from '../ui/Button';
-import { Input } from '../ui/Input';
 import { ErrorMessage } from '../ui/ErrorMessage';
 import { RevokedNotice } from '../layout/RevokedNotice';
+import { ShopFormFields } from '../shop/ShopFormFields';
+import { emptyShopForm, parseShopForm, type ShopFormErrors, type ShopFormValues } from '../../lib/shopDetails';
 
 export const ShopOnboarding: React.FC = () => {
   const { createShop, error: loadError, reload } = useShop();
   const { user, signOut } = useAuth();
   const { t } = useLanguage();
-  const [name, setName] = useState('');
+  const [values, setValues] = useState<ShopFormValues>(emptyShopForm);
+  const [fieldErrors, setFieldErrors] = useState<ShopFormErrors>({});
   const [error, setError] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) {
-      setError(t('onboarding.nameRequired'));
-      return;
-    }
+    const { input, errors } = parseShopForm(values, t);
+    setFieldErrors(errors);
+    if (!input) return;
     if (!navigator.onLine) {
       setError(t('auth.needsInternet'));
       return;
     }
     setIsBusy(true);
     setError(null);
-    const res = await createShop(name);
+    const res = await createShop(input);
     setIsBusy(false);
     if (res.error) setError(res.error);
   };
@@ -59,14 +60,7 @@ export const ShopOnboarding: React.FC = () => {
         ) : (
           <form onSubmit={handleSubmit} className="p-5 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4">
             {error && <ErrorMessage variant="error" message={error} onDismiss={() => setError(null)} />}
-            <Input
-              label={t('onboarding.nameLabel')}
-              placeholder={t('onboarding.namePlaceholder')}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              maxLength={120}
-              autoFocus
-            />
+            <ShopFormFields values={values} errors={fieldErrors} onChange={setValues} autoFocusName />
             <Button type="submit" fullWidth isLoading={isBusy}>
               {t('onboarding.create')}
             </Button>

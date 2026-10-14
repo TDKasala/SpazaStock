@@ -119,6 +119,10 @@ export interface TenantDetail {
     timezone: string;
     expiry_reminder_days: number[] | null;
     created_at: string;
+    phone: string | null;
+    address: string | null;
+    city: string | null;
+    province: string | null;
   };
   owner: {
     id: string;

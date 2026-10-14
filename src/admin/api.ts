@@ -17,6 +17,7 @@ import type {
   WhoAmI,
 } from './types';
 import type { PlatformRole } from './permissions';
+import type { NewShopInput } from '../lib/shopDetails';
 import type { AdminTranslate } from './i18n';
 
 export type AdminErrorKind = 'forbidden' | 'not_found' | 'invalid' | 'network' | 'unknown';
@@ -116,11 +117,15 @@ export const adminApi = {
       p_reason: reason,
     }),
 
-  createShop: (ownerEmail: string, name: string, reason: string) =>
+  createShop: (ownerEmail: string, shop: NewShopInput, reason: string) =>
     adminRpc<{ ok: true; shop_id: string }>('admin_create_shop', {
       p_owner_email: ownerEmail,
-      p_name: name,
+      p_name: shop.name,
       p_reason: reason,
+      p_phone: shop.phone,
+      p_address: shop.address,
+      p_city: shop.city,
+      p_province: shop.province,
     }),
 
   exportTenants: (filters: TenantFilters, reason: string) =>

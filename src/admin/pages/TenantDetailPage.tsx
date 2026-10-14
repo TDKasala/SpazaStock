@@ -17,6 +17,7 @@ import { StatusBadge } from '../components/StatusBadge';
 import { ReasonConfirmDialog } from '../components/ReasonConfirmDialog';
 import { selectClass } from '../components/DateRangeFilter';
 import { DetailList, Field, PageHeader, QueryError, Section } from '../components/PageParts';
+import { provinceName } from '../../lib/shopDetails';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -128,6 +129,14 @@ export const TenantDetailPage: React.FC<{ shopId: string }> = ({ shopId }) => {
             items={[
               [at('tenant.id'), <code className="text-xs">{shop.id}</code>],
               [at('tenant.createdAt'), dt(shop.created_at)],
+              [
+                at('tenant.phone'),
+                shop.phone ? <a href={`tel:${shop.phone}`} className="text-emerald-300 hover:underline">{shop.phone}</a> : at('common.none'),
+              ],
+              [
+                at('tenant.address'),
+                [shop.address, shop.city, provinceName(shop.province)].filter(Boolean).join(', ') || at('common.none'),
+              ],
               [at('tenant.timezone'), shop.timezone],
               [at('tenant.reminders'), (shop.expiry_reminder_days ?? []).join(', ') || at('common.none')],
             ]}

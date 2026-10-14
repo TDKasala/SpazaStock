@@ -5,8 +5,9 @@ import { useAuth } from '../../context/AuthContext';
 import { useShop } from '../../context/ShopContext';
 import { Dialog } from '../ui/Dialog';
 import { Button } from '../ui/Button';
-import { Input } from '../ui/Input';
 import { ErrorMessage } from '../ui/ErrorMessage';
+import { ShopFormFields } from '../shop/ShopFormFields';
+import { emptyShopForm, parseShopForm, type ShopFormErrors, type ShopFormValues } from '../../lib/shopDetails';
 import { can } from '../../lib/permissions';
 import { fetchPlatformRole } from '../../lib/platformAdmin';
 
@@ -23,7 +24,8 @@ export const ShopMenu: React.FC<ShopMenuProps> = ({ isOpen, onClose, onOpenTeam,
   const { user } = useAuth();
   const { shop, shops, switchShop, createShop } = useShop();
   const [isAdding, setIsAdding] = useState(false);
-  const [name, setName] = useState('');
+  const [values, setValues] = useState<ShopFormValues>(emptyShopForm);
+  const [fieldErrors, setFieldErrors] = useState<ShopFormErrors>({});
   const [error, setError] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
@@ -41,18 +43,21 @@ export const ShopMenu: React.FC<ShopMenuProps> = ({ isOpen, onClose, onOpenTeam,
 
   const close = () => {
     setIsAdding(false);
-    setName('');
+    setValues(emptyShopForm());
+    setFieldErrors({});
     setError(null);
     onClose();
   };
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return setError(t('onboarding.nameRequired'));
+    const { input, errors } = parseShopForm(values, t);
+    setFieldErrors(errors);
+    if (!input) return;
     if (!navigator.onLine) return setError(t('auth.needsInternet'));
     setIsBusy(true);
     setError(null);
-    const res = await createShop(name);
+    const res = await createShop(input);
     setIsBusy(false);
     if (res.error) setError(res.error);
     else close();
@@ -90,14 +95,7 @@ export const ShopMenu: React.FC<ShopMenuProps> = ({ isOpen, onClose, onOpenTeam,
           {isAdding ? (
             <form onSubmit={handleCreate} className="space-y-3 p-3 rounded-xl border border-zinc-800">
               {error && <ErrorMessage variant="error" message={error} onDismiss={() => setError(null)} />}
-              <Input
-                label={t('onboarding.nameLabel')}
-                placeholder={t('onboarding.namePlaceholder')}
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                maxLength={120}
-                autoFocus
-              />
+              <ShopFormFields values={values} errors={fieldErrors} onChange={setValues} autoFocusName />
               <div className="flex gap-2">
                 <Button type="button" variant="ghost" onClick={() => setIsAdding(false)} disabled={isBusy}>
                   {t('common.cancel')}

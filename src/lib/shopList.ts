@@ -10,6 +10,10 @@ export interface ShopRow {
   is_account_owner?: boolean | null;
   status?: ShopStatus | null;
   entitlements?: { plan?: string; expiry_push?: boolean; team_max_members?: number | null } | null;
+  phone?: string | null;
+  address?: string | null;
+  city?: string | null;
+  province?: string | null;
 }
 
 function entitlementsFromRow(row: ShopRow['entitlements']): ShopEntitlements | undefined {
@@ -31,6 +35,10 @@ export function shopFromRow(row: ShopRow): Shop {
     isAccountOwner: row.is_account_owner ?? undefined,
     status: row.status ?? undefined,
     entitlements: entitlementsFromRow(row.entitlements),
+    phone: row.phone ?? undefined,
+    address: row.address ?? undefined,
+    city: row.city ?? undefined,
+    province: row.province ?? undefined,
   };
 }
 
