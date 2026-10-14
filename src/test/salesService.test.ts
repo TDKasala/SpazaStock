@@ -1,300 +1,135 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  recordSale,
-  getSales,
-  sortBatchesByFEFO,
-  clearSalesData,
-  getOfflineQueue,
-} from '../services/salesService';
-import { stockIn, clearStockData, getProductBatches, getProductTotalStock } from '../services/stockService';
-import { createProduct, clearLocalProducts, DEFAULT_SHOP_ID } from '../services/productService';
-import { Product } from '../types';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { recordSale, getTodaySales, getSales, sortBatchesByFEFO } from '../services/salesService';
+import { stockIn, getProductTotalStock, getProductBatches } from '../services/stockService';
+import { createProduct } from '../services/productService';
+import { db, resetLocalDatabase } from '../lib/db';
+import type { Product, StockBatch } from '../types';
+import { SHOP_ID, setOnline } from './helpers';
 
-describe('Sales Service & Rapid Scan-to-Sell', () => {
-  let testProduct: Product;
-  const SHOP_ID = DEFAULT_SHOP_ID;
+async function makeStockedProduct(): Promise<Product> {
+  const { product } = await createProduct(
+    { barcode: '5449000000996', name: 'Coke 330ml', category: 'beverages', sellingPrice: 12.5 },
+    SHOP_ID
+  );
+  await stockIn({ productId: product!.id, quantity: 3, expiryDate: '2026-12-01' }, SHOP_ID);
+  await stockIn({ productId: product!.id, quantity: 5, expiryDate: '2026-11-01' }, SHOP_ID);
+  await stockIn({ productId: product!.id, quantity: 4, expiryDate: null }, SHOP_ID);
+  return product!;
+}
 
+describe('salesService', () => {
   beforeEach(async () => {
-    clearLocalProducts(SHOP_ID);
-    clearStockData(SHOP_ID);
-    clearSalesData(SHOP_ID);
+    await resetLocalDatabase();
+    setOnline(true);
+  });
 
-    // Register test product
-    const res = await createProduct(
-      {
-        barcode: '6001007300123',
-        name: 'Albany Superior White Bread 700g',
-        category: 'bakery',
-        buyingPrice: 15.0,
-        sellingPrice: 18.5,
-      },
-      SHOP_ID
+  afterEach(() => {
+    vi.useRealTimers();
+    setOnline(true);
+  });
+
+  it('sorts batches first-expired-first-out with undated batches last', () => {
+    const batch = (id: string, expiryDate: string | null, receivedAt: string): StockBatch => ({
+      id,
+      shopId: SHOP_ID,
+      productId: 'p',
+      quantity: 1,
+      initialQuantity: 1,
+      expiryDate,
+      receivedAt,
+    });
+    const sorted = sortBatchesByFEFO([
+      batch('undated', null, '2026-01-01'),
+      batch('late', '2026-12-01', '2026-01-01'),
+      batch('early-new', '2026-11-01', '2026-02-01'),
+      batch('early-old', '2026-11-01', '2026-01-15'),
+    ]);
+    expect(sorted.map((b) => b.id)).toEqual(['early-old', 'early-new', 'late', 'undated']);
+  });
+
+  it('deducts across batches in FEFO order and queues the sale', async () => {
+    const product = await makeStockedProduct();
+    const { result } = await recordSale({ productId: product.id, quantity: 7 }, SHOP_ID);
+
+    expect(result?.previousTotalStock).toBe(12);
+    expect(result?.remainingTotalStock).toBe(5);
+    expect(result?.allocations.map((a) => [a.batchExpiryDate, a.quantityDeducted])).toEqual([
+      ['2026-11-01', 5],
+      ['2026-12-01', 2],
+    ]);
+    expect(result?.sale.totalAmount).toBe(87.5);
+
+    const remaining = await getProductBatches(product.id, SHOP_ID);
+    expect(remaining.map((b) => [b.expiryDate, b.quantity]).sort()).toEqual([
+      ['2026-12-01', 1],
+      [null, 4],
+    ].sort());
+
+    const last = await db.outbox.orderBy('seq').last();
+    expect(last).toMatchObject({ type: 'sale', payload: { sale: { id: result!.sale.id } } });
+  });
+
+  it('never oversells and reports how many units are available', async () => {
+    const product = await makeStockedProduct();
+    const outcome = await recordSale({ productId: product.id, quantity: 13 }, SHOP_ID);
+    expect(outcome.errorCode).toBe('insufficient_stock');
+    expect(outcome.available).toBe(12);
+    expect(await getProductTotalStock(product.id, SHOP_ID)).toBe(12);
+    expect(await db.sales.count()).toBe(0);
+  });
+
+  it('rejects a replayed idempotency key but not one whose first attempt failed', async () => {
+    const product = await makeStockedProduct();
+
+    const failed = await recordSale({ productId: product.id, quantity: 100, idempotencyKey: 'k1' }, SHOP_ID);
+    expect(failed.errorCode).toBe('insufficient_stock');
+    const retried = await recordSale({ productId: product.id, quantity: 1, idempotencyKey: 'k1' }, SHOP_ID);
+    expect(retried.result).toBeDefined();
+
+    db.close();
+    await db.open();
+    const replay = await recordSale({ productId: product.id, quantity: 1, idempotencyKey: 'k1' }, SHOP_ID);
+    expect(replay.errorCode).toBe('duplicate');
+    expect(await getProductTotalStock(product.id, SHOP_ID)).toBe(11);
+  });
+
+  it('serialises concurrent sales of the last units', async () => {
+    const product = await makeStockedProduct();
+    const outcomes = await Promise.all(
+      Array.from({ length: 5 }, () => recordSale({ productId: product.id, quantity: 3 }, SHOP_ID))
     );
-    testProduct = res.product!;
+    expect(outcomes.filter((o) => o.result)).toHaveLength(4);
+    expect(outcomes.filter((o) => o.errorCode === 'insufficient_stock')).toHaveLength(1);
+    expect(await getProductTotalStock(product.id, SHOP_ID)).toBe(0);
   });
 
-  describe('FEFO (Earliest Expiry First) Batch Deduction', () => {
-    it('prioritizes deducting from the batch with the earliest expiry date', async () => {
-      // Batch 1: Expiring soon (2026-10-18, qty: 5)
-      await stockIn(
-        {
-          productId: testProduct.id,
-          quantity: 5,
-          expiryDate: '2026-10-18',
-        },
-        SHOP_ID
-      );
-
-      // Batch 2: Expiring later (2026-10-28, qty: 10)
-      await stockIn(
-        {
-          productId: testProduct.id,
-          quantity: 10,
-          expiryDate: '2026-10-28',
-        },
-        SHOP_ID
-      );
-
-      // Total before sale: 15 units
-      expect(await getProductTotalStock(testProduct.id, SHOP_ID)).toBe(15);
-
-      // Sell 3 units
-      const saleRes = await recordSale(
-        {
-          productId: testProduct.id,
-          quantity: 3,
-        },
-        SHOP_ID
-      );
-
-      expect(saleRes.error).toBeUndefined();
-      expect(saleRes.result).toBeDefined();
-      expect(saleRes.result?.remainingTotalStock).toBe(12);
-
-      // Verify deduction came from the earlier batch (2026-10-18)
-      expect(saleRes.result?.allocations.length).toBe(1);
-      expect(saleRes.result?.allocations[0].batchExpiryDate).toBe('2026-10-18');
-      expect(saleRes.result?.allocations[0].quantityDeducted).toBe(3);
-
-      // Check remaining batches in storage
-      const batches = await getProductBatches(testProduct.id, SHOP_ID);
-      const earlyBatch = batches.find((b) => b.expiryDate === '2026-10-18');
-      const laterBatch = batches.find((b) => b.expiryDate === '2026-10-28');
-
-      expect(earlyBatch?.quantity).toBe(2); // 5 - 3 = 2
-      expect(laterBatch?.quantity).toBe(10); // Untouched
-    });
-
-    it('spans multiple batches if sale quantity exceeds earliest batch', async () => {
-      // Batch 1: 4 units expiring 2026-10-20
-      await stockIn(
-        {
-          productId: testProduct.id,
-          quantity: 4,
-          expiryDate: '2026-10-20',
-        },
-        SHOP_ID
-      );
-
-      // Batch 2: 8 units expiring 2026-11-10
-      await stockIn(
-        {
-          productId: testProduct.id,
-          quantity: 8,
-          expiryDate: '2026-11-10',
-        },
-        SHOP_ID
-      );
-
-      // Sell 6 units (needs all 4 from Batch 1 + 2 from Batch 2)
-      const saleRes = await recordSale(
-        {
-          productId: testProduct.id,
-          quantity: 6,
-        },
-        SHOP_ID
-      );
-
-      expect(saleRes.error).toBeUndefined();
-      expect(saleRes.result?.remainingTotalStock).toBe(6);
-      expect(saleRes.result?.allocations.length).toBe(2);
-
-      // 4 units deducted from batch 1
-      expect(saleRes.result?.allocations[0].quantityDeducted).toBe(4);
-      expect(saleRes.result?.allocations[0].batchExpiryDate).toBe('2026-10-20');
-
-      // 2 units deducted from batch 2
-      expect(saleRes.result?.allocations[1].quantityDeducted).toBe(2);
-      expect(saleRes.result?.allocations[1].batchExpiryDate).toBe('2026-11-10');
-
-      const batches = await getProductBatches(testProduct.id, SHOP_ID);
-      const batch2 = batches.find((b) => b.expiryDate === '2026-11-10');
-      expect(batch2?.quantity).toBe(6);
-    });
+  it('flags sales made offline and still queues them', async () => {
+    const product = await makeStockedProduct();
+    setOnline(false);
+    const { result } = await recordSale({ productId: product.id, quantity: 1 }, SHOP_ID);
+    expect(result?.isQueuedOffline).toBe(true);
+    expect((await db.outbox.toArray()).filter((item) => item.type === 'sale')).toHaveLength(1);
   });
 
-  describe('Insufficient Stock & Negative Inventory Prevention', () => {
-    it('prevents overselling when requested quantity exceeds available stock', async () => {
-      // Stock 5 units
-      await stockIn(
-        {
-          productId: testProduct.id,
-          quantity: 5,
-          expiryDate: '2026-11-01',
-        },
-        SHOP_ID
-      );
-
-      // Attempt to sell 6 units
-      const res = await recordSale(
-        {
-          productId: testProduct.id,
-          quantity: 6,
-        },
-        SHOP_ID
-      );
-
-      expect(res.error).toBeDefined();
-      expect(res.error).toContain('Insufficient stock');
-      expect(res.error).toContain('Only 5 units available');
-
-      // Verify stock did not drop below zero
-      const stock = await getProductTotalStock(testProduct.id, SHOP_ID);
-      expect(stock).toBe(5);
-    });
-
-    it('prevents sale when stock is completely zero', async () => {
-      // 0 stock initially
-      const res = await recordSale(
-        {
-          productId: testProduct.id,
-          quantity: 1,
-        },
-        SHOP_ID
-      );
-
-      expect(res.error).toContain('Insufficient stock');
-      const stock = await getProductTotalStock(testProduct.id, SHOP_ID);
-      expect(stock).toBe(0);
-    });
+  it('validates quantity and price', async () => {
+    const product = await makeStockedProduct();
+    expect((await recordSale({ productId: product.id, quantity: 0 }, SHOP_ID)).errorCode).toBe('invalid_quantity');
+    expect((await recordSale({ productId: product.id, quantity: 1.5 }, SHOP_ID)).errorCode).toBe('invalid_quantity');
+    expect((await recordSale({ productId: product.id, quantity: 1, unitPrice: -1 }, SHOP_ID)).errorCode).toBe('invalid_price');
+    expect((await recordSale({ productId: 'missing', quantity: 1 }, SHOP_ID)).errorCode).toBe('not_found');
   });
 
-  describe('Duplicate Scans & Repeated Submissions', () => {
-    it('rejects duplicate scan submissions with the same idempotency key', async () => {
-      await stockIn(
-        {
-          productId: testProduct.id,
-          quantity: 10,
-        },
-        SHOP_ID
-      );
+  it("counts a sale just after local midnight in today's total", async () => {
+    const product = await makeStockedProduct();
+    vi.useFakeTimers({ toFake: ['Date'] });
 
-      const idempotencyKey = 'sale_scan_unique_key_001';
+    vi.setSystemTime(new Date('2026-10-13T23:50:00+02:00'));
+    await recordSale({ productId: product.id, quantity: 1 }, SHOP_ID);
+    vi.setSystemTime(new Date('2026-10-14T00:30:00+02:00'));
+    await recordSale({ productId: product.id, quantity: 2 }, SHOP_ID);
 
-      // 1st scan sale of 1 unit
-      const firstRes = await recordSale(
-        {
-          productId: testProduct.id,
-          quantity: 1,
-          idempotencyKey,
-        },
-        SHOP_ID
-      );
-      expect(firstRes.error).toBeUndefined();
-      expect(firstRes.result?.remainingTotalStock).toBe(9);
-
-      // Immediate duplicate scan submission with exact same key
-      const duplicateRes = await recordSale(
-        {
-          productId: testProduct.id,
-          quantity: 1,
-          idempotencyKey,
-        },
-        SHOP_ID
-      );
-
-      expect(duplicateRes.error).toBeDefined();
-      expect(duplicateRes.error).toContain('Duplicate scan rejected');
-
-      // Stock must remain 9, not 8
-      const stock = await getProductTotalStock(testProduct.id, SHOP_ID);
-      expect(stock).toBe(9);
-    });
-  });
-
-  describe('Concurrency & Rapid Sequential Scans', () => {
-    it('processes multiple rapid concurrent sales atomically without race conditions', async () => {
-      await stockIn(
-        {
-          productId: testProduct.id,
-          quantity: 10,
-        },
-        SHOP_ID
-      );
-
-      // Simulate 5 rapid simultaneous scans
-      const salePromises = Array.from({ length: 5 }, (_, idx) =>
-        recordSale(
-          {
-            productId: testProduct.id,
-            quantity: 1,
-            idempotencyKey: `concurrent_scan_${idx}_${Date.now()}`,
-          },
-          SHOP_ID
-        )
-      );
-
-      const results = await Promise.all(salePromises);
-
-      // All 5 sales should succeed
-      for (const res of results) {
-        expect(res.error).toBeUndefined();
-        expect(res.result).toBeDefined();
-      }
-
-      // 10 - 5 = exactly 5 units remaining
-      const finalStock = await getProductTotalStock(testProduct.id, SHOP_ID);
-      expect(finalStock).toBe(5);
-
-      // 5 sales records created
-      const allSales = await getSales(SHOP_ID);
-      expect(allSales.length).toBe(5);
-    });
-  });
-
-  describe('Offline Queueing', () => {
-    it('queues sale operations safely when running offline', async () => {
-      await stockIn(
-        {
-          productId: testProduct.id,
-          quantity: 8,
-        },
-        SHOP_ID
-      );
-
-      // Simulate offline environment
-      const originalOnLine = navigator.onLine;
-      Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
-
-      const res = await recordSale(
-        {
-          productId: testProduct.id,
-          quantity: 2,
-        },
-        SHOP_ID
-      );
-
-      expect(res.error).toBeUndefined();
-      expect(res.result?.isQueuedOffline).toBe(true);
-      expect(res.result?.remainingTotalStock).toBe(6);
-
-      // Check offline queue item created
-      const queue = getOfflineQueue(SHOP_ID);
-      expect(queue.length).toBeGreaterThan(0);
-      expect(queue[0].status).toBe('pending');
-
-      // Restore navigator.onLine
-      Object.defineProperty(navigator, 'onLine', { value: originalOnLine, configurable: true });
-    });
+    const today = await getTodaySales(SHOP_ID, new Date('2026-10-14T09:00:00+02:00'));
+    expect(today.map((s) => s.quantity)).toEqual([2]);
+    expect(await getSales(SHOP_ID)).toHaveLength(2);
   });
 });

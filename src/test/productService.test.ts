@@ -1,96 +1,68 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  createProduct,
-  searchProductByBarcode,
-  normalizeBarcode,
-  clearLocalProducts,
-} from '../services/productService';
+import { createProduct, getProducts, searchProductByBarcode, getProductById } from '../services/productService';
+import { db, resetLocalDatabase } from '../lib/db';
+import { DEVICE_SHOP_ID } from '../lib/constants';
+import { isUuid } from '../lib/ids';
+import { SHOP_ID, OTHER_SHOP_ID } from './helpers';
 
-describe('Product Service & Duplicate Prevention', () => {
-  const TEST_SHOP_ID = 'test_shop_123';
+const bread = { barcode: '6001007300123', name: 'Albany White Bread', category: 'bakery' as const, sellingPrice: 18.99 };
 
-  beforeEach(() => {
-    clearLocalProducts(TEST_SHOP_ID);
+describe('productService', () => {
+  beforeEach(async () => {
+    await resetLocalDatabase();
   });
 
-  it('normalizes barcodes by trimming and stripping whitespace', () => {
-    expect(normalizeBarcode('  6001234567890  ')).toBe('6001234567890');
-    expect(normalizeBarcode('600 123 456')).toBe('600123456');
+  it('registers a product with a UUID and queues it for sync', async () => {
+    const { product, error } = await createProduct(bread, SHOP_ID);
+    expect(error).toBeUndefined();
+    expect(product && isUuid(product.id)).toBe(true);
+    expect(product?.shopId).toBe(SHOP_ID);
+
+    const outbox = await db.outbox.toArray();
+    expect(outbox).toHaveLength(1);
+    expect(outbox[0]).toMatchObject({ type: 'product_upsert', shopId: SHOP_ID, status: 'pending' });
   });
 
-  it('returns null when product is not found in shop catalog', async () => {
-    const product = await searchProductByBarcode('9999999999999', TEST_SHOP_ID);
-    expect(product).toBeNull();
+  it('normalises whitespace in barcodes for create and search', async () => {
+    await createProduct({ ...bread, barcode: ' 6001 0073 00123 ' }, SHOP_ID);
+    const found = await searchProductByBarcode('6001007300123', SHOP_ID);
+    expect(found?.barcode).toBe('6001007300123');
   });
 
-  it('registers a new product with optional buying and selling prices', async () => {
-    const result = await createProduct(
-      {
-        barcode: '6001007300123',
-        name: 'Albany Superior White Bread 700g',
-        category: 'bakery',
-        buyingPrice: 15.5,
-        sellingPrice: 18.0,
-      },
-      TEST_SHOP_ID
-    );
-
-    expect(result.error).toBeUndefined();
-    expect(result.product).toBeDefined();
-    expect(result.product?.barcode).toBe('6001007300123');
-    expect(result.product?.name).toBe('Albany Superior White Bread 700g');
-    expect(result.product?.category).toBe('bakery');
-    expect(result.product?.buyingPrice).toBe(15.5);
-    expect(result.product?.sellingPrice).toBe(18.0);
+  it('rejects a duplicate barcode in the same shop without queueing anything', async () => {
+    await createProduct(bread, SHOP_ID);
+    const second = await createProduct({ ...bread, name: 'Other' }, SHOP_ID);
+    expect(second.isDuplicate).toBe(true);
+    expect(await db.products.count()).toBe(1);
+    expect(await db.outbox.count()).toBe(1);
   });
 
-  it('prevents accidental duplicate products with the same barcode', async () => {
-    // 1st insertion
-    await createProduct(
-      {
-        barcode: '5449000000996',
-        name: 'Coca-Cola 330ml Can',
-        category: 'beverages',
-        buyingPrice: 9.0,
-        sellingPrice: 13.0,
-      },
-      TEST_SHOP_ID
-    );
+  it('keeps shops isolated', async () => {
+    const { product } = await createProduct(bread, SHOP_ID);
+    const other = await createProduct(bread, OTHER_SHOP_ID);
+    expect(other.isDuplicate).toBeUndefined();
 
-    // 2nd insertion with same barcode
-    const duplicateResult = await createProduct(
-      {
-        barcode: ' 5449000000996 ',
-        name: 'Coca-Cola Can Duplicate',
-        category: 'beverages',
-        buyingPrice: 10.0,
-        sellingPrice: 14.0,
-      },
-      TEST_SHOP_ID
-    );
-
-    expect(duplicateResult.isDuplicate).toBe(true);
-    expect(duplicateResult.error).toContain('already exists');
-    expect(duplicateResult.product?.name).toBe('Coca-Cola 330ml Can');
+    expect(await searchProductByBarcode(bread.barcode, OTHER_SHOP_ID)).not.toBeNull();
+    expect(await getProductById(product!.id, OTHER_SHOP_ID)).toBeNull();
+    expect(await getProducts(SHOP_ID)).toHaveLength(1);
   });
 
-  it('retrieves registered product immediately when searched by barcode', async () => {
-    await createProduct(
-      {
-        barcode: '6001087361250',
-        name: 'Simba Chips Smoked Beef',
-        category: 'snacks',
-        buyingPrice: null,
-        sellingPrice: 12.0,
-      },
-      TEST_SHOP_ID
-    );
+  it('validates required fields', async () => {
+    expect((await createProduct({ ...bread, barcode: '  ' }, SHOP_ID)).error).toBeTruthy();
+    expect((await createProduct({ ...bread, name: '' }, SHOP_ID)).error).toBeTruthy();
+    expect(await db.products.count()).toBe(0);
+  });
 
-    const found = await searchProductByBarcode('6001087361250', TEST_SHOP_ID);
-    expect(found).not.toBeNull();
-    expect(found?.name).toBe('Simba Chips Smoked Beef');
-    expect(found?.category).toBe('snacks');
-    expect(found?.buyingPrice).toBeNull();
-    expect(found?.sellingPrice).toBe(12.0);
+  it('does not queue sync work for the device-only shop', async () => {
+    await createProduct(bread, DEVICE_SHOP_ID);
+    expect(await db.products.count()).toBe(1);
+    expect(await db.outbox.count()).toBe(0);
+  });
+
+  it('persists across reads (survives a "reload")', async () => {
+    await createProduct(bread, SHOP_ID);
+    db.close();
+    await db.open();
+    expect(await searchProductByBarcode(bread.barcode, SHOP_ID)).not.toBeNull();
   });
 });
