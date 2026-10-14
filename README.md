@@ -28,7 +28,7 @@ Sales deduct stock **first-expired-first-out**, both on the device and on the se
 
 ## Setup
 
-Requirements: Node.js 20+ and npm.
+Requirements: Node.js 24 and npm.
 
 ```bash
 npm install
@@ -56,6 +56,22 @@ Leave `.env.local` unset to run in device-only mode.
 5. Rebuild and redeploy. On first sign-in the owner is asked to name their shop.
 
 Run the database advisors after applying the migrations (*Advisors* in the dashboard, or `npx supabase db lint`).
+
+### Deploying to Vercel
+
+`vercel.json` holds the build settings (Vite, `npm ci`, output `dist`), long-lived caching for hashed `/assets/*`, no caching for the service worker and manifest so updates reach installed apps, and security headers. `Permissions-Policy` allows the camera for this site only, which the barcode scanner needs.
+
+1. Import the GitHub repo in Vercel (or run `vercel link`). The framework is detected from `vercel.json`.
+2. Add the environment variables for **Production** and **Preview**. `VITE_*` values are baked in at build time, so redeploy after changing them:
+   ```bash
+   vercel env add VITE_SUPABASE_URL production
+   vercel env add VITE_SUPABASE_ANON_KEY production
+   ```
+   The anon key can be the legacy anon JWT or a `sb_publishable_…` key.
+3. In Supabase *Authentication → URL Configuration*, set **Site URL** to the production domain (for example `https://spazastock.vercel.app`) and add `https://*-<team>.vercel.app/**` to **Redirect URLs** for preview deployments. Sign-in uses the 6-digit code, but the email still contains a link that points at these URLs.
+4. Deploy, then open the site on a phone: install the PWA, allow the camera, and do a test stock-in and sale to confirm sync.
+
+`.vercelignore` keeps `.env*` files out of CLI uploads, so the Vercel environment variables are always the ones used.
 
 ### Upgrading from the localStorage version
 

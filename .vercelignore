@@ -1,0 +1,7 @@
+# Supabase settings come from the Vercel project's environment variables, not local files.
+.env*
+!.env.example
+node_modules
+dist
+coverage
+supabase
