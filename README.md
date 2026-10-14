@@ -62,7 +62,21 @@ SpazaStock is a clean, mobile-first Progressive Web App (PWA) tailored specifica
   - Detailed modal view displaying all active batches, units per batch, and days remaining until expiry.
 - **Live Expiry Alerts Tab (`AlertsView`)**:
   - Categorizes batches into Critical/Urgent (`< 7 days`), Warning (`< 30 days`), and Expired batches.
-- **Bilingual Support**: Complete English and isiZulu dictionaries for stock-in, batches, and expiry alerts.
+### Step 5: Scan-to-Sell
+- **Rapid Scan-to-Sell Register (`SalesRegister`)**:
+  - Scanning a barcode deducts 1 unit immediately, updating available stock with instant tactile/visual feedback.
+  - Repeated scans of the same barcode deduct additional units (+1 unit per scan) for fast counter checkout.
+  - In-line / modal quantity adjustment allows selling multiple units at once (e.g. 5 loaves of bread).
+- **Atomic Stock Operations & FEFO Batch Allocation**:
+  - Automatically deducts inventory from the appropriate available batch, prioritizing the earliest expiring batch first (FEFO: First-Expired-First-Out).
+  - Multi-batch fulfillment seamlessly splits deductions across batches when necessary.
+  - Strictly prevents overselling and negative stock (`Insufficient stock: Only X units available`).
+  - Mutex concurrency locks prevent race conditions during rapid concurrent sales.
+  - Idempotency key protection rejects duplicate scans.
+- **Offline Operation Queue**:
+  - When disconnected, sales transactions are safely processed locally and queued in `offlineQueue` with pending status.
+  - Offline sync banner allows shopkeepers to trigger a remote sync once internet connectivity is restored.
+- **Bilingual Support**: Full English and isiZulu localization for register mode, receipts, and offline status.
 
 ---
 

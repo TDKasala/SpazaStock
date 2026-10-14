@@ -60,4 +60,15 @@ describe('Localization & Translation Dictionaries', () => {
     expect(en.expiry.expired).toBeDefined();
     expect(zu.expiry.expired).toBeDefined();
   });
+
+  it('contains matching sales keys', () => {
+    expect(en.sales.title).toBe('Scan-to-Sell');
+    expect(zu.sales.title).toBe('Skena Uthengise');
+    expect(en.sales.scanToSell).toBeDefined();
+    expect(zu.sales.scanToSell).toBeDefined();
+    expect(en.sales.unitsRemaining).toBeDefined();
+    expect(zu.sales.unitsRemaining).toBeDefined();
+    expect(en.sales.insufficientStock).toBeDefined();
+    expect(zu.sales.insufficientStock).toBeDefined();
+  });
 });

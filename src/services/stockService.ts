@@ -25,7 +25,7 @@ function getMovementsKey(shopId: string): string {
   return `${MOVEMENTS_STORAGE_KEY_PREFIX}${shopId}`;
 }
 
-function getLocalBatches(shopId: string): StockBatch[] {
+export function getShopBatches(shopId: string = DEFAULT_SHOP_ID): StockBatch[] {
   if (typeof localStorage !== 'undefined') {
     try {
       const raw = localStorage.getItem(getBatchesKey(shopId));
@@ -37,14 +37,14 @@ function getLocalBatches(shopId: string): StockBatch[] {
   return memoryBatches.get(shopId) || [];
 }
 
-function saveLocalBatches(batches: StockBatch[], shopId: string): void {
+export function saveShopBatches(batches: StockBatch[], shopId: string = DEFAULT_SHOP_ID): void {
   if (typeof localStorage !== 'undefined') {
     localStorage.setItem(getBatchesKey(shopId), JSON.stringify(batches));
   }
   memoryBatches.set(shopId, batches);
 }
 
-function getLocalMovements(shopId: string): StockMovement[] {
+export function getShopMovements(shopId: string = DEFAULT_SHOP_ID): StockMovement[] {
   if (typeof localStorage !== 'undefined') {
     try {
       const raw = localStorage.getItem(getMovementsKey(shopId));
@@ -56,7 +56,7 @@ function getLocalMovements(shopId: string): StockMovement[] {
   return memoryMovements.get(shopId) || [];
 }
 
-function saveLocalMovements(movements: StockMovement[], shopId: string): void {
+export function saveShopMovements(movements: StockMovement[], shopId: string = DEFAULT_SHOP_ID): void {
   if (typeof localStorage !== 'undefined') {
     localStorage.setItem(getMovementsKey(shopId), JSON.stringify(movements));
   }
@@ -164,7 +164,7 @@ export async function stockIn(
   }
 
   // 6. Calculate Previous Total Quantity for this product
-  const currentBatches = getLocalBatches(shopId);
+  const currentBatches = getShopBatches(shopId);
   const previousProductBatches = currentBatches.filter((b) => b.productId === product.id);
   const previousTotalQuantity = previousProductBatches.reduce((sum, b) => sum + b.quantity, 0);
 
@@ -199,9 +199,9 @@ export async function stockIn(
   };
 
   // 9. Persist Transaction
-  saveLocalBatches([newBatch, ...currentBatches], shopId);
-  const currentMovements = getLocalMovements(shopId);
-  saveLocalMovements([newMovement, ...currentMovements], shopId);
+  saveShopBatches([newBatch, ...currentBatches], shopId);
+  const currentMovements = getShopMovements(shopId);
+  saveShopMovements([newMovement, ...currentMovements], shopId);
 
   // 10. Sync to Supabase if configured
   if (isSupabaseConfigured()) {
@@ -252,7 +252,7 @@ export async function getProductBatches(
   productId: string,
   shopId: string = DEFAULT_SHOP_ID
 ): Promise<StockBatch[]> {
-  const batches = getLocalBatches(shopId);
+  const batches = getShopBatches(shopId);
   return batches.filter((b) => b.productId === productId && b.quantity > 0);
 }
 
@@ -274,7 +274,7 @@ export async function getAllProductsStockSummary(
   shopId: string = DEFAULT_SHOP_ID
 ): Promise<ProductStockSummary[]> {
   const products = await getProducts(shopId);
-  const allBatches = getLocalBatches(shopId);
+  const allBatches = getShopBatches(shopId);
 
   return products.map((product) => {
     const productBatches = allBatches.filter(
@@ -327,7 +327,7 @@ export async function getExpiringBatches(
 ): Promise<ExpiringBatchAlert[]> {
   const products = await getProducts(shopId);
   const productsMap = new Map<string, Product>(products.map((p) => [p.id, p]));
-  const batches = getLocalBatches(shopId).filter((b) => b.quantity > 0 && b.expiryDate !== null);
+  const batches = getShopBatches(shopId).filter((b) => b.quantity > 0 && b.expiryDate !== null);
 
   const alerts: ExpiringBatchAlert[] = [];
 

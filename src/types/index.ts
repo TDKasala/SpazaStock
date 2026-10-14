@@ -90,3 +90,48 @@ export interface ProductStockSummary {
   isExpired: boolean;
   isExpiringSoon: boolean; // within 7 days
 }
+
+export interface BatchAllocation {
+  batchId: string;
+  quantityDeducted: number;
+  batchExpiryDate: string | null;
+}
+
+export interface Sale {
+  id: string;
+  shopId: string;
+  productId: string;
+  quantity: number;
+  unitPrice: number;
+  totalAmount: number;
+  allocations: BatchAllocation[];
+  idempotencyKey?: string;
+  isOfflineQueued?: boolean;
+  createdAt: string;
+}
+
+export interface SaleInput {
+  productId: string;
+  quantity: number;
+  unitPrice?: number | null;
+  idempotencyKey?: string;
+}
+
+export interface SaleResult {
+  sale: Sale;
+  product: Product;
+  previousTotalStock: number;
+  remainingTotalStock: number;
+  allocations: BatchAllocation[];
+  isQueuedOffline: boolean;
+}
+
+export interface OfflineQueueItem {
+  id: string;
+  type: 'sale';
+  payload: SaleInput;
+  shopId: string;
+  createdAt: string;
+  status: 'pending' | 'syncing' | 'synced' | 'failed';
+  error?: string;
+}

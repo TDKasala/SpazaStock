@@ -16,6 +16,8 @@ import { ProductStockDetailDialog } from './components/stock/ProductStockDetailD
 import { LoadingState } from './components/ui/LoadingState';
 import { useBarcodeSearch } from './hooks/useBarcodeSearch';
 import { Product, StockInResult } from './types';
+import { searchProductByBarcode } from './services/productService';
+import { recordSale } from './services/salesService';
 
 export function AppContent() {
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
@@ -42,9 +44,41 @@ export function AppContent() {
   // Detailed Batch Inspection Target Product
   const [inspectedProduct, setInspectedProduct] = useState<Product | null>(null);
 
-  // When a new product is registered, immediately offer to stock it in!
+  // Explicit registration barcode state from Sales View
+  const [manualRegisterBarcode, setManualRegisterBarcode] = useState<string | null>(null);
+
+  // When a barcode is scanned by the camera modal:
+  const onCameraBarcodeScanned = async (barcode: string) => {
+    closeScanner();
+
+    if (currentTab === 'sales') {
+      // In Sales Mode: Rapid Scan-to-Sell
+      const product = await searchProductByBarcode(barcode);
+      if (!product) {
+        setManualRegisterBarcode(barcode);
+      } else {
+        const idKey = `rapid_scan_${product.id}_${Date.now()}`;
+        const saleRes = await recordSale({
+          productId: product.id,
+          quantity: 1,
+          idempotencyKey: idKey,
+        });
+
+        if (saleRes.error) {
+          alert(saleRes.error);
+        } else {
+          setStockRefreshCounter((c) => c + 1);
+        }
+      }
+    } else {
+      // In Dashboard or Stock Mode: Product lookup
+      handleBarcodeScanned(barcode);
+    }
+  };
+
   const onRegisterSuccess = (product: Product) => {
     handleProductRegistered(product);
+    setManualRegisterBarcode(null);
     setStockRefreshCounter((c) => c + 1);
   };
 
@@ -78,7 +112,8 @@ export function AppContent() {
         {currentTab === 'sales' && (
           <SalesView
             onOpenScanner={openScanner}
-            onSearchBarcode={handleBarcodeScanned}
+            onOpenRegisterProduct={(b) => setManualRegisterBarcode(b)}
+            refreshTrigger={stockRefreshCounter}
           />
         )}
         {currentTab === 'alerts' && (
@@ -104,10 +139,10 @@ export function AppContent() {
       <BarcodeScannerModal
         isOpen={isScannerOpen}
         onClose={closeScanner}
-        onBarcodeScanned={handleBarcodeScanned}
+        onBarcodeScanned={onCameraBarcodeScanned}
       />
 
-      {/* Product Found Dialog (from scanning) */}
+      {/* Product Found Dialog (from scanning in lookup mode) */}
       <ProductFoundDialog
         isOpen={foundProduct !== null}
         product={foundProduct}
@@ -128,9 +163,12 @@ export function AppContent() {
 
       {/* Product Registration Dialog (when barcode not found in active shop) */}
       <ProductRegisterDialog
-        isOpen={unregisteredBarcode !== null}
-        initialBarcode={unregisteredBarcode || ''}
-        onClose={closeProductRegister}
+        isOpen={unregisteredBarcode !== null || manualRegisterBarcode !== null}
+        initialBarcode={unregisteredBarcode || manualRegisterBarcode || ''}
+        onClose={() => {
+          closeProductRegister();
+          setManualRegisterBarcode(null);
+        }}
         onProductRegistered={onRegisterSuccess}
       />
 
