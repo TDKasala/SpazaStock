@@ -1,31 +1,25 @@
-import React, { useState, useEffect, useId } from 'react';
-import {
-  PackagePlus,
-  Calendar,
-  Layers,
-  CheckCircle2,
-  AlertCircle,
-  Plus,
-  Minus,
-  Barcode,
-  ArrowRight,
-  Sparkles,
-} from 'lucide-react';
-import { Product, StockInResult } from '../../types';
+import React, { useState, useEffect } from 'react';
+import { Calendar, CheckCircle2, Plus, Minus, Barcode, ArrowRight } from 'lucide-react';
+import type { Product, StockInResult } from '../../types';
 import { useLanguage } from '../../context/LanguageContext';
+import { useShopId } from '../../context/ShopContext';
 import { Dialog } from '../ui/Dialog';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { ErrorMessage } from '../ui/ErrorMessage';
 import { stockIn, getProductTotalStock, isValidDateFormat } from '../../services/stockService';
+import { addDaysLocal } from '../../lib/dates';
+import { newId } from '../../lib/ids';
 
 export interface QuickStockInModalProps {
   isOpen: boolean;
   product: Product | null;
   onClose: () => void;
-  onStockInSuccess: (result: StockInResult) => void;
+  onStockInSuccess?: (result: StockInResult) => void;
   onStockInAnother?: () => void;
 }
+
+const getPresetDate = (daysAhead: number): string => addDaysLocal(daysAhead);
 
 export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
   isOpen,
@@ -35,7 +29,7 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
   onStockInAnother,
 }) => {
   const { t, dict } = useLanguage();
-  const sessionSeed = useId();
+  const shopId = useShopId();
 
   const [currentStock, setCurrentStock] = useState<number>(0);
   const [quantityInput, setQuantityInput] = useState<string>('1');
@@ -47,13 +41,6 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
   const [successResult, setSuccessResult] = useState<StockInResult | null>(null);
   const [idempotencyKey, setIdempotencyKey] = useState<string>('');
 
-  // Calculate preset dates
-  const getPresetDate = (daysAhead: number): string => {
-    const d = new Date();
-    d.setDate(d.getDate() + daysAhead);
-    return d.toISOString().split('T')[0];
-  };
-
   // Reset modal state when product or openness changes
   useEffect(() => {
     if (isOpen && product) {
@@ -61,7 +48,7 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
       setErrorMsg(null);
       setQuantityInput('1');
       setIsSubmitting(false);
-      setIdempotencyKey(`stockin_${product.id}_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+      setIdempotencyKey(newId());
 
       // Perishables default to expiry enabled with a sensible preset
       const isPerishable = ['bakery', 'dairy', 'groceries', 'beverages', 'snacks'].includes(
@@ -80,12 +67,9 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
 
       setCostPrice(product.buyingPrice != null ? String(product.buyingPrice) : '');
 
-      // Fetch live current available stock for product
-      getProductTotalStock(product.id).then((stock) => {
-        setCurrentStock(stock);
-      });
+      void getProductTotalStock(product.id, shopId).then(setCurrentStock);
     }
-  }, [isOpen, product]);
+  }, [isOpen, product, shopId]);
 
   if (!isOpen || !product) return null;
 
@@ -141,27 +125,29 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
     setIsSubmitting(true);
 
     try {
-      const res = await stockIn({
-        productId: product.id,
-        quantity: qty,
-        expiryDate: finalExpiry,
-        costPricePerUnit: parsedCost,
-        idempotencyKey,
-      });
+      const res = await stockIn(
+        {
+          productId: product.id,
+          quantity: qty,
+          expiryDate: finalExpiry,
+          costPricePerUnit: parsedCost,
+          idempotencyKey,
+        },
+        shopId
+      );
 
       if (res.error) {
         setErrorMsg(res.error);
-        setIsSubmitting(false);
         return;
       }
 
       if (res.result) {
         setSuccessResult(res.result);
         setCurrentStock(res.result.resultingTotalQuantity);
-        onStockInSuccess(res.result);
+        onStockInSuccess?.(res.result);
       }
-    } catch (err: any) {
-      setErrorMsg(err?.message || t('errors.generic'));
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : t('errors.generic'));
     } finally {
       setIsSubmitting(false);
     }
@@ -295,7 +281,8 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
               <div className="flex items-center gap-2 text-xs text-zinc-300 bg-zinc-900/60 p-2.5 rounded-xl border border-zinc-800">
                 <Calendar className="w-4 h-4 text-amber-400 shrink-0" />
                 <span>
-                  Batch Expiry: <strong className="text-amber-300 font-mono">{successResult.batch.expiryDate}</strong>
+                  {t('stockIn.batchExpiry')}{' '}
+                  <strong className="text-amber-300 font-mono">{successResult.batch.expiryDate}</strong>
                 </span>
               </div>
             )}
@@ -322,7 +309,7 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
                   type="button"
                   onClick={() => handleQuickAdd(-1)}
                   className="w-12 h-12 bg-zinc-900 hover:bg-zinc-800 active:bg-zinc-700 text-zinc-200 rounded-xl border border-zinc-800 flex items-center justify-center font-bold text-lg select-none"
-                  aria-label="Decrease quantity by 1"
+                  aria-label={t('stockIn.decrease')}
                 >
                   <Minus className="w-5 h-5" />
                 </button>
@@ -346,7 +333,7 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
                   type="button"
                   onClick={() => handleQuickAdd(1)}
                   className="w-12 h-12 bg-zinc-900 hover:bg-zinc-800 active:bg-zinc-700 text-zinc-200 rounded-xl border border-zinc-800 flex items-center justify-center font-bold text-lg select-none"
-                  aria-label="Increase quantity by 1"
+                  aria-label={t('stockIn.increase')}
                 >
                   <Plus className="w-5 h-5" />
                 </button>
@@ -382,7 +369,7 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
                   </span>
                 </label>
                 <span className="text-[10px] text-zinc-400">
-                  {hasExpiry ? 'Perishable' : 'Non-perishable'}
+                  {hasExpiry ? t('stockIn.perishable') : t('stockIn.nonPerishable')}
                 </span>
               </div>
 
@@ -402,11 +389,11 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
                   {/* Expiry Presets (+5 days, +7 days, +30 days, +90 days) */}
                   <div className="flex flex-wrap gap-1.5 pt-1">
                     {[
-                      { label: '+5d (Bread)', days: 5 },
-                      { label: '+10d (Milk)', days: 10 },
-                      { label: '+1mo', days: 30 },
-                      { label: '+3mo', days: 90 },
-                      { label: '+6mo', days: 180 },
+                      { label: t('stockIn.presetBread'), days: 5 },
+                      { label: t('stockIn.presetMilk'), days: 10 },
+                      { label: t('stockIn.presetMonths', { count: 1 }), days: 30 },
+                      { label: t('stockIn.presetMonths', { count: 3 }), days: 90 },
+                      { label: t('stockIn.presetMonths', { count: 6 }), days: 180 },
                     ].map((preset) => (
                       <button
                         key={preset.label}
@@ -441,7 +428,7 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
               value={costPrice}
               onChange={(e) => setCostPrice(e.target.value)}
               leftIcon={<span className="text-xs font-bold text-zinc-400">R</span>}
-              helperText="Overrides catalog cost price for this specific delivery"
+              helperText={t('stockIn.costHelp')}
             />
           </form>
         )}

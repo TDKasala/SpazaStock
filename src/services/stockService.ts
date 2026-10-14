@@ -5,137 +5,32 @@ import {
   StockInResult,
   ProductStockSummary,
   Product,
+  StockDiscrepancy,
 } from '../types';
-import { DEFAULT_SHOP_ID, getProducts } from './productService';
-import { getSupabase, isSupabaseConfigured } from '../lib/supabase';
+import { db, withWriteLock } from '../lib/db';
+import { newId } from '../lib/ids';
+import { emitDataChanged } from '../lib/events';
+import { getDaysUntilExpiry, isValidDateFormat } from '../lib/dates';
+import { enqueue } from '../sync/outbox';
+import { getProducts } from './productService';
 
-const BATCHES_STORAGE_KEY_PREFIX = 'spazastock_batches_';
-const MOVEMENTS_STORAGE_KEY_PREFIX = 'spazastock_movements_';
-const IDEMPOTENCY_SET_KEY_PREFIX = 'spazastock_idempotency_';
+export { getDaysUntilExpiry, isValidDateFormat };
 
-const memoryBatches = new Map<string, StockBatch[]>();
-const memoryMovements = new Map<string, StockMovement[]>();
-const memoryIdempotency = new Set<string>();
-
-function getBatchesKey(shopId: string): string {
-  return `${BATCHES_STORAGE_KEY_PREFIX}${shopId}`;
-}
-
-function getMovementsKey(shopId: string): string {
-  return `${MOVEMENTS_STORAGE_KEY_PREFIX}${shopId}`;
-}
-
-export function getShopBatches(shopId: string = DEFAULT_SHOP_ID): StockBatch[] {
-  if (typeof localStorage !== 'undefined') {
-    try {
-      const raw = localStorage.getItem(getBatchesKey(shopId));
-      return raw ? JSON.parse(raw) : [];
-    } catch {
-      return [];
-    }
-  }
-  return memoryBatches.get(shopId) || [];
-}
-
-export function saveShopBatches(batches: StockBatch[], shopId: string = DEFAULT_SHOP_ID): void {
-  if (typeof localStorage !== 'undefined') {
-    localStorage.setItem(getBatchesKey(shopId), JSON.stringify(batches));
-  }
-  memoryBatches.set(shopId, batches);
-}
-
-export function getShopMovements(shopId: string = DEFAULT_SHOP_ID): StockMovement[] {
-  if (typeof localStorage !== 'undefined') {
-    try {
-      const raw = localStorage.getItem(getMovementsKey(shopId));
-      return raw ? JSON.parse(raw) : [];
-    } catch {
-      return [];
-    }
-  }
-  return memoryMovements.get(shopId) || [];
-}
-
-export function saveShopMovements(movements: StockMovement[], shopId: string = DEFAULT_SHOP_ID): void {
-  if (typeof localStorage !== 'undefined') {
-    localStorage.setItem(getMovementsKey(shopId), JSON.stringify(movements));
-  }
-  memoryMovements.set(shopId, movements);
-}
-
-function isIdempotencyKeySeen(key: string): boolean {
-  if (typeof sessionStorage !== 'undefined') {
-    return sessionStorage.getItem(`idem_${key}`) === 'true';
-  }
-  return memoryIdempotency.has(key);
-}
-
-function markIdempotencyKeySeen(key: string): void {
-  if (typeof sessionStorage !== 'undefined') {
-    sessionStorage.setItem(`idem_${key}`, 'true');
-  }
-  memoryIdempotency.add(key);
+function sumQuantity(batches: StockBatch[]): number {
+  return batches.reduce((sum, b) => sum + b.quantity, 0);
 }
 
 /**
- * Validates ISO date format YYYY-MM-DD
- */
-export function isValidDateFormat(dateStr: string): boolean {
-  if (!dateStr || typeof dateStr !== 'string') return false;
-  const regex = /^\d{4}-\d{2}-\d{2}$/;
-  if (!regex.test(dateStr)) return false;
-  const date = new Date(dateStr);
-  const timestamp = date.getTime();
-  if (typeof timestamp !== 'number' || Number.isNaN(timestamp)) return false;
-  return date.toISOString().startsWith(dateStr);
-}
-
-/**
- * Calculates days remaining until a given date string (YYYY-MM-DD)
- */
-export function getDaysUntilExpiry(expiryDateStr: string | null): number | null {
-  if (!expiryDateStr) return null;
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const parts = expiryDateStr.split('-');
-  const expDate = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])).getTime();
-  const diffMs = expDate - startOfToday;
-  return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-}
-
-/**
- * Validates shop authorization / permission.
- */
-export function validateShopPermission(requestedShopId: string, activeShopId: string = DEFAULT_SHOP_ID): boolean {
-  if (!requestedShopId || !activeShopId) return false;
-  return requestedShopId.trim() === activeShopId.trim();
-}
-
-/**
- * Records a stock-in delivery batch transactionally.
- * Increases inventory additively without overwriting prior batches.
+ * Records a delivery as its own batch (so its expiry date is preserved) and queues it for sync.
+ * Stock only ever increases additively; prior batches are never overwritten.
  */
 export async function stockIn(
   input: StockInInput,
-  shopId: string = DEFAULT_SHOP_ID
+  shopId: string
 ): Promise<{ result?: StockInResult; error?: string }> {
-  // 1. Validate Shop Permission
-  if (!validateShopPermission(shopId, DEFAULT_SHOP_ID)) {
-    return { error: 'Unauthorized: Action restricted to active shop.' };
-  }
+  const productId = input.productId?.trim();
+  if (!productId) return { error: 'Product ID is required.' };
 
-  // 2. Validate Product Existence
-  if (!input.productId || !input.productId.trim()) {
-    return { error: 'Product ID is required.' };
-  }
-
-  const products = await getProducts(shopId);
-  const product = products.find((p) => p.id === input.productId.trim());
-  if (!product) {
-    return { error: 'Product not found in active shop catalog.' };
-  }
-
-  // 3. Validate Quantity (Must be positive integer)
   if (
     typeof input.quantity !== 'number' ||
     !Number.isInteger(input.quantity) ||
@@ -144,169 +39,123 @@ export async function stockIn(
     return { error: 'Quantity must be a positive whole integer greater than zero.' };
   }
 
-  // 4. Validate Expiry Date if provided
-  let normalizedExpiry: string | null = null;
+  let expiryDate: string | null = null;
   if (input.expiryDate && input.expiryDate.trim()) {
-    const trimmedDate = input.expiryDate.trim();
-    if (!isValidDateFormat(trimmedDate)) {
+    expiryDate = input.expiryDate.trim();
+    if (!isValidDateFormat(expiryDate)) {
       return { error: 'Invalid expiry date format. Please use YYYY-MM-DD.' };
     }
-    normalizedExpiry = trimmedDate;
   }
 
-  // 5. Duplicate Submission Prevention (Idempotency)
-  if (input.idempotencyKey) {
-    const key = `${shopId}_${input.idempotencyKey.trim()}`;
-    if (isIdempotencyKeySeen(key)) {
-      return { error: 'Duplicate submission rejected: This stock delivery was already processed.' };
-    }
-    markIdempotencyKeySeen(key);
+  if (input.costPricePerUnit != null && (Number.isNaN(input.costPricePerUnit) || input.costPricePerUnit < 0)) {
+    return { error: 'Cost price cannot be negative.' };
   }
 
-  // 6. Calculate Previous Total Quantity for this product
-  const currentBatches = getShopBatches(shopId);
-  const previousProductBatches = currentBatches.filter((b) => b.productId === product.id);
-  const previousTotalQuantity = previousProductBatches.reduce((sum, b) => sum + b.quantity, 0);
+  const idempotencyKey = input.idempotencyKey?.trim() || undefined;
 
-  // 7. Create New Batch (separate batch preserves expiry date)
-  const now = new Date().toISOString();
-  const batchId = `batch_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-  const movementId = `mov_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-
-  const newBatch: StockBatch = {
-    id: batchId,
-    shopId,
-    productId: product.id,
-    quantity: input.quantity,
-    expiryDate: normalizedExpiry,
-    costPricePerUnit: input.costPricePerUnit ?? product.buyingPrice ?? null,
-    receivedAt: now,
-  };
-
-  const resultingTotalQuantity = previousTotalQuantity + input.quantity;
-
-  // 8. Create Transactional Stock Movement Record
-  const newMovement: StockMovement = {
-    id: movementId,
-    shopId,
-    productId: product.id,
-    batchId: newBatch.id,
-    type: 'stock_in',
-    quantityDelta: input.quantity,
-    resultingTotalQuantity,
-    idempotencyKey: input.idempotencyKey,
-    createdAt: now,
-  };
-
-  // 9. Persist Transaction
-  saveShopBatches([newBatch, ...currentBatches], shopId);
-  const currentMovements = getShopMovements(shopId);
-  saveShopMovements([newMovement, ...currentMovements], shopId);
-
-  // 10. Sync to Supabase if configured
-  if (isSupabaseConfigured()) {
-    const supabase = getSupabase();
-    if (supabase) {
-      try {
-        await supabase.from('stock_batches').insert({
-          id: newBatch.id,
-          shop_id: shopId,
-          product_id: newBatch.productId,
-          quantity: newBatch.quantity,
-          expiry_date: newBatch.expiryDate,
-          cost_price_per_unit: newBatch.costPricePerUnit,
-          received_at: newBatch.receivedAt,
-        });
-
-        await supabase.from('stock_movements').insert({
-          id: newMovement.id,
-          shop_id: shopId,
-          product_id: newMovement.productId,
-          batch_id: newMovement.batchId,
-          type: newMovement.type,
-          quantity_delta: newMovement.quantityDelta,
-          resulting_total_quantity: newMovement.resultingTotalQuantity,
-          idempotency_key: newMovement.idempotencyKey,
-          created_at: newMovement.createdAt,
-        });
-      } catch (err) {
-        console.warn('Supabase stock persistence failed, saved locally:', err);
+  const outcome = await withWriteLock(() =>
+    db.transaction('rw', db.products, db.batches, db.movements, db.outbox, async () => {
+      const product = await db.products.get(productId);
+      if (!product || product.shopId !== shopId) {
+        return { error: 'Product not found in active shop catalog.' };
       }
-    }
+
+      if (idempotencyKey) {
+        const seen = await db.movements
+          .where('[shopId+idempotencyKey]')
+          .equals([shopId, idempotencyKey])
+          .first();
+        if (seen) {
+          return { error: 'Duplicate submission rejected: This stock delivery was already processed.' };
+        }
+      }
+
+      const existing = await db.batches.where('[shopId+productId]').equals([shopId, productId]).toArray();
+      const previousTotalQuantity = sumQuantity(existing);
+      const resultingTotalQuantity = previousTotalQuantity + input.quantity;
+      const now = new Date().toISOString();
+
+      const batch: StockBatch = {
+        id: newId(),
+        shopId,
+        productId,
+        quantity: input.quantity,
+        initialQuantity: input.quantity,
+        expiryDate,
+        costPricePerUnit: input.costPricePerUnit ?? product.buyingPrice ?? null,
+        receivedAt: now,
+      };
+
+      const movement: StockMovement = {
+        id: newId(),
+        shopId,
+        productId,
+        batchId: batch.id,
+        type: 'stock_in',
+        quantityDelta: input.quantity,
+        resultingTotalQuantity,
+        idempotencyKey,
+        createdAt: now,
+      };
+
+      await db.batches.add(batch);
+      await db.movements.add(movement);
+      await enqueue(shopId, {
+        type: 'stock_in',
+        payload: { batch, movementId: movement.id, idempotencyKey },
+      });
+
+      return { result: { batch, movement, previousTotalQuantity, resultingTotalQuantity } };
+    })
+  );
+
+  if (outcome.result) emitDataChanged('local');
+  return outcome;
+}
+
+/** Batches of a product that still have units, newest delivery first. */
+export async function getProductBatches(productId: string, shopId: string): Promise<StockBatch[]> {
+  const batches = await db.batches.where('[shopId+productId]').equals([shopId, productId]).toArray();
+  return batches
+    .filter((b) => b.quantity > 0)
+    .sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
+}
+
+export async function getProductTotalStock(productId: string, shopId: string): Promise<number> {
+  return sumQuantity(await getProductBatches(productId, shopId));
+}
+
+/** Every product in the shop with its available stock and batch breakdown. */
+export async function getAllProductsStockSummary(shopId: string): Promise<ProductStockSummary[]> {
+  const [products, allBatches] = await Promise.all([
+    getProducts(shopId),
+    db.batches.where('shopId').equals(shopId).toArray(),
+  ]);
+
+  const batchesByProduct = new Map<string, StockBatch[]>();
+  for (const batch of allBatches) {
+    if (batch.quantity <= 0) continue;
+    const list = batchesByProduct.get(batch.productId) ?? [];
+    list.push(batch);
+    batchesByProduct.set(batch.productId, list);
   }
-
-  return {
-    result: {
-      batch: newBatch,
-      movement: newMovement,
-      previousTotalQuantity,
-      resultingTotalQuantity,
-    },
-  };
-}
-
-/**
- * Returns all stock batches for a given product.
- */
-export async function getProductBatches(
-  productId: string,
-  shopId: string = DEFAULT_SHOP_ID
-): Promise<StockBatch[]> {
-  const batches = getShopBatches(shopId);
-  return batches.filter((b) => b.productId === productId && b.quantity > 0);
-}
-
-/**
- * Returns total available stock quantity for a product.
- */
-export async function getProductTotalStock(
-  productId: string,
-  shopId: string = DEFAULT_SHOP_ID
-): Promise<number> {
-  const batches = await getProductBatches(productId, shopId);
-  return batches.reduce((sum, b) => sum + b.quantity, 0);
-}
-
-/**
- * Aggregates all registered products with their available stock and batch breakdowns.
- */
-export async function getAllProductsStockSummary(
-  shopId: string = DEFAULT_SHOP_ID
-): Promise<ProductStockSummary[]> {
-  const products = await getProducts(shopId);
-  const allBatches = getShopBatches(shopId);
 
   return products.map((product) => {
-    const productBatches = allBatches.filter(
-      (b) => b.productId === product.id && b.quantity > 0
-    );
-    const totalQuantity = productBatches.reduce((sum, b) => sum + b.quantity, 0);
-
-    // Find earliest expiry date
-    const expiryDates = productBatches
+    const batches = batchesByProduct.get(product.id) ?? [];
+    const expiryDates = batches
       .map((b) => b.expiryDate)
       .filter((d): d is string => d !== null)
       .sort();
-
-    const earliestExpiry = expiryDates.length > 0 ? expiryDates[0] : null;
-    let isExpired = false;
-    let isExpiringSoon = false;
-
-    if (earliestExpiry) {
-      const days = getDaysUntilExpiry(earliestExpiry);
-      if (days !== null) {
-        if (days < 0) isExpired = true;
-        else if (days <= 7) isExpiringSoon = true;
-      }
-    }
+    const earliestExpiry = expiryDates[0] ?? null;
+    const days = getDaysUntilExpiry(earliestExpiry);
 
     return {
       product,
-      totalQuantity,
-      batches: productBatches,
+      totalQuantity: sumQuantity(batches),
+      batches,
       earliestExpiry,
-      isExpired,
-      isExpiringSoon,
+      isExpired: days !== null && days < 0,
+      isExpiringSoon: days !== null && days >= 0 && days <= 7,
     };
   });
 }
@@ -315,58 +164,70 @@ export interface ExpiringBatchAlert {
   batch: StockBatch;
   product: Product;
   daysUntilExpiry: number;
-  status: 'expired' | 'urgent' | 'warning' | 'ok';
+  status: 'expired' | 'urgent' | 'warning';
 }
 
-/**
- * Retrieves expiring batches across the active shop.
- */
+/** Batches expiring within `thresholdDays` (or already expired), soonest first. */
 export async function getExpiringBatches(
-  shopId: string = DEFAULT_SHOP_ID,
+  shopId: string,
   thresholdDays: number = 30
 ): Promise<ExpiringBatchAlert[]> {
-  const products = await getProducts(shopId);
-  const productsMap = new Map<string, Product>(products.map((p) => [p.id, p]));
-  const batches = getShopBatches(shopId).filter((b) => b.quantity > 0 && b.expiryDate !== null);
-
+  const [products, batches] = await Promise.all([
+    getProducts(shopId),
+    db.batches.where('shopId').equals(shopId).toArray(),
+  ]);
+  const productsById = new Map(products.map((p) => [p.id, p]));
   const alerts: ExpiringBatchAlert[] = [];
 
   for (const batch of batches) {
-    if (!batch.expiryDate) continue;
+    if (batch.quantity <= 0 || !batch.expiryDate) continue;
     const days = getDaysUntilExpiry(batch.expiryDate);
-    if (days === null) continue;
+    const product = productsById.get(batch.productId);
+    if (days === null || days > thresholdDays || !product) continue;
 
-    if (days <= thresholdDays) {
-      const product = productsMap.get(batch.productId);
-      if (product) {
-        let status: 'expired' | 'urgent' | 'warning' | 'ok' = 'ok';
-        if (days < 0) status = 'expired';
-        else if (days <= 7) status = 'urgent';
-        else status = 'warning';
-
-        alerts.push({
-          batch,
-          product,
-          daysUntilExpiry: days,
-          status,
-        });
-      }
-    }
+    alerts.push({
+      batch,
+      product,
+      daysUntilExpiry: days,
+      status: days < 0 ? 'expired' : days <= 7 ? 'urgent' : 'warning',
+    });
   }
 
-  // Sort: expired first, then closest to expiry
   return alerts.sort((a, b) => a.daysUntilExpiry - b.daysUntilExpiry);
 }
 
-/**
- * Clears all stock data for tests or store resets.
- */
-export function clearStockData(shopId: string = DEFAULT_SHOP_ID): void {
-  if (typeof localStorage !== 'undefined') {
-    localStorage.removeItem(getBatchesKey(shopId));
-    localStorage.removeItem(getMovementsKey(shopId));
-  }
-  memoryBatches.delete(shopId);
-  memoryMovements.delete(shopId);
-  memoryIdempotency.clear();
+export interface DiscrepancyAlert {
+  discrepancy: StockDiscrepancy;
+  product: Product;
+}
+
+/** Unresolved shortfalls reported by the server, e.g. two devices selling the same last units. */
+export async function getOpenDiscrepancies(shopId: string): Promise<DiscrepancyAlert[]> {
+  const [products, discrepancies] = await Promise.all([
+    getProducts(shopId),
+    db.discrepancies.where('shopId').equals(shopId).toArray(),
+  ]);
+  const productsById = new Map(products.map((p) => [p.id, p]));
+
+  return discrepancies
+    .filter((d) => !d.resolvedAt)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .flatMap((discrepancy) => {
+      const product = productsById.get(discrepancy.productId);
+      return product ? [{ discrepancy, product }] : [];
+    });
+}
+
+/** Marks a shortfall as recounted and queues the update for sync. */
+export async function resolveDiscrepancy(id: string, shopId: string): Promise<void> {
+  await withWriteLock(() =>
+    db.transaction('rw', db.discrepancies, db.outbox, async () => {
+      const discrepancy = await db.discrepancies.get(id);
+      if (!discrepancy || discrepancy.shopId !== shopId || discrepancy.resolvedAt) return;
+      const resolvedAt = new Date().toISOString();
+      await db.discrepancies.update(id, { resolvedAt });
+      await enqueue(shopId, { type: 'discrepancy_resolve', payload: { id, resolvedAt } });
+    })
+  );
+  emitDataChanged('local');
 }

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Barcode, PackagePlus, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { ProductCategory, ProductRegistrationInput, Product } from '../../types';
+import type { ProductCategory, ProductRegistrationInput, Product } from '../../types';
 import { useLanguage } from '../../context/LanguageContext';
+import { useShopId } from '../../context/ShopContext';
 import { Dialog } from '../ui/Dialog';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
@@ -34,6 +35,7 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
   onProductRegistered,
 }) => {
   const { t, dict } = useLanguage();
+  const shopId = useShopId();
   const [barcode, setBarcode] = useState(initialBarcode);
   const [name, setName] = useState('');
   const [category, setCategory] = useState<ProductCategory>('groceries');
@@ -43,17 +45,22 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
 
-  // Sync barcode if prop updates
   React.useEffect(() => {
+    if (!isOpen) return;
     setBarcode(initialBarcode);
+    setName('');
+    setCategory('groceries');
+    setBuyingPrice('');
+    setSellingPrice('');
     setErrors({});
     setServerError(null);
   }, [initialBarcode, isOpen]);
 
   if (!isOpen) return null;
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (isSubmitting) return;
     const newErrors: Record<string, string> = {};
 
     const cleanBarcode = barcode.trim();
@@ -103,23 +110,18 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
         sellingPrice: parsedSelling,
       };
 
-      const result = await createProduct(input);
+      const result = await createProduct(input, shopId);
 
       if (result.error) {
-        if (result.isDuplicate) {
-          setServerError(t('product.duplicateError'));
-        } else {
-          setServerError(result.error);
-        }
-        setIsSubmitting(false);
+        setServerError(result.isDuplicate ? t('product.duplicateError') : result.error);
         return;
       }
 
       if (result.product) {
         onProductRegistered(result.product);
       }
-    } catch (err: any) {
-      setServerError(err?.message || t('errors.generic'));
+    } catch (err) {
+      setServerError(err instanceof Error ? err.message : t('errors.generic'));
     } finally {
       setIsSubmitting(false);
     }
@@ -137,7 +139,7 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
             {t('common.cancel')}
           </Button>
           <Button
-            onClick={handleSubmit}
+            onClick={() => void handleSubmit()}
             variant="primary"
             size="md"
             className="flex-1"
@@ -149,7 +151,7 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
         </div>
       }
     >
-      <form onSubmit={handleSubmit} className="space-y-4 py-2">
+      <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4 py-2">
         {serverError && (
           <ErrorMessage
             variant="error"
@@ -227,9 +229,7 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
           />
         </div>
 
-        {/* Explicit instruction note */}
         <div className="p-3 bg-zinc-950/80 rounded-xl border border-zinc-800/80 text-[11px] text-zinc-400 leading-relaxed">
-          <span className="font-semibold text-zinc-300 block mb-0.5">SpazaStock Architecture Notice:</span>
           {t('product.priceNotice')}
         </div>
       </form>

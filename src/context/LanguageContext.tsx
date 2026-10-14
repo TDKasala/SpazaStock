@@ -3,11 +3,32 @@ import { Locale } from '../types';
 import { en, Translations } from '../locales/en';
 import { zu } from '../locales/zu';
 
+export type TranslateVars = Record<string, string | number>;
+
 interface LanguageContextType {
   locale: Locale;
   setLocale: (locale: Locale) => void;
-  t: (key: string) => string;
+  t: (key: string, vars?: TranslateVars) => string;
   dict: Translations;
+}
+
+function lookup(source: unknown, parts: string[]): string | undefined {
+  let current: unknown = source;
+  for (const part of parts) {
+    if (current && typeof current === 'object' && part in current) {
+      current = (current as Record<string, unknown>)[part];
+    } else {
+      return undefined;
+    }
+  }
+  return typeof current === 'string' ? current : undefined;
+}
+
+export function interpolate(template: string, vars?: TranslateVars): string {
+  if (!vars) return template;
+  return template.replace(/\{\{(\w+)\}\}/g, (match, name: string) =>
+    name in vars ? String(vars[name]) : match
+  );
 }
 
 const dictionaries: Record<Locale, Translations> = {
@@ -34,27 +55,10 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const dict = dictionaries[locale];
 
-  // Helper for dot-notated key lookups with graceful fallback to English
-  const t = (key: string): string => {
+  // Dot-notated key lookup with fallback to English, then to the key itself.
+  const t = (key: string, vars?: TranslateVars): string => {
     const parts = key.split('.');
-    let current: any = dict;
-    for (const part of parts) {
-      if (current && typeof current === 'object' && part in current) {
-        current = current[part];
-      } else {
-        // Fallback to English
-        let fallback: any = en;
-        for (const fbPart of parts) {
-          if (fallback && typeof fallback === 'object' && fbPart in fallback) {
-            fallback = fallback[fbPart];
-          } else {
-            return key;
-          }
-        }
-        return typeof fallback === 'string' ? fallback : key;
-      }
-    }
-    return typeof current === 'string' ? current : key;
+    return interpolate(lookup(dict, parts) ?? lookup(en, parts) ?? key, vars);
   };
 
   return (

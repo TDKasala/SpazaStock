@@ -1,16 +1,17 @@
 import React from 'react';
 import { LayoutGrid, Boxes, ShoppingCart, Bell } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
+import type { AppTab } from '../../App';
 
 export interface BottomNavProps {
-  currentTab: string;
-  onSelectTab: (tab: string) => void;
+  currentTab: AppTab;
+  onSelectTab: (tab: AppTab) => void;
 }
 
 export const BottomNav: React.FC<BottomNavProps> = ({ currentTab, onSelectTab }) => {
   const { t } = useLanguage();
 
-  const tabs = [
+  const tabs: Array<{ id: AppTab; label: string; icon: typeof LayoutGrid }> = [
     { id: 'dashboard', label: t('navigation.dashboard'), icon: LayoutGrid },
     { id: 'stock', label: t('navigation.stock'), icon: Boxes },
     { id: 'sales', label: t('navigation.sales'), icon: ShoppingCart },

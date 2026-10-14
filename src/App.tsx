@@ -1,5 +1,8 @@
-import React, { useState } from 'react';
-import { LanguageProvider } from './context/LanguageContext';
+import React, { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import { LanguageProvider, useLanguage } from './context/LanguageContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { ShopProvider, useShop, useShopId } from './context/ShopContext';
+import { SyncProvider } from './context/SyncContext';
 import { Header } from './components/layout/Header';
 import { BottomNav } from './components/layout/BottomNav';
 import { Dashboard } from './components/dashboard/Dashboard';
@@ -8,91 +11,94 @@ import { SalesView } from './components/views/SalesView';
 import { AlertsView } from './components/views/AlertsView';
 import { SetupGuideDialog } from './components/setup/SetupGuideDialog';
 import { OfflineIndicator } from './components/pwa/OfflineIndicator';
-import { BarcodeScannerModal } from './components/scanner/BarcodeScannerModal';
+import { SyncBanner } from './components/sync/SyncBanner';
 import { ProductFoundDialog } from './components/scanner/ProductFoundDialog';
 import { ProductRegisterDialog } from './components/scanner/ProductRegisterDialog';
 import { QuickStockInModal } from './components/stock/QuickStockInModal';
 import { ProductStockDetailDialog } from './components/stock/ProductStockDetailDialog';
+import { SignInScreen } from './components/auth/SignInScreen';
+import { ShopOnboarding } from './components/auth/ShopOnboarding';
 import { LoadingState } from './components/ui/LoadingState';
-import { useBarcodeSearch } from './hooks/useBarcodeSearch';
-import { Product, StockInResult } from './types';
+import { useSaleRegister } from './hooks/useSaleRegister';
 import { searchProductByBarcode } from './services/productService';
-import { recordSale } from './services/salesService';
+import { onDataChanged } from './lib/events';
+import type { Product, ScanMode } from './types';
+
+// html5-qrcode is large and only needed once the camera opens.
+const BarcodeScannerModal = lazy(() =>
+  import('./components/scanner/BarcodeScannerModal').then((m) => ({ default: m.BarcodeScannerModal }))
+);
+
+export type AppTab = 'dashboard' | 'stock' | 'sales' | 'alerts';
+
+interface RegisterRequest {
+  barcode: string;
+  mode: ScanMode;
+}
 
 export function AppContent() {
-  const [currentTab, setCurrentTab] = useState<string>('dashboard');
-  const [isSetupOpen, setIsSetupOpen] = useState<boolean>(false);
-  const [stockRefreshCounter, setStockRefreshCounter] = useState<number>(0);
+  const shopId = useShopId();
+  const { t } = useLanguage();
+  const [currentTab, setCurrentTab] = useState<AppTab>('dashboard');
+  const [isSetupOpen, setIsSetupOpen] = useState(false);
+  const [refreshCounter, setRefreshCounter] = useState(0);
 
-  // Scanner & Product Search Hook
-  const {
-    isScannerOpen,
-    isSearching,
-    foundProduct,
-    unregisteredBarcode,
-    openScanner,
-    closeScanner,
-    handleBarcodeScanned,
-    handleProductRegistered,
-    closeProductFound,
-    closeProductRegister,
-  } = useBarcodeSearch();
-
-  // Stock-In Target Product
+  const [scanMode, setScanMode] = useState<ScanMode | null>(null);
+  const [hasOpenedScanner, setHasOpenedScanner] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+  const [foundProduct, setFoundProduct] = useState<Product | null>(null);
+  const [registerRequest, setRegisterRequest] = useState<RegisterRequest | null>(null);
   const [stockInProduct, setStockInProduct] = useState<Product | null>(null);
-
-  // Detailed Batch Inspection Target Product
   const [inspectedProduct, setInspectedProduct] = useState<Product | null>(null);
 
-  // Explicit registration barcode state from Sales View
-  const [manualRegisterBarcode, setManualRegisterBarcode] = useState<string | null>(null);
+  useEffect(() => onDataChanged(() => setRefreshCounter((n) => n + 1)), []);
 
-  // When a barcode is scanned by the camera modal:
-  const onCameraBarcodeScanned = async (barcode: string) => {
-    closeScanner();
+  const handleUnknownSaleBarcode = useCallback(
+    (barcode: string) => setRegisterRequest({ barcode, mode: 'sell' }),
+    []
+  );
+  const saleRegister = useSaleRegister(shopId, handleUnknownSaleBarcode);
 
-    if (currentTab === 'sales') {
-      // In Sales Mode: Rapid Scan-to-Sell
-      const product = await searchProductByBarcode(barcode);
-      if (!product) {
-        setManualRegisterBarcode(barcode);
-      } else {
-        const idKey = `rapid_scan_${product.id}_${Date.now()}`;
-        const saleRes = await recordSale({
-          productId: product.id,
-          quantity: 1,
-          idempotencyKey: idKey,
-        });
+  const openScanner = useCallback((mode: ScanMode) => {
+    setFoundProduct(null);
+    setHasOpenedScanner(true);
+    setScanMode(mode);
+  }, []);
 
-        if (saleRes.error) {
-          alert(saleRes.error);
-        } else {
-          setStockRefreshCounter((c) => c + 1);
-        }
-      }
-    } else {
-      // In Dashboard or Stock Mode: Product lookup
-      handleBarcodeScanned(barcode);
+  const handleBarcodeScanned = async (barcode: string) => {
+    const mode = scanMode ?? 'lookup';
+    setScanMode(null);
+
+    if (mode === 'sell') {
+      setCurrentTab('sales');
+      await saleRegister.sellBarcode(barcode);
+      return;
+    }
+
+    setIsSearching(true);
+    try {
+      const product = await searchProductByBarcode(barcode, shopId);
+      if (!product) setRegisterRequest({ barcode, mode });
+      else if (mode === 'stock_in') setStockInProduct(product);
+      else setFoundProduct(product);
+    } finally {
+      setIsSearching(false);
     }
   };
 
-  const onRegisterSuccess = (product: Product) => {
-    handleProductRegistered(product);
-    setManualRegisterBarcode(null);
-    setStockRefreshCounter((c) => c + 1);
-  };
-
-  const handleStockInCompleted = (result: StockInResult) => {
-    setStockRefreshCounter((c) => c + 1);
+  const handleProductRegistered = (product: Product) => {
+    const mode = registerRequest?.mode ?? 'lookup';
+    setRegisterRequest(null);
+    if (mode === 'stock_in') setStockInProduct(product);
+    else setFoundProduct(product);
   };
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col font-sans selection:bg-emerald-500 selection:text-white">
-      {/* Top Header */}
       <Header onOpenSetupGuide={() => setIsSetupOpen(true)} />
 
-      {/* Main View Area */}
       <main className="flex-1 w-full max-w-md sm:max-w-xl mx-auto px-4 py-5">
+        <SyncBanner />
         {currentTab === 'dashboard' && (
           <Dashboard
             onOpenSetupGuide={() => setIsSetupOpen(true)}
@@ -102,104 +108,92 @@ export function AppContent() {
         )}
         {currentTab === 'stock' && (
           <StockView
-            onOpenScanner={openScanner}
-            onOpenSetupGuide={() => setIsSetupOpen(true)}
-            onSelectProduct={(p) => setInspectedProduct(p)}
-            onQuickStockIn={(p) => setStockInProduct(p)}
-            refreshTrigger={stockRefreshCounter}
+            onOpenScanner={() => openScanner('stock_in')}
+            onSelectProduct={setInspectedProduct}
+            onQuickStockIn={setStockInProduct}
+            refreshTrigger={refreshCounter}
           />
         )}
         {currentTab === 'sales' && (
           <SalesView
-            onOpenScanner={openScanner}
-            onOpenRegisterProduct={(b) => setManualRegisterBarcode(b)}
-            refreshTrigger={stockRefreshCounter}
+            register={saleRegister}
+            onOpenScanner={() => openScanner('sell')}
+            refreshTrigger={refreshCounter}
           />
         )}
         {currentTab === 'alerts' && (
           <AlertsView
-            onOpenScanner={openScanner}
-            onSelectProduct={(p) => setInspectedProduct(p)}
-            onQuickStockIn={(p) => setStockInProduct(p)}
-            refreshTrigger={stockRefreshCounter}
+            onOpenScanner={() => openScanner('lookup')}
+            onSelectProduct={setInspectedProduct}
+            onQuickStockIn={setStockInProduct}
+            refreshTrigger={refreshCounter}
           />
         )}
       </main>
 
-      {/* Mobile-first bottom navigation bar */}
       <BottomNav currentTab={currentTab} onSelectTab={setCurrentTab} />
-
-      {/* Network offline toast notification */}
       <OfflineIndicator />
-
-      {/* Supabase Connection Guide Dialog */}
       <SetupGuideDialog isOpen={isSetupOpen} onClose={() => setIsSetupOpen(false)} />
 
-      {/* Camera Barcode Scanner Modal */}
-      <BarcodeScannerModal
-        isOpen={isScannerOpen}
-        onClose={closeScanner}
-        onBarcodeScanned={onCameraBarcodeScanned}
-      />
+      {hasOpenedScanner && (
+        <Suspense fallback={null}>
+          <BarcodeScannerModal
+            isOpen={scanMode !== null}
+            title={scanMode === 'sell' ? t('sales.scanToSell') : undefined}
+            onClose={() => setScanMode(null)}
+            onBarcodeScanned={handleBarcodeScanned}
+          />
+        </Suspense>
+      )}
 
-      {/* Product Found Dialog (from scanning in lookup mode) */}
       <ProductFoundDialog
         isOpen={foundProduct !== null}
         product={foundProduct}
-        onClose={closeProductFound}
-        onScanAnother={() => {
-          closeProductFound();
-          openScanner();
-        }}
-        onQuickAction={(action, prod) => {
-          closeProductFound();
+        onClose={() => setFoundProduct(null)}
+        onScanAnother={() => openScanner('lookup')}
+        onQuickAction={(action, product) => {
+          setFoundProduct(null);
           if (action === 'add_stock') {
-            setStockInProduct(prod);
-          } else if (action === 'quick_sale') {
+            setStockInProduct(product);
+          } else {
             setCurrentTab('sales');
+            void saleRegister.sellProduct(product, 1);
           }
         }}
       />
 
-      {/* Product Registration Dialog (when barcode not found in active shop) */}
       <ProductRegisterDialog
-        isOpen={unregisteredBarcode !== null || manualRegisterBarcode !== null}
-        initialBarcode={unregisteredBarcode || manualRegisterBarcode || ''}
-        onClose={() => {
-          closeProductRegister();
-          setManualRegisterBarcode(null);
-        }}
-        onProductRegistered={onRegisterSuccess}
+        isOpen={registerRequest !== null}
+        initialBarcode={registerRequest?.barcode ?? ''}
+        onClose={() => setRegisterRequest(null)}
+        onProductRegistered={handleProductRegistered}
       />
 
-      {/* Quick Stock-In Modal */}
       <QuickStockInModal
         isOpen={stockInProduct !== null}
         product={stockInProduct}
         onClose={() => setStockInProduct(null)}
-        onStockInSuccess={handleStockInCompleted}
         onStockInAnother={() => {
           setStockInProduct(null);
-          openScanner();
+          openScanner('stock_in');
         }}
       />
 
-      {/* Product Stock & Batches Inspection Dialog */}
       <ProductStockDetailDialog
         isOpen={inspectedProduct !== null}
         product={inspectedProduct}
+        refreshTrigger={refreshCounter}
         onClose={() => setInspectedProduct(null)}
-        onOpenStockIn={(prod) => {
+        onOpenStockIn={(product) => {
           setInspectedProduct(null);
-          setStockInProduct(prod);
+          setStockInProduct(product);
         }}
       />
 
-      {/* Global Searching Overlay */}
       {isSearching && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
           <div className="p-6 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-xl flex flex-col items-center">
-            <LoadingState message="Searching shop catalog..." />
+            <LoadingState message={t('scanner.searching')} />
           </div>
         </div>
       )}
@@ -207,10 +201,43 @@ export function AppContent() {
   );
 }
 
+function FullScreenLoading() {
+  const { t } = useLanguage();
+  return (
+    <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+      <LoadingState message={t('common.loading')} />
+    </div>
+  );
+}
+
+function ShopGate() {
+  const { shop, isLoading } = useShop();
+  if (isLoading) return <FullScreenLoading />;
+  if (!shop) return <ShopOnboarding />;
+  return (
+    <SyncProvider>
+      <AppContent />
+    </SyncProvider>
+  );
+}
+
+function AuthGate() {
+  const { mode, isLoading, user } = useAuth();
+  if (isLoading) return <FullScreenLoading />;
+  if (mode === 'cloud' && !user) return <SignInScreen />;
+  return (
+    <ShopProvider>
+      <ShopGate />
+    </ShopProvider>
+  );
+}
+
 export default function App() {
   return (
     <LanguageProvider>
-      <AppContent />
+      <AuthProvider>
+        <AuthGate />
+      </AuthProvider>
     </LanguageProvider>
   );
 }

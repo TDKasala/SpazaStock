@@ -26,6 +26,16 @@ export interface BarcodeScannerModalProps {
 type ScannerViewMode = 'camera' | 'manual';
 type CameraErrorType = 'permission_denied' | 'not_supported' | 'device_not_found' | 'general' | null;
 
+/** A camera re-reading the same code right after reopening must not record a second action. */
+const DUPLICATE_SCAN_WINDOW_MS = 1500;
+
+const SAMPLE_BARCODES = [
+  { code: '6001007300123', label: 'Albany White Bread' },
+  { code: '5449000000996', label: 'Coca-Cola 330ml Can' },
+  { code: '6001087361250', label: 'Simba Chips Smoked Beef' },
+  { code: '6001062000549', label: 'Sunlight Dishwashing 750ml' },
+];
+
 export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   isOpen,
   onClose,
@@ -44,6 +54,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const readerElementId = 'spazastock-barcode-reader';
   const hasDetectedRef = useRef(false);
+  const lastCameraScanRef = useRef<{ code: string; at: number } | null>(null);
 
   // Stop camera helper
   const stopCamera = async () => {
@@ -106,7 +117,12 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
 
       const qrCodeSuccessCallback = (decodedText: string) => {
         if (hasDetectedRef.current) return;
+        const code = decodedText.trim();
+        const now = Date.now();
+        const last = lastCameraScanRef.current;
+        if (last && last.code === code && now - last.at < DUPLICATE_SCAN_WINDOW_MS) return;
         hasDetectedRef.current = true;
+        lastCameraScanRef.current = { code, at: now };
 
         // Provide tactile feedback on Android mobile
         if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
@@ -117,8 +133,8 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
           }
         }
 
-        stopCamera().then(() => {
-          onBarcodeScanned(decodedText.trim());
+        void stopCamera().then(() => {
+          onBarcodeScanned(code);
         });
       };
 
@@ -203,15 +219,14 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
       setManualError(t('scanner.invalidBarcode'));
       return;
     }
-    stopCamera().then(() => {
+    setManualInput('');
+    void stopCamera().then(() => {
       onBarcodeScanned(clean);
     });
   };
 
-  // Sample barcodes for quick testing on devices without actual physical barcode boxes
   const handleSampleBarcode = (sampleCode: string) => {
-    setManualInput(sampleCode);
-    stopCamera().then(() => {
+    void stopCamera().then(() => {
       onBarcodeScanned(sampleCode);
     });
   };
@@ -244,7 +259,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
               onClose();
             }}
             className="p-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded-lg transition-colors"
-            aria-label="Close scanner"
+            aria-label={t('common.close')}
           >
             <X className="w-5 h-5" />
           </button>
@@ -365,14 +380,14 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                 {isCameraStarting && (
                   <div className="absolute inset-0 bg-zinc-950/80 flex flex-col items-center justify-center gap-2 text-zinc-300 text-xs">
                     <span className="w-6 h-6 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
-                    <span>Connecting camera...</span>
+                    <span>{t('scanner.connecting')}</span>
                   </div>
                 )}
               </div>
 
               {/* Bottom Switch to Manual shortcut */}
               <div className="flex items-center justify-between text-xs text-zinc-400 px-1">
-                <span>Trouble scanning?</span>
+                <span>{t('scanner.trouble')}</span>
                 <button
                   onClick={() => setViewMode('manual')}
                   className="text-emerald-400 font-semibold hover:underline inline-flex items-center gap-1"
@@ -411,47 +426,27 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                 </Button>
               </form>
 
-              {/* Quick Testing Barcodes (Very handy for desktop/mobile testing without a store barcode on hand) */}
-              <div className="bg-zinc-900/60 p-3.5 rounded-2xl border border-zinc-800/80 space-y-2.5">
-                <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-300">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Test Sample Barcodes:</span>
+              {import.meta.env.DEV && (
+                <div className="bg-zinc-900/60 p-3.5 rounded-2xl border border-zinc-800/80 space-y-2.5">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-300">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                    <span>{t('scanner.sampleBarcodes')}</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    {SAMPLE_BARCODES.map((sample) => (
+                      <button
+                        key={sample.code}
+                        type="button"
+                        onClick={() => handleSampleBarcode(sample.code)}
+                        className="p-2 text-left bg-zinc-800/60 hover:bg-zinc-800 rounded-xl border border-zinc-700/50 text-zinc-200 transition-colors"
+                      >
+                        <span className="font-semibold block text-emerald-400">{sample.code}</span>
+                        <span className="text-[11px] text-zinc-400">{sample.label}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => handleSampleBarcode('6001007300123')}
-                    className="p-2 text-left bg-zinc-800/60 hover:bg-zinc-800 rounded-xl border border-zinc-700/50 text-zinc-200 transition-colors"
-                  >
-                    <span className="font-semibold block text-emerald-400">6001007300123</span>
-                    <span className="text-[11px] text-zinc-400">Albany White Bread</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSampleBarcode('5449000000996')}
-                    className="p-2 text-left bg-zinc-800/60 hover:bg-zinc-800 rounded-xl border border-zinc-700/50 text-zinc-200 transition-colors"
-                  >
-                    <span className="font-semibold block text-emerald-400">5449000000996</span>
-                    <span className="text-[11px] text-zinc-400">Coca-Cola 330ml Can</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSampleBarcode('6001087361250')}
-                    className="p-2 text-left bg-zinc-800/60 hover:bg-zinc-800 rounded-xl border border-zinc-700/50 text-zinc-200 transition-colors"
-                  >
-                    <span className="font-semibold block text-emerald-400">6001087361250</span>
-                    <span className="text-[11px] text-zinc-400">Simba Chips Smoked Beef</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSampleBarcode('6001062000549')}
-                    className="p-2 text-left bg-zinc-800/60 hover:bg-zinc-800 rounded-xl border border-zinc-700/50 text-zinc-200 transition-colors"
-                  >
-                    <span className="font-semibold block text-emerald-400">6001062000549</span>
-                    <span className="text-[11px] text-zinc-400">Sunlight Dishwashing 750ml</span>
-                  </button>
-                </div>
-              </div>
+              )}
             </div>
           )}
         </div>

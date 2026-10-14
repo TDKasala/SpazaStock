@@ -1,6 +1,6 @@
 import React from 'react';
 import { PackageCheck, Barcode, Tag, ArrowUpRight, Plus, ShoppingCart, RefreshCw } from 'lucide-react';
-import { Product } from '../../types';
+import type { Product } from '../../types';
 import { useLanguage } from '../../context/LanguageContext';
 import { Dialog } from '../ui/Dialog';
 import { Button } from '../ui/Button';
@@ -116,7 +116,7 @@ export const ProductFoundDialog: React.FC<ProductFoundDialogProps> = ({
               size="sm"
               leftIcon={<Plus className="w-4 h-4 text-emerald-400" />}
             >
-              Add Stock Batch
+              {t('product.addStockBatch')}
             </Button>
             <Button
               onClick={() => onQuickAction('quick_sale', product)}
@@ -124,7 +124,7 @@ export const ProductFoundDialog: React.FC<ProductFoundDialogProps> = ({
               size="sm"
               leftIcon={<ShoppingCart className="w-4 h-4 text-emerald-400" />}
             >
-              Quick Sale
+              {t('product.sellOne')}
             </Button>
           </div>
         )}

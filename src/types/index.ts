@@ -2,6 +2,8 @@ export type Locale = 'en' | 'zu';
 
 export type StockActionType = 'add_stock' | 'quick_sale' | 'expiry_alerts' | 'view_stock';
 
+export type ScanMode = 'lookup' | 'sell' | 'stock_in';
+
 export interface EnvValidationResult {
   isValid: boolean;
   supabaseUrl?: string;
@@ -9,8 +11,6 @@ export interface EnvValidationResult {
   appName: string;
   errors: string[];
 }
-
-export type ConnectionStatus = 'connected' | 'unconfigured' | 'offline';
 
 export type ProductCategory =
   | 'groceries'
@@ -22,6 +22,11 @@ export type ProductCategory =
   | 'household'
   | 'airtime'
   | 'other';
+
+export interface Shop {
+  id: string;
+  name: string;
+}
 
 export interface Product {
   id: string;
@@ -48,7 +53,8 @@ export interface StockBatch {
   shopId: string;
   productId: string;
   quantity: number;
-  expiryDate: string | null; // Format YYYY-MM-DD or null
+  initialQuantity: number;
+  expiryDate: string | null; // YYYY-MM-DD or null
   costPricePerUnit?: number | null;
   receivedAt: string;
 }
@@ -59,7 +65,8 @@ export interface StockMovement {
   id: string;
   shopId: string;
   productId: string;
-  batchId: string;
+  batchId: string | null;
+  saleId?: string | null;
   type: StockMovementType;
   quantityDelta: number;
   resultingTotalQuantity: number;
@@ -105,8 +112,7 @@ export interface Sale {
   unitPrice: number;
   totalAmount: number;
   allocations: BatchAllocation[];
-  idempotencyKey?: string;
-  isOfflineQueued?: boolean;
+  idempotencyKey: string;
   createdAt: string;
 }
 
@@ -126,12 +132,12 @@ export interface SaleResult {
   isQueuedOffline: boolean;
 }
 
-export interface OfflineQueueItem {
+export interface StockDiscrepancy {
   id: string;
-  type: 'sale';
-  payload: SaleInput;
   shopId: string;
+  productId: string;
+  saleId: string | null;
+  shortfall: number;
+  resolvedAt: string | null;
   createdAt: string;
-  status: 'pending' | 'syncing' | 'synced' | 'failed';
-  error?: string;
 }

@@ -1,16 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import {
-  Package,
-  Barcode,
-  Calendar,
-  Layers,
-  Plus,
-  Clock,
-  AlertTriangle,
-  CheckCircle,
-} from 'lucide-react';
-import { Product, StockBatch } from '../../types';
+import { Barcode, Calendar, Layers, Plus } from 'lucide-react';
+import type { Product, StockBatch } from '../../types';
 import { useLanguage } from '../../context/LanguageContext';
+import { useShopId } from '../../context/ShopContext';
 import { Dialog } from '../ui/Dialog';
 import { Button } from '../ui/Button';
 import { getProductBatches, getDaysUntilExpiry } from '../../services/stockService';
@@ -18,6 +10,7 @@ import { getProductBatches, getDaysUntilExpiry } from '../../services/stockServi
 export interface ProductStockDetailDialogProps {
   isOpen: boolean;
   product: Product | null;
+  refreshTrigger?: number;
   onClose: () => void;
   onOpenStockIn: (product: Product) => void;
 }
@@ -25,22 +18,27 @@ export interface ProductStockDetailDialogProps {
 export const ProductStockDetailDialog: React.FC<ProductStockDetailDialogProps> = ({
   isOpen,
   product,
+  refreshTrigger,
   onClose,
   onOpenStockIn,
 }) => {
   const { t, dict } = useLanguage();
+  const shopId = useShopId();
   const [batches, setBatches] = useState<StockBatch[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (isOpen && product) {
-      setIsLoading(true);
-      getProductBatches(product.id).then((items) => {
-        setBatches(items);
-        setIsLoading(false);
-      });
-    }
-  }, [isOpen, product]);
+    if (!isOpen || !product) return;
+    let cancelled = false;
+    void getProductBatches(product.id, shopId).then((items) => {
+      if (cancelled) return;
+      setBatches(items);
+      setIsLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, product, shopId, refreshTrigger]);
 
   if (!isOpen || !product) return null;
 
@@ -52,7 +50,7 @@ export const ProductStockDetailDialog: React.FC<ProductStockDetailDialogProps> =
       isOpen={isOpen}
       onClose={onClose}
       title={product.name}
-      description={`Catalog item details and batch history`}
+      description={t('stockDetail.description')}
       footer={
         <div className="flex w-full gap-2">
           <Button
@@ -107,7 +105,7 @@ export const ProductStockDetailDialog: React.FC<ProductStockDetailDialogProps> =
           <div className="flex items-center justify-between px-1">
             <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-300 flex items-center gap-1.5">
               <Layers className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Delivery Batches ({batches.length})</span>
+              <span>{t('stockDetail.batchesHeading', { count: batches.length })}</span>
             </h4>
           </div>
 
@@ -128,14 +126,14 @@ export const ProductStockDetailDialog: React.FC<ProductStockDetailDialogProps> =
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="font-bold text-zinc-100">
-                          Batch #{batches.length - idx}
+                          {t('stockDetail.batchNumber', { number: batches.length - idx })}
                         </span>
                         <span className="text-emerald-400 font-semibold">
-                          +{batch.quantity} {t('stockIn.units')}
+                          {batch.quantity} / {batch.initialQuantity} {t('stockIn.units')}
                         </span>
                       </div>
                       <span className="text-[10px] text-zinc-400 block mt-0.5">
-                        Received: {new Date(batch.receivedAt).toLocaleDateString()}
+                        {t('stockDetail.received', { date: new Date(batch.receivedAt).toLocaleDateString() })}
                       </span>
                     </div>
 
@@ -154,12 +152,16 @@ export const ProductStockDetailDialog: React.FC<ProductStockDetailDialogProps> =
                           <span>{batch.expiryDate}</span>
                           {daysRemaining !== null && (
                             <span className="opacity-80">
-                              ({isExpired ? `${Math.abs(daysRemaining)}d ago` : `${daysRemaining}d`})
+                              (
+                              {isExpired
+                                ? t('stockDetail.daysAgoShort', { count: Math.abs(daysRemaining) })
+                                : t('stockDetail.daysShort', { count: daysRemaining })}
+                              )
                             </span>
                           )}
                         </div>
                       ) : (
-                        <span className="text-[10px] text-zinc-500">No Expiry Date</span>
+                        <span className="text-[10px] text-zinc-500">{t('stockDetail.noExpiry')}</span>
                       )}
                     </div>
                   </div>
@@ -168,7 +170,7 @@ export const ProductStockDetailDialog: React.FC<ProductStockDetailDialogProps> =
             </div>
           ) : (
             <div className="p-4 bg-zinc-900/40 rounded-xl border border-dashed border-zinc-800 text-center text-xs text-zinc-400">
-              No stock batches recorded yet. Tap "Stock-In Delivery" to receive inventory.
+              {t('stockDetail.empty')}
             </div>
           )}
         </div>
