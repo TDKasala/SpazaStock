@@ -31,6 +31,7 @@ import { onDataChanged } from './lib/events';
 import { refreshPushSubscription } from './lib/push';
 import { captureInviteFromUrl } from './lib/invite';
 import { can } from './lib/permissions';
+import { clearFreshSignIn, hasFreshSignIn, postSignInDestination } from './lib/platformAdmin';
 import type { Product, ScanMode } from './types';
 
 // The scanner (and its WASM decoder fallback) is only needed once the camera opens.
@@ -286,11 +287,29 @@ function ShopGate() {
   );
 }
 
+/** Right after signing in, platform admins go to the console; everyone else continues to their shop. */
+function PostSignInCheck({ onStay }: { onStay: () => void }) {
+  useEffect(() => {
+    let cancelled = false;
+    void postSignInDestination().then((destination) => {
+      if (cancelled) return;
+      if (destination) window.location.replace(destination);
+      else onStay();
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [onStay]);
+  return <FullScreenLoading />;
+}
+
 function AuthGate() {
   const { mode, isLoading, user, isRecoveringPassword } = useAuth();
   const [inviteToken, setInviteToken] = useState<string | null>(() =>
     mode === 'cloud' ? captureInviteFromUrl() : null
   );
+  const [, setSignInChecked] = useState(0);
+  const handleStay = useCallback(() => setSignInChecked((n) => n + 1), []);
   if (mode === 'device') return <LandingPage notConfigured />;
   if (isLoading) return <FullScreenLoading />;
   if (user && isRecoveringPassword) return <NewPasswordScreen />;
@@ -298,6 +317,7 @@ function AuthGate() {
     return <InviteAcceptScreen token={inviteToken} onDone={() => setInviteToken(null)} />;
   }
   if (!user) return <LandingPage />;
+  if (hasFreshSignIn()) return <PostSignInCheck onStay={handleStay} />;
   return (
     <ShopProvider>
       <ShopGate />
@@ -308,6 +328,9 @@ function AuthGate() {
 /** Admins sign in like everyone else; the server decides what they may see. */
 function AdminGate() {
   const { mode, isLoading, user } = useAuth();
+  useEffect(() => {
+    if (user) clearFreshSignIn();
+  }, [user]);
   if (mode === 'device') return <LandingPage notConfigured />;
   if (isLoading) return <FullScreenLoading />;
   if (!user) return <LandingPage />;

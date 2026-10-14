@@ -81,7 +81,7 @@ Push notifications need permission. On Android and desktop, tap *Turn on alerts*
 
 ## Platform administration
 
-SpazaStock staff manage the platform at **`/admin`**, in English or isiZulu. Signed-in users with a platform role see a *Platform admin* link in the shop menu; everyone else gets "Not authorised" at that address. The console is a separate, lazily loaded part of the app: it is not cached for offline use, is marked `noindex`, and is never served from cache (`vercel.json`). It needs a connection, because every screen reads live data.
+SpazaStock staff manage the platform at **`/admin`**, in English or isiZulu. Signing in takes a user with a platform role straight to the console (this happens once per sign-in, so *Back to shop* still works, and offline they stay in the shop app). From the shop app they reach it through the *Platform admin* link in the shop menu. Everyone else gets "Not authorised" at that address. The console is a separate, lazily loaded part of the app: it is not cached for offline use, is marked `noindex`, and is never served from cache (`vercel.json`). It needs a connection, because every screen reads live data.
 
 **Platform roles are separate from shop roles.** A platform administrator gets no access to any shop's stock, sales or team through the shop app, and there is no way to sign in as another user. Admin screens read through `admin_*` database functions only. Each function checks the caller's platform role on every call, so hiding a button is never the only protection.
 

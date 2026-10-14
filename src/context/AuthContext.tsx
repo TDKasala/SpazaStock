@@ -3,6 +3,7 @@ import { isAuthRetryableFetchError } from '@supabase/supabase-js';
 import { getSupabase } from '../lib/supabase';
 import { authErrorKey } from '../lib/authErrors';
 import { normalizeDisplayName, normalizeEmail } from '../lib/authValidation';
+import { clearFreshSignIn, markFreshSignIn } from '../lib/platformAdmin';
 
 /** 'device' = Supabase not configured, data stays on this device; 'cloud' = signed-in sync. */
 export type AuthMode = 'device' | 'cloud';
@@ -155,11 +156,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const verifyCode = useCallback(
     async (email: string, code: string): Promise<AuthResult> => {
       if (!supabase) return { error: NOT_CONFIGURED };
+      // Set first: the session arrives before verifyOtp resolves.
+      markFreshSignIn();
       const { error } = await supabase.auth.verifyOtp({
         email: normalizeEmail(email),
         token: code.trim(),
         type: 'email',
       });
+      if (error) clearFreshSignIn();
       return error ? { error: authErrorKey(error) } : {};
     },
     [supabase]
@@ -200,8 +204,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signInWithPassword = useCallback(
     async (email: string, password: string): Promise<SignUpResult> => {
       if (!supabase) return { error: NOT_CONFIGURED };
+      markFreshSignIn();
       const { error } = await supabase.auth.signInWithPassword({ email: normalizeEmail(email), password });
       if (!error) return {};
+      clearFreshSignIn();
       const key = authErrorKey(error);
       if (key === 'auth.errors.emailNotConfirmed') {
         await supabase.auth.resend({ type: 'signup', email: normalizeEmail(email) });
@@ -257,6 +263,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signOut = useCallback(async () => {
     if (!supabase) return;
     await supabase.auth.signOut({ scope: 'local' });
+    clearFreshSignIn();
     writeCachedUser(null);
     setUser(null);
     setIsOfflineSession(false);
