@@ -1,20 +1,17 @@
 import React from 'react';
-import { PackagePlus, ScanLine, CalendarClock, PackageSearch, Smartphone, ScanBarcode } from 'lucide-react';
+import { PackagePlus, ScanLine, CalendarClock, PackageSearch, ScanBarcode } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
-import { useAuth } from '../../context/AuthContext';
 import { ActionTile } from '../ui/ActionTile';
 import type { ScanMode, StockActionType } from '../../types';
 import type { AppTab } from '../../App';
 
 export interface DashboardProps {
-  onOpenSetupGuide: () => void;
   onOpenScanner: (mode: ScanMode) => void;
   onNavigateTab: (tab: AppTab) => void;
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({ onOpenSetupGuide, onOpenScanner, onNavigateTab }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ onOpenScanner, onNavigateTab }) => {
   const { t, dict } = useLanguage();
-  const { mode } = useAuth();
 
   const handleActionClick = (action: StockActionType) => {
     switch (action) {
@@ -36,24 +33,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onOpenSetupGuide, onOpenSc
 
   return (
     <div className="space-y-6 pb-24">
-      {mode === 'device' && (
-        <div className="bg-gradient-to-r from-zinc-900 to-zinc-950 border border-zinc-800 rounded-2xl p-4 flex items-start gap-3.5 shadow-md">
-          <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0">
-            <Smartphone className="w-5 h-5" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="text-sm font-semibold text-zinc-100">{t('setup.bannerTitle')}</h3>
-            <p className="text-xs text-zinc-400 mt-1 leading-relaxed">{t('setup.bannerMessage')}</p>
-            <button
-              onClick={onOpenSetupGuide}
-              className="mt-2.5 inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-400 hover:text-emerald-300 hover:underline"
-            >
-              {t('setup.configureButton')} &rarr;
-            </button>
-          </div>
-        </div>
-      )}
-
       <section>
         <div className="flex items-center justify-between mb-3 px-1">
           <div>

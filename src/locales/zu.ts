@@ -40,7 +40,6 @@ export const zu: Translations = {
     offlineNoShop: 'Xhuma ku-inthanethi kanye ukuze silayishe isitolo sakho.',
   },
   sync: {
-    deviceOnly: 'Kule foni kuphela',
     synced: 'Kuxhunyanisiwe',
     syncing: 'Iyaxhumanisa...',
     syncNow: 'Xhumanisa manje',
@@ -265,28 +264,6 @@ export const zu: Translations = {
     stock: 'Impahla',
     sales: 'Ukudayisa',
     alerts: 'Izexwayiso',
-  },
-  setup: {
-    bannerTitle: 'Kugcinwa kule foni kuphela',
-    bannerMessage:
-      'Ukuxhumanisa nefu akukasethwa, ngakho impahla yakho igcinwa kule divayisi kuphela. Cela umuntu owasetha i-SpazaStock ukuthi ayixhumanise ne-Supabase.',
-    configureButton: 'Bheka Isiqondiso',
-    guideTitle: 'Ukusetha Ukuxhumanisa Nefu',
-    guideDescription:
-      'I-SpazaStock ihlala igcina efonini kuqala, bese ixhumanisa nephrojekthi yakho ye-Supabase uma i-inthanethi ikhona.',
-    statusConfigured: 'Ukuxhumanisa nefu kusethiwe',
-    statusConfiguredDetail: 'Ukungena nokuxhumanisa kuvuliwe.',
-    statusDeviceOnly: 'Imodi yale divayisi kuphela',
-    statusDeviceOnlyDetail: 'Idatha igcinwa kule foni kuphela futhi ayikopishwa kwenye indawo.',
-    diagnostics: 'Izinkinga zokusetha:',
-    stepsHeading: 'Izinyathelo zokusetha (zomuntu ofaka i-SpazaStock)',
-    guideSteps: [
-      'Dala iphrojekthi ye-Supabase ku-supabase.com.',
-      'Faka ama-SQL migrations akwi-supabase/migrations (supabase db push).',
-      'Ku-Authentication > Email Templates, yenza i-Magic Link template ibonise {{ .Token }} ukuze abasebenzisi bathole ikhodi yezinombolo eziyi-6.',
-      'Kopisha i-Project URL ne-anon public key kusuka ku-Project Settings > API uyifake ku-.env.local njenge-VITE_SUPABASE_URL ne-VITE_SUPABASE_ANON_KEY.',
-      'Akha kabusha bese uphinda ufaka uhlelo.',
-    ],
   },
   pwa: {
     iosTitle: 'Faka ku-iPhone / iPad',

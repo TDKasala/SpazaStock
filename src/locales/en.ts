@@ -38,7 +38,6 @@ export const en = {
     offlineNoShop: 'Connect to the internet once so we can load your shop.',
   },
   sync: {
-    deviceOnly: 'This device only',
     synced: 'Synced',
     syncing: 'Syncing...',
     syncNow: 'Sync now',
@@ -259,27 +258,6 @@ export const en = {
     stock: 'Stock',
     sales: 'Sales',
     alerts: 'Alerts',
-  },
-  setup: {
-    bannerTitle: 'Saving on this phone only',
-    bannerMessage:
-      'Cloud sync is not configured, so your stock is stored on this device only. Ask whoever set up SpazaStock to connect it to Supabase.',
-    configureButton: 'View Setup Guide',
-    guideTitle: 'Cloud Sync Setup',
-    guideDescription: 'SpazaStock always saves on the phone first, then syncs to your Supabase project when online.',
-    statusConfigured: 'Cloud sync is configured',
-    statusConfiguredDetail: 'Sign-in and syncing are enabled.',
-    statusDeviceOnly: 'Device-only mode',
-    statusDeviceOnlyDetail: 'Data is saved on this phone only and is not backed up.',
-    diagnostics: 'Configuration problems:',
-    stepsHeading: 'Setup steps (for the person installing SpazaStock)',
-    guideSteps: [
-      'Create a Supabase project at supabase.com.',
-      'Apply the SQL migrations in supabase/migrations (supabase db push).',
-      'In Authentication > Email Templates, make the Magic Link template show {{ .Token }} so users get a 6-digit code.',
-      'Copy the Project URL and anon public key from Project Settings > API into .env.local as VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.',
-      'Rebuild and redeploy the app.',
-    ],
   },
   pwa: {
     iosTitle: 'Install on iPhone / iPad',

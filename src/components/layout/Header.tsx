@@ -1,16 +1,12 @@
 import React from 'react';
-import { Package, Globe, Smartphone, Cloud, CloudOff, RefreshCw, AlertTriangle, LogOut } from 'lucide-react';
+import { Package, Globe, Cloud, CloudOff, RefreshCw, AlertTriangle, LogOut } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
 import { useShop } from '../../context/ShopContext';
 import { useSyncStatus } from '../../hooks/useSyncStatus';
 import { PWAInstallButton } from '../pwa/PWAInstallButton';
 
-export interface HeaderProps {
-  onOpenSetupGuide: () => void;
-}
-
-export const Header: React.FC<HeaderProps> = ({ onOpenSetupGuide }) => {
+export const Header: React.FC = () => {
   const { locale, setLocale, t } = useLanguage();
   const { mode, signOut } = useAuth();
   const { shop } = useShop();
@@ -24,14 +20,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSetupGuide }) => {
   };
 
   let pill: { icon: React.ReactNode; label: string; className: string; onClick: () => void };
-  if (mode === 'device') {
-    pill = {
-      icon: <Smartphone className="w-3.5 h-3.5" />,
-      label: t('sync.deviceOnly'),
-      className: 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-amber-400',
-      onClick: onOpenSetupGuide,
-    };
-  } else if (status.failed > 0) {
+  if (status.failed > 0) {
     pill = {
       icon: <AlertTriangle className="w-3.5 h-3.5" />,
       label: t('sync.failedShort', { count: status.failed }),
@@ -79,14 +68,16 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSetupGuide }) => {
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          <button
-            onClick={pill.onClick}
-            title={status.lastError ?? pill.label}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${pill.className}`}
-          >
-            {pill.icon}
-            <span className="hidden sm:inline">{pill.label}</span>
-          </button>
+          {mode === 'cloud' && (
+            <button
+              onClick={pill.onClick}
+              title={status.lastError ?? pill.label}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${pill.className}`}
+            >
+              {pill.icon}
+              <span className="hidden sm:inline">{pill.label}</span>
+            </button>
+          )}
 
           <button
             onClick={() => setLocale(locale === 'en' ? 'zu' : 'en')}

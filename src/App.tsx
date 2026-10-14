@@ -9,7 +9,6 @@ import { Dashboard } from './components/dashboard/Dashboard';
 import { StockView } from './components/views/StockView';
 import { SalesView } from './components/views/SalesView';
 import { AlertsView } from './components/views/AlertsView';
-import { SetupGuideDialog } from './components/setup/SetupGuideDialog';
 import { OfflineIndicator } from './components/pwa/OfflineIndicator';
 import { SyncBanner } from './components/sync/SyncBanner';
 import { ProductFoundDialog } from './components/scanner/ProductFoundDialog';
@@ -41,7 +40,6 @@ export function AppContent() {
   const shopId = useShopId();
   const { t } = useLanguage();
   const [currentTab, setCurrentTab] = useState<AppTab>('dashboard');
-  const [isSetupOpen, setIsSetupOpen] = useState(false);
   const [refreshCounter, setRefreshCounter] = useState(0);
 
   const [scanMode, setScanMode] = useState<ScanMode | null>(null);
@@ -103,17 +101,11 @@ export function AppContent() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col font-sans selection:bg-emerald-500 selection:text-white">
-      <Header onOpenSetupGuide={() => setIsSetupOpen(true)} />
+      <Header />
 
       <main className="flex-1 w-full max-w-md sm:max-w-xl mx-auto px-4 py-5">
         <SyncBanner />
-        {currentTab === 'dashboard' && (
-          <Dashboard
-            onOpenSetupGuide={() => setIsSetupOpen(true)}
-            onOpenScanner={openScanner}
-            onNavigateTab={setCurrentTab}
-          />
-        )}
+        {currentTab === 'dashboard' && <Dashboard onOpenScanner={openScanner} onNavigateTab={setCurrentTab} />}
         {currentTab === 'stock' && (
           <StockView
             onOpenScanner={() => openScanner('stock_in')}
@@ -141,7 +133,6 @@ export function AppContent() {
 
       <BottomNav currentTab={currentTab} onSelectTab={setCurrentTab} />
       <OfflineIndicator />
-      <SetupGuideDialog isOpen={isSetupOpen} onClose={() => setIsSetupOpen(false)} />
 
       {hasOpenedScanner && (
         <Suspense fallback={null}>
