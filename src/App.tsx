@@ -32,7 +32,7 @@ import { captureInviteFromUrl } from './lib/invite';
 import { can } from './lib/permissions';
 import type { Product, ScanMode } from './types';
 
-// html5-qrcode is large and only needed once the camera opens.
+// The scanner (and its WASM decoder fallback) is only needed once the camera opens.
 const BarcodeScannerModal = lazy(() =>
   import('./components/scanner/BarcodeScannerModal').then((m) => ({ default: m.BarcodeScannerModal }))
 );

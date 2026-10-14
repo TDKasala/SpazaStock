@@ -33,8 +33,11 @@ export default defineConfig(() => {
           ],
         },
         // Push and notification-click handlers for expiry alerts (public/push-handler.js).
+        // The barcode decoder's wasm (~1.1 MB) is precached so scanning works offline.
         workbox: {
           importScripts: ['push-handler.js'],
+          globPatterns: ['**/*.{js,css,html,wasm,svg,png,ico}'],
+          maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
         },
         devOptions: {
           enabled: true,

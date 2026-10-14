@@ -36,6 +36,14 @@ SpazaStock is a mobile-first Progressive Web App for spaza shop owners in South 
 
 Sales deduct stock **first-expired-first-out**, both on the device and on the server. The server's allocation is the one that is kept.
 
+### Barcode scanner
+
+The scanner uses the phone's own barcode detector where the browser has one (Chrome on Android uses Google's ML Kit). Other browsers, such as Safari and desktop Firefox, use ZXing compiled to WebAssembly. The ~1.1 MB decoder is served by the app and precached by the service worker, so scanning works offline.
+
+- **Fast.** It opens the rear camera at up to 1080p with continuous autofocus and decodes each new video frame, one at a time. Only the centre band inside the green frame is read.
+- **Accurate.** It reads EAN-13, EAN-8, UPC-A, UPC-E, Code 128 and ITF-14 (QR codes are ignored). EAN and UPC codes must pass their check digit, and a code is accepted only after two matching reads in a row (within half a second). Codes are trimmed, never changed.
+- **Feedback.** A beep and a vibration confirm each scan. Use the torch button in dark shops, or type the code under *Manual Entry*.
+
 ### Rapid scan-to-sell
 
 *Sales → Tap to Rapid Scan-to-Sell* opens the camera and keeps it open. Each scan sells one unit straight away and shows the stock left, the batch it came from and whether the sale is still waiting to sync.
@@ -232,6 +240,7 @@ Guarantees, checked by the database tests:
 
 - `productService`, `stockService`, `salesService`: local repositories, including idempotency across reloads, concurrent sales of the last units, and "today" just after local midnight.
 - `rapidSell`, `scanGate`: rapid scan-to-sell. Simultaneous scans of the last units (never oversold, ledger stays consistent), duplicate scans and repeated submissions, insufficient stock, per-batch movements, undo, offline queueing and pending status. Also covers the camera presence gate and the in-order scan queue.
+- `barcode`: check digits for EAN, UPC and ITF-14, Code 128 rules, the two-read confirmation, the scan band crop, camera error messages, and choosing the native detector or the WASM fallback (mocked).
 - `syncEngine`, `syncController`: push and pull against a fake Supabase client. Covers rejected and retryable errors, backoff, product ID remapping, and online/offline behaviour.
 - `db/tenantIsolation`, `db/stockConsistency`: apply the real migrations to [PGlite](https://pglite.dev) (Postgres in WebAssembly) with stand-ins for Supabase's roles and `auth` functions.
   - Tenant isolation: another shop's members and anonymous callers see nothing and can call nothing. Role limits for staff and managers are enforced, and the ledger tables reject direct writes. Invites can only be claimed by the invited email address, and the account owner can't be removed.
@@ -257,6 +266,8 @@ src/
   lib/dates.ts             local-time-zone date helpers
   lib/legacyMigration.ts   one-time import of localStorage data
   lib/scanGate.ts          ignores repeat camera reads of an item held in frame
+  lib/barcode/             decoder choice (native or WASM), code validation, two-read confirmation, crop, beep
+  hooks/useBarcodeCamera.ts rear camera, torch and the frame-by-frame decode loop
   lib/serialQueue.ts       runs scans one at a time, in order, without dropping any
   lib/expiry.ts            shop-local dates and reminder rules (mirrors the database)
   lib/push.ts              notification permission and Web Push subscription

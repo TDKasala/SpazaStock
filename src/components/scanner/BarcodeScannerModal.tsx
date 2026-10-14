@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import {
   Camera,
   Keyboard,
@@ -14,8 +13,10 @@ import {
 import { useLanguage } from '../../context/LanguageContext';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
-import { ErrorMessage } from '../ui/ErrorMessage';
 import { createScanGate } from '../../lib/scanGate';
+import { SCAN_BAND } from '../../lib/barcode/camera';
+import { playScanBeep, vibrateScan } from '../../lib/barcode/feedback';
+import { useBarcodeCamera } from '../../hooks/useBarcodeCamera';
 
 export interface BarcodeScannerModalProps {
   isOpen: boolean;
@@ -29,7 +30,6 @@ export interface BarcodeScannerModalProps {
 }
 
 type ScannerViewMode = 'camera' | 'manual';
-type CameraErrorType = 'permission_denied' | 'not_supported' | 'device_not_found' | 'general' | null;
 
 /** A camera re-reading the same code right after reopening must not record a second action. */
 const DUPLICATE_SCAN_WINDOW_MS = 1500;
@@ -51,16 +51,11 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
 }) => {
   const { t } = useLanguage();
   const [viewMode, setViewMode] = useState<ScannerViewMode>('camera');
-  const [cameraError, setCameraError] = useState<CameraErrorType>(null);
   const [manualInput, setManualInput] = useState('');
   const [manualError, setManualError] = useState('');
-  const [isTorchOn, setIsTorchOn] = useState(false);
-  const [hasTorch, setHasTorch] = useState(false);
-  const [isCameraStarting, setIsCameraStarting] = useState(false);
+  /** A single-scan session stops the camera as soon as it has its code. */
+  const [captured, setCaptured] = useState(false);
 
-  const scannerRef = useRef<Html5Qrcode | null>(null);
-  const readerElementId = 'spazastock-barcode-reader';
-  const hasDetectedRef = useRef(false);
   const lastCameraScanRef = useRef<{ code: string; at: number } | null>(null);
   const scanGateRef = useRef(createScanGate());
   // The camera callback outlives renders; always report to the latest handler and mode.
@@ -70,168 +65,37 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   continuousRef.current = continuous;
 
   useEffect(() => {
-    if (isOpen) scanGateRef.current.reset();
+    scanGateRef.current.reset();
+    setCaptured(false);
   }, [isOpen]);
 
-  // Stop camera helper
-  const stopCamera = async () => {
-    if (scannerRef.current) {
-      try {
-        if (scannerRef.current.isScanning) {
-          await scannerRef.current.stop();
-        }
-        await scannerRef.current.clear();
-      } catch (err) {
-        console.warn('Error stopping scanner:', err);
-      } finally {
-        scannerRef.current = null;
-      }
-    }
-    setIsTorchOn(false);
-    setHasTorch(false);
-  };
-
-  // Start camera scanner
-  const startCamera = async () => {
-    if (!isOpen) return;
-    setCameraError(null);
-    setIsCameraStarting(true);
-    hasDetectedRef.current = false;
-
-    // Check mediaDevices support
-    if (typeof navigator === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      setCameraError('not_supported');
-      setViewMode('manual');
-      setIsCameraStarting(false);
+  const handleCameraCode = (code: string) => {
+    if (continuousRef.current) {
+      if (!scanGateRef.current.accept(code)) return;
+      playScanBeep();
+      vibrateScan(50);
+      onScannedRef.current(code);
       return;
     }
-
-    try {
-      await stopCamera();
-
-      // Ensure element exists in DOM
-      const element = document.getElementById(readerElementId);
-      if (!element) {
-        setIsCameraStarting(false);
-        return;
-      }
-
-      const html5QrCode = new Html5Qrcode(readerElementId, {
-        formatsToSupport: [
-          Html5QrcodeSupportedFormats.EAN_13,
-          Html5QrcodeSupportedFormats.EAN_8,
-          Html5QrcodeSupportedFormats.UPC_A,
-          Html5QrcodeSupportedFormats.UPC_E,
-          Html5QrcodeSupportedFormats.CODE_128,
-          Html5QrcodeSupportedFormats.CODE_39,
-          Html5QrcodeSupportedFormats.QR_CODE,
-          Html5QrcodeSupportedFormats.ITF,
-        ],
-        verbose: false,
-      });
-
-      scannerRef.current = html5QrCode;
-
-      const qrCodeSuccessCallback = (decodedText: string) => {
-        if (continuousRef.current) {
-          const code = decodedText.trim();
-          if (scanGateRef.current.accept(code)) onScannedRef.current(code);
-          return;
-        }
-        if (hasDetectedRef.current) return;
-        const code = decodedText.trim();
-        const now = Date.now();
-        const last = lastCameraScanRef.current;
-        if (last && last.code === code && now - last.at < DUPLICATE_SCAN_WINDOW_MS) return;
-        hasDetectedRef.current = true;
-        lastCameraScanRef.current = { code, at: now };
-
-        // Provide tactile feedback on Android mobile
-        if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-          try {
-            navigator.vibrate([70, 40, 70]);
-          } catch {
-            // Ignore if vibration disallowed
-          }
-        }
-
-        void stopCamera().then(() => {
-          onScannedRef.current(code);
-        });
-      };
-
-      await html5QrCode.start(
-        { facingMode: 'environment' },
-        {
-          fps: 15,
-          qrbox: { width: 260, height: 160 },
-          aspectRatio: 1.0,
-        },
-        qrCodeSuccessCallback,
-        undefined
-      );
-
-      // Check torch capability
-      try {
-        const capabilities = html5QrCode.getRunningTrackCameraCapabilities();
-        if (capabilities && capabilities.torchFeature().isSupported()) {
-          setHasTorch(true);
-        }
-      } catch {
-        setHasTorch(false);
-      }
-    } catch (err: any) {
-      console.warn('Camera start error:', err);
-      const errName = err?.name || '';
-      const errMsg = (err?.message || '').toLowerCase();
-
-      if (
-        errName === 'NotAllowedError' ||
-        errName === 'PermissionDeniedError' ||
-        errMsg.includes('permission') ||
-        errMsg.includes('denied')
-      ) {
-        setCameraError('permission_denied');
-      } else if (errName === 'NotFoundError' || errName === 'DevicesNotFoundError') {
-        setCameraError('device_not_found');
-      } else if (errName === 'NotSupportedError') {
-        setCameraError('not_supported');
-      } else {
-        setCameraError('general');
-      }
-    } finally {
-      setIsCameraStarting(false);
-    }
+    const now = Date.now();
+    const last = lastCameraScanRef.current;
+    if (last && last.code === code && now - last.at < DUPLICATE_SCAN_WINDOW_MS) return;
+    lastCameraScanRef.current = { code, at: now };
+    setCaptured(true);
+    playScanBeep();
+    vibrateScan([70, 40, 70]);
+    onScannedRef.current(code);
   };
 
-  // Toggle torch
-  const toggleTorch = async () => {
-    if (!scannerRef.current || !hasTorch) return;
-    try {
-      const nextTorch = !isTorchOn;
-      await scannerRef.current.applyVideoConstraints({
-        advanced: [{ torch: nextTorch } as any],
-      });
-      setIsTorchOn(nextTorch);
-    } catch (err) {
-      console.warn('Torch toggle failed:', err);
-    }
-  };
+  const camera = useBarcodeCamera({
+    active: isOpen && viewMode === 'camera' && !captured,
+    onCode: handleCameraCode,
+  });
+  const cameraError = camera.error;
 
   useEffect(() => {
-    if (isOpen && viewMode === 'camera') {
-      // Small timeout to allow DOM element mount
-      const timer = setTimeout(() => {
-        startCamera();
-      }, 150);
-      return () => {
-        clearTimeout(timer);
-        stopCamera();
-      };
-    } else {
-      stopCamera();
-    }
-  }, [isOpen, viewMode]);
+    if (cameraError === 'not_supported') setViewMode('manual');
+  }, [cameraError]);
 
   // Handle manual submit
   const handleManualSubmit = (e?: React.FormEvent) => {
@@ -249,13 +113,8 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
 
   /** Typed codes are deliberate, so they skip the camera's presence gate. */
   const submitCode = (code: string) => {
-    if (continuous) {
-      onBarcodeScanned(code);
-      return;
-    }
-    void stopCamera().then(() => {
-      onBarcodeScanned(code);
-    });
+    if (!continuous) setCaptured(true);
+    onBarcodeScanned(code);
   };
 
   if (!isOpen) return null;
@@ -281,10 +140,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
             </div>
           </div>
           <button
-            onClick={() => {
-              stopCamera();
-              onClose();
-            }}
+            onClick={onClose}
             className="p-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded-lg transition-colors"
             aria-label={t('common.close')}
           >
@@ -347,7 +203,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
 
                   <div className="flex gap-2 pt-1">
                     <Button
-                      onClick={startCamera}
+                      onClick={camera.restart}
                       variant="secondary"
                       size="sm"
                       leftIcon={<RotateCcw className="w-3.5 h-3.5" />}
@@ -366,21 +222,27 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                 </div>
               )}
 
-              {/* Viewfinder Canvas Container */}
+              {/* Viewfinder */}
               <div
-                className={`relative w-full aspect-square ${continuous ? 'max-h-[220px]' : 'max-h-[320px]'} bg-black rounded-2xl overflow-hidden border border-zinc-800 flex items-center justify-center ${
+                className={`relative w-full ${continuous ? 'aspect-video' : 'aspect-[4/3]'} bg-black rounded-2xl overflow-hidden border border-zinc-800 ${
                   cameraError ? 'hidden' : 'block'
                 }`}
               >
-                {/* HTML5 QR code video container */}
-                <div id={readerElementId} className="w-full h-full object-cover" />
+                <video
+                  ref={camera.videoRef}
+                  className="absolute inset-0 w-full h-full object-cover"
+                  playsInline
+                  muted
+                  autoPlay
+                />
 
-                {/* Overlay Aim Reticle */}
-                <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
-                  <div className="relative w-64 h-40 border-2 border-emerald-400/80 rounded-xl shadow-[0_0_20px_rgba(16,185,129,0.3)] flex items-center justify-center">
-                    {/* Animated Red Laser Scan Line */}
+                {/* Aim reticle: the same centre band the decoder reads. */}
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                  <div
+                    className="relative border-2 border-emerald-400/80 rounded-xl shadow-[0_0_0_9999px_rgba(0,0,0,0.35),0_0_20px_rgba(16,185,129,0.3)] flex items-center justify-center"
+                    style={{ width: `${SCAN_BAND.width * 100}%`, height: `${SCAN_BAND.height * 100}%` }}
+                  >
                     <div className="absolute left-2 right-2 h-0.5 bg-red-500 shadow-[0_0_8px_#ef4444] animate-pulse" />
-                    {/* Corner Reticle Accents */}
                     <div className="absolute -top-1 -left-1 w-4 h-4 border-t-2 border-l-2 border-emerald-400" />
                     <div className="absolute -top-1 -right-1 w-4 h-4 border-t-2 border-r-2 border-emerald-400" />
                     <div className="absolute -bottom-1 -left-1 w-4 h-4 border-b-2 border-l-2 border-emerald-400" />
@@ -388,14 +250,14 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                   </div>
                 </div>
 
-                {/* Torch Button if available */}
-                {hasTorch && (
+                {camera.hasTorch && (
                   <button
-                    onClick={toggleTorch}
+                    onClick={() => void camera.toggleTorch()}
                     className="absolute top-3 right-3 p-2 rounded-xl bg-zinc-900/80 text-zinc-100 hover:bg-zinc-800 border border-zinc-700/60 shadow-lg"
-                    title={isTorchOn ? t('scanner.torchOff') : t('scanner.torchOn')}
+                    title={camera.torchOn ? t('scanner.torchOff') : t('scanner.torchOn')}
+                    aria-label={camera.torchOn ? t('scanner.torchOff') : t('scanner.torchOn')}
                   >
-                    {isTorchOn ? (
+                    {camera.torchOn ? (
                       <FlashlightOff className="w-5 h-5 text-amber-400" />
                     ) : (
                       <Flashlight className="w-5 h-5 text-zinc-300" />
@@ -403,8 +265,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                   </button>
                 )}
 
-                {/* Initializing indicator */}
-                {isCameraStarting && (
+                {camera.status === 'starting' && (
                   <div className="absolute inset-0 bg-zinc-950/80 flex flex-col items-center justify-center gap-2 text-zinc-300 text-xs">
                     <span className="w-6 h-6 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
                     <span>{t('scanner.connecting')}</span>
