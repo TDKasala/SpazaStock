@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { backoffMs, isPermanentError, MAX_ATTEMPTS, pullChanges, pushOutbox } from '../sync/syncEngine';
-import { createProduct } from '../services/productService';
+import { createProduct, setProductArchived, updateProduct } from '../services/productService';
+import { saveShopSettings } from '../lib/shopSettings';
 import { stockIn, getProductTotalStock } from '../services/stockService';
 import { recordSale, voidSale } from '../services/salesService';
 import { db, getMeta, resetLocalDatabase } from '../lib/db';
@@ -345,6 +346,138 @@ describe('pushOutbox', () => {
     });
     expect((await db.batches.get(batch.id))?.quantity).toBe(0);
     expect(await db.outbox.count()).toBe(0);
+  });
+});
+
+describe('product edits and archiving', () => {
+  const SERVER_TIME = '2026-10-14T09:00:00.000Z';
+
+  /** Answers update_product and set_product_archived like the real functions. */
+  function productRpcs(product: Product) {
+    return (name: string, args: Record<string, unknown>) => {
+      if (name === 'update_product') {
+        return {
+          data: productRow(product, {
+            barcode: args.p_barcode,
+            name: args.p_name,
+            category: args.p_category,
+            buying_price: args.p_buying_price,
+            selling_price: args.p_selling_price,
+            updated_at: SERVER_TIME,
+          }),
+          error: null,
+        };
+      }
+      if (name === 'set_product_archived') {
+        return {
+          data: productRow(product, { archived_at: args.p_archived ? SERVER_TIME : null, updated_at: SERVER_TIME }),
+          error: null,
+        };
+      }
+      return acceptAll(name, args);
+    };
+  }
+
+  async function syncedProduct(): Promise<Product> {
+    const product = await makeProduct();
+    await db.outbox.clear();
+    return product;
+  }
+
+  beforeEach(async () => {
+    await resetLocalDatabase();
+    await saveShopSettings(SHOP_ID, { role: 'owner' });
+  });
+
+  it('sends edits and archives through their functions and stores the server rows', async () => {
+    const product = await syncedProduct();
+    await updateProduct(product.id, { barcode: '6001087361250', name: 'Simba 120g', category: 'snacks', sellingPrice: 16 }, SHOP_ID);
+    await setProductArchived(product.id, true, SHOP_ID);
+
+    const fake = createFakeSupabase({ rpc: productRpcs(product) });
+    expect(await pushOutbox(fake.client, SHOP_ID)).toEqual({ pushed: 2, failed: 0, retryAt: null });
+    expect(fake.rpc.mock.calls).toEqual([
+      [
+        'update_product',
+        {
+          p_shop_id: SHOP_ID,
+          p_product_id: product.id,
+          p_barcode: '6001087361250',
+          p_name: 'Simba 120g',
+          p_category: 'snacks',
+          p_buying_price: null,
+          p_selling_price: 16,
+        },
+      ],
+      ['set_product_archived', { p_shop_id: SHOP_ID, p_product_id: product.id, p_archived: true }],
+    ]);
+    expect(await db.products.get(product.id)).toMatchObject({ archivedAt: SERVER_TIME, updatedAt: SERVER_TIME });
+    expect(await db.outbox.count()).toBe(0);
+  });
+
+  it('keeps a later local edit on screen while an earlier one is confirmed', async () => {
+    const product = await syncedProduct();
+    await updateProduct(product.id, { ...product, name: 'First' }, SHOP_ID);
+    await updateProduct(product.id, { ...product, name: 'Second' }, SHOP_ID);
+    const fake = createFakeSupabase({
+      rpc: (name, args) => (fake.rpc.mock.calls.length > 1 ? { data: null, error: { message: 'offline' } } : productRpcs(product)(name, args)),
+    });
+
+    await pushOutbox(fake.client, SHOP_ID);
+    expect((await db.products.get(product.id))?.name).toBe('Second');
+    expect(await db.outbox.count()).toBe(1);
+  });
+
+  it('puts the server copy back when the server refuses an edit', async () => {
+    const product = await syncedProduct();
+    await updateProduct(product.id, { ...product, barcode: '9999999999994', name: 'Local only' }, SHOP_ID);
+    const fake = createFakeSupabase({
+      rpc: () => ({ data: null, error: { code: '23505', message: 'Another product in this shop already uses barcode 9999999999994.' } }),
+      rows: { products: [productRow(product, { name: 'Server name', updated_at: SERVER_TIME })] },
+    });
+
+    const result = await pushOutbox(fake.client, SHOP_ID);
+    expect(result.failed).toBe(1);
+    expect(await db.products.get(product.id)).toMatchObject({ name: 'Server name', barcode: product.barcode });
+    expect((await db.outbox.toArray())[0]).toMatchObject({ type: 'product_update', status: 'failed' });
+  });
+
+  it('rewrites queued edits when the product is remapped to the server product', async () => {
+    const product = await makeProduct();
+    await setProductArchived(product.id, true, SHOP_ID);
+    const canonicalId = '33333333-3333-4333-8333-333333333333';
+    const fake = createFakeSupabase({
+      rpc: (name, args) => {
+        if (name === 'upsert_product') return { data: productRow(product, { id: canonicalId }), error: null };
+        return productRpcs({ ...product, id: canonicalId })(name, args);
+      },
+    });
+
+    expect((await pushOutbox(fake.client, SHOP_ID)).pushed).toBe(2);
+    expect(fake.rpc.mock.calls[1]).toEqual([
+      'set_product_archived',
+      { p_shop_id: SHOP_ID, p_product_id: canonicalId, p_archived: true },
+    ]);
+    expect((await db.products.get(canonicalId))?.archivedAt).toBe(SERVER_TIME);
+  });
+
+  it('does not pull over an edit that is still waiting to be pushed', async () => {
+    const product = await syncedProduct();
+    await updateProduct(product.id, { ...product, name: 'Local edit' }, SHOP_ID);
+    const fake = createFakeSupabase({
+      rows: { products: [productRow(product, { name: 'Old server name', updated_at: SERVER_TIME })] },
+    });
+    expect(await pullChanges(fake.client, SHOP_ID)).toBe(0);
+    expect((await db.products.get(product.id))?.name).toBe('Local edit');
+  });
+
+  it('pulls archive state from other phones', async () => {
+    const product = await syncedProduct();
+    const fake = createFakeSupabase({
+      rows: { products: [productRow(product, { archived_at: SERVER_TIME, updated_at: SERVER_TIME })] },
+    });
+    await pullChanges(fake.client, SHOP_ID);
+    expect((await db.products.get(product.id))?.archivedAt).toBe(SERVER_TIME);
   });
 });
 

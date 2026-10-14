@@ -44,6 +44,15 @@ The scanner uses the phone's own barcode detector where the browser has one (Chr
 - **Accurate.** It reads EAN-13, EAN-8, UPC-A, UPC-E, Code 128 and ITF-14 (QR codes are ignored). EAN and UPC codes must pass their check digit, and a code is accepted only after two matching reads in a row (within half a second). Codes are trimmed, never changed.
 - **Feedback.** A beep and a vibration confirm each scan. Use the torch button in dark shops, or type the code under *Manual Entry*.
 
+### Editing and archiving products
+
+Owners and managers can tap a product under *Stock* to **Edit** its barcode, name, category and prices, or **Archive** it. Workers see the product but not these buttons, and the database refuses the change if they try.
+
+- **Edits work offline.** The change shows straight away and queues in the outbox. An edit made before the product itself has synced is folded into the queued product. If the server refuses an edit (for example another phone already gave that barcode to a different product), the phone puts the server's copy back and marks the change "Sync failed".
+- **Barcodes stay unique.** Within a shop, a barcode belongs to one product, archived or not. The edit dialog names the product that already uses it.
+- **Archive, not delete.** An archived product disappears from the stock lists, totals, scans and alerts, and its open expiry alerts close. Its sales, stock movements and batches are kept, so reports and history still show its name. Scanning it says it is archived and offers **Restore** to owners and managers. *Stock → Show archived products* lists them, each with a Restore button.
+- **Nothing is lost offline.** Sales and stock-in already queued for a product that another phone archived are still accepted by the server.
+
 ### Rapid scan-to-sell
 
 *Sales → Tap to Rapid Scan-to-Sell* opens the camera and keeps it open. Each scan sells one unit straight away and shows the stock left, the batch it came from and whether the sale is still waiting to sync.
@@ -191,7 +200,7 @@ Earlier builds stored data in `localStorage`. On first launch, products and rema
 | `shops` | A shop; `owner_id` is the account owner, who can never be removed, demoted or deactivated. Created only through `create_shop`. `timezone` and `expiry_reminder_days` drive expiry alerts |
 | `shop_members` | `owner`, `manager` or `staff` (shown as "Worker") membership with a `status` of `active` or `deactivated`. A row with no `user_id` is a pending invite, holding the SHA-256 hash of its token (never readable by clients) and its expiry. Members see only their own row; owners see the whole team |
 | `membership_events` | Append-only audit trail of invites, joins, role changes, deactivations and removals, written by a trigger; owners can read it |
-| `products` | Barcode unique within a shop, prices |
+| `products` | Barcode unique within a shop, prices, `archived_at` (set when archived; never deleted). Changed only through `upsert_product`, `update_product` and `set_product_archived` |
 | `stock_batches` | One delivery: quantity left, initial quantity, expiry date, purchase cost per unit |
 | `stock_movements` | Append-only audit trail: quantity change, reason, actor, device time, server time, unique idempotency key |
 | `sales`, `sale_items` | A sale header and its lines, each with its batch allocation. `quantity` and `line_total` stay gross; `voided_quantity` counts undone units, so net = (`quantity` − `voided_quantity`) × `unit_price` |
@@ -208,6 +217,7 @@ Earlier builds stored data in `localStorage`. On first launch, products and rema
 **Stock only changes through functions.** Clients have read-only access to the ledger tables. These functions are `security definer`. Each one checks the caller's role, validates input, and locks the product rows before changing stock:
 
 - `upsert_product`, `record_stock_in`, `record_sale` (several lines, first-expired-first-out) and `record_stock_adjustment` (owners and managers; write-offs, corrections and returns).
+- `update_product` and `set_product_archived` (owners and managers). Editing validates every field and rejects a barcode used by another product in the shop. Archiving and restoring are idempotent, and archiving closes the product's open expiry alerts.
 - `void_sale_item` undoes units of a sale line. Owners and managers can void any line. Staff can void only their own sales, within 15 minutes of the sale. Units that were oversold (never in stock) are voided first. The rest go back to the batches they came from, last batch first, each with a `return` movement.
 - Team (owners only): `invite_shop_member` and `resend_shop_invite` return the invite token once, plus `list_shop_team`, `update_member_role`, `set_member_status` and `remove_shop_member` (owners, or a member leaving). `accept_shop_invite` is for the invited person, and `preview_shop_invite` can be called before signing in so the invitee sees which shop and email the link is for. `my_shops` and `create_shop` cover the signed-in user's own shops.
 - `update_shop_alert_settings` and `resolve_expired_batch` (owners and managers), and `save_push_subscription`, `delete_push_subscription` and `get_push_public_key` (the signed-in user).
@@ -238,16 +248,17 @@ Guarantees, checked by the database tests:
 
 `npm test` runs Vitest with `happy-dom`, `fake-indexeddb` and the time zone pinned to `Africa/Johannesburg`, so bugs where a UTC date is used instead of the local date show up.
 
-- `productService`, `stockService`, `salesService`: local repositories, including idempotency across reloads, concurrent sales of the last units, and "today" just after local midnight.
+- `productService`, `stockService`, `salesService`: local repositories, including idempotency across reloads, concurrent sales of the last units, "today" just after local midnight, and editing and archiving products (role checks, duplicate barcodes, folding edits into a queued product, archived products hidden but history kept).
 - `rapidSell`, `scanGate`: rapid scan-to-sell. Simultaneous scans of the last units (never oversold, ledger stays consistent), duplicate scans and repeated submissions, insufficient stock, per-batch movements, undo, offline queueing and pending status. Also covers the camera presence gate and the in-order scan queue.
 - `barcode`: check digits for EAN, UPC and ITF-14, Code 128 rules, the two-read confirmation, the scan band crop, camera error messages, and choosing the native detector or the WASM fallback (mocked).
-- `syncEngine`, `syncController`: push and pull against a fake Supabase client. Covers rejected and retryable errors, backoff, product ID remapping, and online/offline behaviour.
+- `syncEngine`, `syncController`: push and pull against a fake Supabase client. Covers rejected and retryable errors, backoff, product ID remapping (including queued edits), product edits and archives with the server copy restored when one is refused, and online/offline behaviour.
 - `db/tenantIsolation`, `db/stockConsistency`: apply the real migrations to [PGlite](https://pglite.dev) (Postgres in WebAssembly) with stand-ins for Supabase's roles and `auth` functions.
   - Tenant isolation: another shop's members and anonymous callers see nothing and can call nothing. Role limits for staff and managers are enforced, and the ledger tables reject direct writes. Invites can only be claimed by the invited email address, and the account owner can't be removed.
   - `db/teamManagement`: invite tokens (hashed, single use, expiry, resend replaces the old link, revoke), the email match and confirmed-email checks, duplicate memberships, workers and managers unable to manage the team or change their own role, protection of the account owner, deactivation and removal cutting off reads, product writes, stock-in and sales at once (and reactivation restoring them), notifications and queued pushes stopping, a user in two shops with a different role in each, the audit trail, `create_shop` ownership, and the permission matrix matching `src/lib/permissions.ts`.
   - Tenant isolation also covers voids: staff can undo only their own recent sales, and nobody can write `sale_item_voids` directly.
   - Stock consistency: first-expired-first-out deduction, multi-line sales that roll back as a whole, oversell discrepancies, strict adjustments, voids and idempotent replays. It also checks that the database and the app agree on where voided units go. A seeded random workload checks the ledger invariant.
   - `db/expiryAlerts`: the alert generator at threshold and midnight boundaries, in several time zones; no duplicates across re-runs or a clock going back; 07:00 push hold; notification content; settings validation and permissions; push claiming, retries, backoff, giving up and gone subscriptions; expired batches skipped by sales; and resolutions with their records. `pg_cron`, `pg_net` and Vault aren't available in PGlite, so the schedule migration is skipped and was smoke-tested in production.
+  - `db/productEditArchive`: who can edit and archive, barcode normalisation and uniqueness (including archived products), field validation, direct table updates refused, idempotent archive and restore, sales and stock-in of archived products still recorded, and the alert generator closing and skipping archived products.
   - PGlite runs a single connection, so row locking under truly concurrent sessions is not exercised.
 - `expiry`, `expiryPush`: shop-local dates (including daylight saving and UTC+14), reminder stages, expired stock refused on the phone, resolving, one-time alert sounds, and the Edge Function's retry and authentication logic.
 - `secrets`: no service-role or secret key in the source, public assets or built bundle.
@@ -257,7 +268,7 @@ Guarantees, checked by the database tests:
 
 ```
 supabase/
-  migrations/              schema, tenancy, ledger, RLS policies, stock functions, expiry alerts and their schedule, team management (forward-only)
+  migrations/              schema, tenancy, ledger, RLS policies, stock functions, expiry alerts and their schedule, team management, product editing and archiving (forward-only)
   functions/expiry-push/   Edge Function that sends expiry Web Push messages (logic.ts is unit-tested)
   templates/               sign-in, sign-up confirmation and password reset emails with the 6-digit code
   seed.sql                 intentionally empty (no invented users or credentials)
@@ -280,6 +291,7 @@ src/
   services/teamService.ts  team, invite and profile calls to the database functions
   context/                 Language, Auth (password, email codes, reset), Shop (several shops), Sync providers
   components/team/         team screen and invite dialog
+  components/stock/        product form fields, edit and archive dialogs, stock detail and stock-in
   hooks/useSaleRegister.ts shared scan-to-sell state for the scanner panel and the Sales tab
   components/              UI: auth, dashboard, views, scanner (lazy-loaded), stock, sales, sync banner
   locales/                 en.ts and zu.ts

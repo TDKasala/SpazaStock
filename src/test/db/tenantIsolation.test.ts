@@ -173,7 +173,22 @@ describe('roles inside a shop', () => {
     expect(await count(sipho, 'public.subscriptions')).toBe(0);
 
     await query(pg, sipho, 'update public.shops set name = $1 where id = $2', ['Hacked', shopA]);
-    await query(pg, sipho, 'update public.products set selling_price = 0 where id = $1', [productA]);
+    expect(
+      await errorCode(query(pg, sipho, 'update public.products set selling_price = 0 where id = $1', [productA]))
+    ).toBe('42501');
+    expect(
+      await errorCode(
+        rpc(pg, sipho, 'update_product', {
+          p_shop_id: shopA,
+          p_product_id: productA,
+          p_barcode: 'X1',
+          p_name: 'Hacked',
+          p_category: 'other',
+          p_buying_price: 0,
+          p_selling_price: 0,
+        })
+      )
+    ).toBe('42501');
     await query(pg, sipho, 'update public.stock_discrepancies set resolved_at = now() where shop_id = $1', [shopA]);
     const [shop] = await query<{ name: string }>(pg, alice, 'select name from public.shops where id = $1', [shopA]);
     const [product] = await query<{ selling_price: number }>(pg, alice, 'select selling_price from public.products where id = $1', [productA]);
@@ -185,7 +200,21 @@ describe('roles inside a shop', () => {
   it('lets managers adjust stock and edit products but not manage members or billing', async () => {
     const result = await adjust(pg, mandla, shopA, batchA, 2, 'count_correction');
     expect(result.duplicate).toBe(false);
-    await query(pg, mandla, 'update public.products set selling_price = 19 where id = $1', [productA]);
+    const [current] = await query<{ barcode: string; name: string; category: string; buying_price: number }>(
+      pg,
+      alice,
+      'select barcode, name, category, buying_price from public.products where id = $1',
+      [productA]
+    );
+    await rpc(pg, mandla, 'update_product', {
+      p_shop_id: shopA,
+      p_product_id: productA,
+      p_barcode: current.barcode,
+      p_name: current.name,
+      p_category: current.category,
+      p_buying_price: current.buying_price,
+      p_selling_price: 19,
+    });
     const [product] = await query<{ selling_price: number }>(pg, alice, 'select selling_price from public.products where id = $1', [productA]);
     expect(Number(product.selling_price)).toBe(19);
 

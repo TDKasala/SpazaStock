@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Package, Search, Plus, Barcode, Layers, CalendarClock } from 'lucide-react';
+import { Package, Search, Plus, Barcode, Layers, CalendarClock, Archive, ArchiveRestore } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
-import { useShopId } from '../../context/ShopContext';
+import { useShop, useShopId } from '../../context/ShopContext';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import type { Product, ProductStockSummary } from '../../types';
 import { getAllProductsStockSummary } from '../../services/stockService';
+import { getArchivedProducts, setProductArchived } from '../../services/productService';
+import { can } from '../../lib/permissions';
 
 export interface StockViewProps {
   onOpenScanner: () => void;
@@ -22,16 +24,25 @@ export const StockView: React.FC<StockViewProps> = ({
 }) => {
   const { t, dict } = useLanguage();
   const shopId = useShopId();
+  const { settings } = useShop();
+  const canEdit = can(settings.role, 'products.edit');
   const [searchTerm, setSearchTerm] = useState('');
   const [summaries, setSummaries] = useState<ProductStockSummary[]>([]);
+  const [archived, setArchived] = useState<Product[]>([]);
+  const [showArchived, setShowArchived] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
-        const items = await getAllProductsStockSummary(shopId);
-        if (!cancelled) setSummaries(items);
+        const [items, archivedItems] = await Promise.all([
+          getAllProductsStockSummary(shopId),
+          getArchivedProducts(shopId),
+        ]);
+        if (cancelled) return;
+        setSummaries(items);
+        setArchived(archivedItems);
       } catch (err) {
         console.warn('Failed to load stock summaries:', err);
       } finally {
@@ -44,9 +55,10 @@ export const StockView: React.FC<StockViewProps> = ({
   }, [shopId, refreshTrigger]);
 
   const term = searchTerm.trim().toLowerCase();
-  const filteredSummaries = summaries.filter(
-    ({ product }) => product.name.toLowerCase().includes(term) || product.barcode.toLowerCase().includes(term)
-  );
+  const matches = (product: Product) =>
+    product.name.toLowerCase().includes(term) || product.barcode.toLowerCase().includes(term);
+  const filteredSummaries = summaries.filter(({ product }) => matches(product));
+  const filteredArchived = archived.filter(matches);
 
   return (
     <div className="space-y-5 pb-24">
@@ -173,6 +185,53 @@ export const StockView: React.FC<StockViewProps> = ({
           <Button onClick={onOpenScanner} variant="primary" size="sm" className="mt-4" leftIcon={<Plus className="w-4 h-4" />}>
             {t('scanner.scanAction')}
           </Button>
+        </div>
+      )}
+
+      {!isLoading && archived.length > 0 && (
+        <div className="space-y-2">
+          <button
+            onClick={() => setShowArchived((v) => !v)}
+            className="w-full flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-zinc-400 hover:text-zinc-200"
+            aria-expanded={showArchived}
+          >
+            <Archive className="w-3.5 h-3.5" />
+            {showArchived ? t('product.hideArchived') : t('product.showArchived', { count: archived.length })}
+          </button>
+
+          {showArchived &&
+            (filteredArchived.length > 0 ? (
+              filteredArchived.map((product) => (
+                <div
+                  key={product.id}
+                  className="p-3 bg-zinc-950/60 rounded-2xl border border-dashed border-zinc-800 flex items-center justify-between gap-3"
+                >
+                  <div className="min-w-0">
+                    <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 border border-zinc-700/50">
+                      {t('product.archived')}
+                    </span>
+                    <h4 className="text-sm font-semibold text-zinc-300 truncate mt-1">{product.name}</h4>
+                    <span className="text-xs text-zinc-500 font-mono flex items-center gap-1">
+                      <Barcode className="w-3.5 h-3.5" />
+                      {product.barcode}
+                    </span>
+                  </div>
+                  {canEdit && (
+                    <Button
+                      onClick={() => void setProductArchived(product.id, false, shopId)}
+                      variant="secondary"
+                      size="sm"
+                      className="h-8 px-3 text-xs shrink-0"
+                      leftIcon={<ArchiveRestore className="w-3.5 h-3.5 text-emerald-400" />}
+                    >
+                      {t('product.restore')}
+                    </Button>
+                  )}
+                </div>
+              ))
+            ) : (
+              <p className="text-center text-xs text-zinc-500 py-2">{t('product.archivedEmpty')}</p>
+            ))}
         </div>
       )}
     </div>

@@ -378,7 +378,8 @@ export interface DiscrepancyAlert {
 /** Unresolved shortfalls reported by the server, e.g. two devices selling the same last units. */
 export async function getOpenDiscrepancies(shopId: string): Promise<DiscrepancyAlert[]> {
   const [products, discrepancies] = await Promise.all([
-    getProducts(shopId),
+    // A shortfall still needs a recount after its product is archived.
+    getProducts(shopId, { includeArchived: true }),
     db.discrepancies.where('shopId').equals(shopId).toArray(),
   ]);
   const productsById = new Map(products.map((p) => [p.id, p]));

@@ -15,7 +15,8 @@ type Rows = Record<string, Array<Record<string, unknown>>>;
 
 /**
  * Minimal stand-in for the parts of supabase-js the sync engine uses:
- * `rpc`, `from().select().eq().gt().order().order().range()` and `from().update().eq()`.
+ * `rpc`, `from().select().eq().gt().order().order().range()`, `from().select().eq().eq().maybeSingle()`
+ * and `from().update().eq()`.
  */
 export function createFakeSupabase(options: { rpc?: RpcHandler; rows?: Rows } = {}) {
   const rows: Rows = options.rows ?? {};
@@ -25,11 +26,18 @@ export function createFakeSupabase(options: { rpc?: RpcHandler; rows?: Rows } = 
   const updates: Array<{ table: string; values: Record<string, unknown>; id: unknown }> = [];
 
   const from = vi.fn((table: string) => {
-    const filters: { shopId?: unknown; since?: string } = {};
+    const filters: { shopId?: unknown; id?: unknown; since?: string } = {};
     const select = {
       eq(column: string, value: unknown) {
         if (column === 'shop_id') filters.shopId = value;
+        if (column === 'id') filters.id = value;
         return select;
+      },
+      async maybeSingle() {
+        const row = (rows[table] ?? []).find(
+          (r) => (filters.shopId === undefined || r.shop_id === filters.shopId) && r.id === filters.id
+        );
+        return { data: row ?? null, error: null };
       },
       gt(_column: string, value: string) {
         filters.since = value;

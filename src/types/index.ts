@@ -55,6 +55,8 @@ export interface Product {
   sellingPrice?: number | null;
   createdAt: string;
   updatedAt: string;
+  /** Set when archived: hidden from lists, scans and alerts, but its history is kept. */
+  archivedAt?: string | null;
 }
 
 export interface ProductRegistrationInput {
@@ -64,6 +66,9 @@ export interface ProductRegistrationInput {
   buyingPrice?: number | null;
   sellingPrice?: number | null;
 }
+
+/** Every editable field; an edit always sends the full set, so the last write wins. */
+export type ProductEditInput = ProductRegistrationInput;
 
 export interface StockBatch {
   id: string;
@@ -164,7 +169,7 @@ export type ExpiryAlertKind = 'reminder' | 'expired';
 
 export type ExpiryResolutionAction = 'discarded' | 'returned_to_supplier' | 'expiry_corrected';
 
-export type ExpiryAlertResolution = ExpiryResolutionAction | 'sold_out' | 'superseded';
+export type ExpiryAlertResolution = ExpiryResolutionAction | 'sold_out' | 'superseded' | 'product_archived';
 
 /** A server-generated expiry alert (one per batch, expiry date, kind and threshold). */
 export interface ExpiryAlert {

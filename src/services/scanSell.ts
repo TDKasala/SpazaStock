@@ -1,7 +1,7 @@
 import type { Product, SaleResult } from '../types';
 import { newId } from '../lib/ids';
 import { createSerialQueue, type SerialQueue } from '../lib/serialQueue';
-import { searchProductByBarcode } from './productService';
+import { isArchived, searchProductByBarcode } from './productService';
 import { recordSale, voidSale, type VoidSaleResult } from './salesService';
 
 /** Staff may undo their own sales for this long; the server enforces the same limit. */
@@ -11,6 +11,7 @@ export type ScanSellOutcome =
   | { kind: 'sold'; result: SaleResult }
   | { kind: 'duplicate' }
   | { kind: 'unknown_barcode'; barcode: string }
+  | { kind: 'archived'; product: Product }
   | { kind: 'insufficient_stock'; product: Product; available: number; expired: number }
   | { kind: 'error'; message: string };
 
@@ -60,6 +61,7 @@ export function createScanSeller(shopId: string, queue: SerialQueue = createSeri
         if (!clean) return { kind: 'error', message: 'Empty barcode.' };
         const product = await searchProductByBarcode(clean, shopId);
         if (!product) return { kind: 'unknown_barcode', barcode: clean };
+        if (isArchived(product)) return { kind: 'archived', product };
         return sellNow(product, 1, idempotencyKey);
       });
     },

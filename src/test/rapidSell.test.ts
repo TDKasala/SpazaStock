@@ -8,7 +8,7 @@ import {
   saleNetQuantity,
   voidSale,
 } from '../services/salesService';
-import { createProduct } from '../services/productService';
+import { createProduct, setProductArchived } from '../services/productService';
 import { getProductBatches, getProductTotalStock, stockIn } from '../services/stockService';
 import { db, resetLocalDatabase } from '../lib/db';
 import type { Product } from '../types';
@@ -213,6 +213,15 @@ describe('rapid scan-to-sell', () => {
       const seller = createScanSeller(SHOP_ID);
       expect(await seller.scan('0000000000000')).toEqual({ kind: 'unknown_barcode', barcode: '0000000000000' });
       expect(await db.sales.count()).toBe(0);
+    });
+
+    it('refuses to sell an archived product and records nothing', async () => {
+      const product = await makeProduct([{ quantity: 3, expiryDate: null }]);
+      await setProductArchived(product.id, true, SHOP_ID);
+      const seller = createScanSeller(SHOP_ID);
+      expect(await seller.scan(BARCODE)).toMatchObject({ kind: 'archived', product: { id: product.id } });
+      expect(await db.sales.count()).toBe(0);
+      expect(await getProductTotalStock(product.id, SHOP_ID)).toBe(3);
     });
 
     it('refuses to undo more than is left on the sale', async () => {

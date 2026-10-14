@@ -1,9 +1,13 @@
-import React from 'react';
-import { PackageCheck, Barcode, Tag, ArrowUpRight, Plus, ShoppingCart, RefreshCw } from 'lucide-react';
+import React, { useState } from 'react';
+import { PackageCheck, Barcode, ArrowUpRight, Plus, ShoppingCart, RefreshCw } from 'lucide-react';
 import type { Product } from '../../types';
 import { useLanguage } from '../../context/LanguageContext';
+import { useShop, useShopId } from '../../context/ShopContext';
 import { Dialog } from '../ui/Dialog';
 import { Button } from '../ui/Button';
+import { ErrorMessage } from '../ui/ErrorMessage';
+import { can } from '../../lib/permissions';
+import { isArchived, setProductArchived } from '../../services/productService';
 
 export interface ProductFoundDialogProps {
   isOpen: boolean;
@@ -11,6 +15,8 @@ export interface ProductFoundDialogProps {
   onClose: () => void;
   onScanAnother: () => void;
   onQuickAction?: (action: 'add_stock' | 'quick_sale', product: Product) => void;
+  /** An archived product was restored from this dialog. */
+  onRestored?: (product: Product) => void;
 }
 
 export const ProductFoundDialog: React.FC<ProductFoundDialogProps> = ({
@@ -19,10 +25,26 @@ export const ProductFoundDialog: React.FC<ProductFoundDialogProps> = ({
   onClose,
   onScanAnother,
   onQuickAction,
+  onRestored,
 }) => {
   const { t, dict } = useLanguage();
+  const shopId = useShopId();
+  const { settings } = useShop();
+  const [restoreError, setRestoreError] = useState<string | null>(null);
 
   if (!isOpen || !product) return null;
+
+  const archived = isArchived(product);
+  const canEdit = can(settings.role, 'products.edit');
+  const handleRestore = async () => {
+    const result = await setProductArchived(product.id, false, shopId);
+    if (result.product) {
+      setRestoreError(null);
+      onRestored?.(result.product);
+    } else {
+      setRestoreError(result.errorCode === 'forbidden' ? t('product.editForbidden') : result.error ?? t('errors.generic'));
+    }
+  };
 
   // Calculate margin/markup if both prices present
   let marginText: string | null = null;
@@ -107,8 +129,19 @@ export const ProductFoundDialog: React.FC<ProductFoundDialogProps> = ({
           {t('product.priceNotice')}
         </p>
 
+        {archived && (
+          <ErrorMessage
+            variant="warning"
+            message={`${t('product.archivedNotice', { name: product.name })}${
+              canEdit ? '' : ` ${t('product.archivedAskManager')}`
+            }`}
+            action={canEdit ? { label: t('product.restore'), onClick: () => void handleRestore() } : undefined}
+          />
+        )}
+        {restoreError && <ErrorMessage variant="error" message={restoreError} onDismiss={() => setRestoreError(null)} />}
+
         {/* Quick Action Buttons */}
-        {onQuickAction && (
+        {onQuickAction && !archived && (
           <div className="grid grid-cols-2 gap-2 pt-1">
             <Button
               onClick={() => onQuickAction('add_stock', product)}

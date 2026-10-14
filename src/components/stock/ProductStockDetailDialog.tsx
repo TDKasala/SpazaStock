@@ -1,12 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { Ban, Barcode, Calendar, Layers, Plus } from 'lucide-react';
+import { Archive, Ban, Barcode, Calendar, Layers, Pencil, Plus } from 'lucide-react';
 import type { Product, StockBatch } from '../../types';
 import { useLanguage } from '../../context/LanguageContext';
 import { useShop, useShopId } from '../../context/ShopContext';
 import { Dialog } from '../ui/Dialog';
 import { Button } from '../ui/Button';
 import { batchCode, daysUntil, todayInZone } from '../../lib/expiry';
+import { can } from '../../lib/permissions';
 import { getProductBatches } from '../../services/stockService';
+import { ProductEditDialog } from './ProductEditDialog';
+import { ArchiveProductDialog } from './ArchiveProductDialog';
 
 export interface ProductStockDetailDialogProps {
   isOpen: boolean;
@@ -14,6 +17,8 @@ export interface ProductStockDetailDialogProps {
   refreshTrigger?: number;
   onClose: () => void;
   onOpenStockIn: (product: Product) => void;
+  /** The product was edited; the dialog keeps showing it with the new details. */
+  onProductChanged?: (product: Product) => void;
 }
 
 export const ProductStockDetailDialog: React.FC<ProductStockDetailDialogProps> = ({
@@ -22,12 +27,19 @@ export const ProductStockDetailDialog: React.FC<ProductStockDetailDialogProps> =
   refreshTrigger,
   onClose,
   onOpenStockIn,
+  onProductChanged,
 }) => {
   const { t, dict } = useLanguage();
   const shopId = useShopId();
   const { settings } = useShop();
+  const canEdit = can(settings.role, 'products.edit');
   const [batches, setBatches] = useState<StockBatch[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [mode, setMode] = useState<'view' | 'edit' | 'archive'>('view');
+
+  useEffect(() => {
+    if (isOpen) setMode('view');
+  }, [isOpen, product?.id]);
 
   useEffect(() => {
     if (!isOpen || !product) return;
@@ -50,6 +62,32 @@ export const ProductStockDetailDialog: React.FC<ProductStockDetailDialogProps> =
   const expiredStock = batches.reduce((sum, b) => sum + (isExpiredBatch(b) ? b.quantity : 0), 0);
   const categoryLabel = dict.product.categories[product.category] || product.category;
 
+  if (mode === 'edit') {
+    return (
+      <ProductEditDialog
+        isOpen
+        product={product}
+        onClose={() => setMode('view')}
+        onSaved={(updated) => {
+          setMode('view');
+          onProductChanged?.(updated);
+        }}
+      />
+    );
+  }
+
+  if (mode === 'archive') {
+    return (
+      <ArchiveProductDialog
+        isOpen
+        product={product}
+        unitsInStock={totalStock + expiredStock}
+        onClose={() => setMode('view')}
+        onArchived={onClose}
+      />
+    );
+  }
+
   return (
     <Dialog
       isOpen={isOpen}
@@ -57,22 +95,46 @@ export const ProductStockDetailDialog: React.FC<ProductStockDetailDialogProps> =
       title={product.name}
       description={t('stockDetail.description')}
       footer={
-        <div className="flex w-full gap-2">
-          <Button
-            onClick={() => {
-              onClose();
-              onOpenStockIn(product);
-            }}
-            variant="primary"
-            size="md"
-            className="flex-1"
-            leftIcon={<Plus className="w-4 h-4" />}
-          >
-            {t('stockIn.title')}
-          </Button>
-          <Button onClick={onClose} variant="secondary" size="md">
-            {t('common.close')}
-          </Button>
+        <div className="flex w-full flex-col gap-2">
+          {canEdit && (
+            <div className="flex w-full gap-2">
+              <Button
+                onClick={() => setMode('edit')}
+                variant="secondary"
+                size="sm"
+                className="flex-1"
+                leftIcon={<Pencil className="w-4 h-4" />}
+              >
+                {t('product.edit')}
+              </Button>
+              <Button
+                onClick={() => setMode('archive')}
+                variant="ghost"
+                size="sm"
+                className="flex-1 text-rose-300"
+                leftIcon={<Archive className="w-4 h-4" />}
+              >
+                {t('product.archive')}
+              </Button>
+            </div>
+          )}
+          <div className="flex w-full gap-2">
+            <Button
+              onClick={() => {
+                onClose();
+                onOpenStockIn(product);
+              }}
+              variant="primary"
+              size="md"
+              className="flex-1"
+              leftIcon={<Plus className="w-4 h-4" />}
+            >
+              {t('stockIn.title')}
+            </Button>
+            <Button onClick={onClose} variant="secondary" size="md">
+              {t('common.close')}
+            </Button>
+          </div>
         </div>
       }
     >

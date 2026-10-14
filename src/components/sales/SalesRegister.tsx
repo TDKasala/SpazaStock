@@ -44,7 +44,7 @@ export const SalesRegister: React.FC<SalesRegisterProps> = ({ register, onOpenSc
       const [sales, today, products] = await Promise.all([
         getSales(shopId),
         getTodaySales(shopId),
-        getProducts(shopId),
+        getProducts(shopId, { includeArchived: true }),
       ]);
       if (cancelled) return;
       setRecentSales(sales.slice(0, RECENT_LIMIT));

@@ -135,6 +135,12 @@ export function useSaleRegister(shopId: string, onUnknownBarcode: (barcode: stri
           onUnknownBarcode(outcome.barcode);
           return false;
         }
+        case 'archived': {
+          const message = t('product.archivedNotice', { name: outcome.product.name });
+          setError(message);
+          announce('error', message);
+          return false;
+        }
         case 'error':
           setError(outcome.message || t('errors.generic'));
           announce('error', outcome.message || t('errors.generic'));

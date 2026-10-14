@@ -3,6 +3,7 @@ import type {
   ExpiryAlert,
   ExpiryResolutionAction,
   Product,
+  ProductEditInput,
   Sale,
   StockBatch,
   StockDiscrepancy,
@@ -11,6 +12,8 @@ import type {
 
 export type OutboxOperation =
   | { type: 'product_upsert'; payload: { product: Product } }
+  | { type: 'product_update'; payload: { productId: string; changes: ProductEditInput } }
+  | { type: 'product_archive'; payload: { productId: string; archived: boolean } }
   | {
       type: 'stock_in';
       payload: { batch: StockBatch; movementId: string; idempotencyKey?: string };

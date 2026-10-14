@@ -17,6 +17,8 @@ const PULL_PAGE_SIZE = 500;
 /** Re-read a little before the cursor so rows committed out of order are not skipped. */
 const PULL_OVERLAP_MS = 2 * 60 * 1000;
 const SALES_HISTORY_DAYS = 7;
+const PRODUCT_COLUMNS =
+  'id, shop_id, barcode, name, category, buying_price, selling_price, created_at, updated_at, archived_at';
 
 // Error classification ---------------------------------------------------------
 
@@ -69,6 +71,7 @@ export function mapProductRow(row: Row): Product {
     sellingPrice: toNumberOrNull(row.selling_price),
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
+    archivedAt: row.archived_at ? toIso(row.archived_at) : null,
   };
 }
 
@@ -139,7 +142,8 @@ export function mapExpiryAlertRow(row: Row): ExpiryAlert {
 type SendOutcome =
   | { kind: 'ok'; apply?: () => Promise<void> }
   | { kind: 'retry'; error: string }
-  | { kind: 'fail'; error: string };
+  /** `apply` brings the local copy back in line with the server after a rejected change. */
+  | { kind: 'fail'; error: string; apply?: () => Promise<void> };
 
 function outcomeFromError(error: SyncErrorLike): SendOutcome {
   const message = error.message || 'Unknown sync error';
@@ -166,8 +170,72 @@ async function remapProduct(shopId: string, oldId: string, canonical: Product): 
         item.payload.batch.productId = canonical.id;
       } else if (item.type === 'sale' && item.payload.sale.productId === oldId) {
         item.payload.sale.productId = canonical.id;
+      } else if (
+        (item.type === 'product_update' || item.type === 'product_archive') &&
+        item.payload.productId === oldId
+      ) {
+        item.payload.productId = canonical.id;
       }
     });
+}
+
+/**
+ * After the server refused a product edit (barcode taken, role lowered, ...), the local copy holds
+ * values the server never accepted. Re-read the server row so the phone shows the truth again.
+ */
+async function productRollback(
+  client: SupabaseClient,
+  shopId: string,
+  productId: string
+): Promise<Product | null> {
+  try {
+    const { data, error } = await client
+      .from('products')
+      .select(PRODUCT_COLUMNS)
+      .eq('shop_id', shopId)
+      .eq('id', productId)
+      .maybeSingle();
+    return error || !data ? null : mapProductRow(data as unknown as Row);
+  } catch {
+    return null;
+  }
+}
+
+/** Edits queued after `item` are already shown locally and must not be overwritten. */
+async function hasLaterProductChange(item: OutboxItem, productId: string): Promise<boolean> {
+  const later = await db.outbox
+    .where('shopId')
+    .equals(item.shopId)
+    .filter(
+      (other) =>
+        other.seq! > item.seq! &&
+        (other.type === 'product_update' || other.type === 'product_archive') &&
+        other.payload.productId === productId
+    )
+    .count();
+  return later > 0;
+}
+
+function putProductUnlessChangedLater(item: OutboxItem, product: Product): () => Promise<void> {
+  return async () => {
+    if (!(await hasLaterProductChange(item, product.id))) await db.products.put(product);
+  };
+}
+
+async function sendProductChange(
+  client: SupabaseClient,
+  item: OutboxItem,
+  productId: string,
+  call: PromiseLike<{ data: unknown; error: SyncErrorLike | null }>
+): Promise<SendOutcome> {
+  const { data, error } = await call;
+  if (error) {
+    const outcome = outcomeFromError(error);
+    if (outcome.kind !== 'fail') return outcome;
+    const server = await productRollback(client, item.shopId, productId);
+    return server ? { ...outcome, apply: putProductUnlessChangedLater(item, server) } : outcome;
+  }
+  return { kind: 'ok', apply: putProductUnlessChangedLater(item, mapProductRow(data as Row)) };
 }
 
 /**
@@ -200,9 +268,41 @@ async function sendItem(client: SupabaseClient, item: OutboxItem): Promise<SendO
         kind: 'ok',
         apply: async () => {
           if (canonical.id !== p.id) await remapProduct(item.shopId, p.id, canonical);
-          else await db.products.put(canonical);
+          else await putProductUnlessChangedLater(item, canonical)();
         },
       };
+    }
+
+    case 'product_update': {
+      const { productId, changes } = item.payload;
+      return sendProductChange(
+        client,
+        item,
+        productId,
+        client.rpc('update_product', {
+          p_shop_id: item.shopId,
+          p_product_id: productId,
+          p_barcode: changes.barcode,
+          p_name: changes.name,
+          p_category: changes.category,
+          p_buying_price: changes.buyingPrice ?? null,
+          p_selling_price: changes.sellingPrice ?? null,
+        })
+      );
+    }
+
+    case 'product_archive': {
+      const { productId, archived } = item.payload;
+      return sendProductChange(
+        client,
+        item,
+        productId,
+        client.rpc('set_product_archived', {
+          p_shop_id: item.shopId,
+          p_product_id: productId,
+          p_archived: archived,
+        })
+      );
     }
 
     case 'stock_in': {
@@ -339,7 +439,13 @@ export async function pushOutbox(
       );
       result.pushed++;
     } else if (outcome.kind === 'fail') {
-      await db.outbox.update(seq!, { status: 'failed', lastError: outcome.error });
+      const apply = outcome.apply;
+      await withWriteLock(() =>
+        db.transaction('rw', WRITE_TABLES, async () => {
+          await apply?.();
+          await db.outbox.update(seq!, { status: 'failed', lastError: outcome.error });
+        })
+      );
       result.failed++;
     } else {
       const attempts = item.attempts + 1;
@@ -370,7 +476,7 @@ interface PullSpec {
 const PULL_SPECS: PullSpec[] = [
   {
     table: 'products',
-    columns: 'id, shop_id, barcode, name, category, buying_price, selling_price, created_at, updated_at',
+    columns: PRODUCT_COLUMNS,
     initialCursor: () => new Date(0).toISOString(),
     apply: async (rows) => {
       await db.products.bulkPut(rows.map(mapProductRow));

@@ -25,7 +25,7 @@ import { LoadingState } from './components/ui/LoadingState';
 import { RapidSellPanel } from './components/sales/RapidSellPanel';
 import { useSaleRegister } from './hooks/useSaleRegister';
 import { useExpiryAlerts } from './hooks/useExpiryAlerts';
-import { searchProductByBarcode } from './services/productService';
+import { isArchived, searchProductByBarcode } from './services/productService';
 import { onDataChanged } from './lib/events';
 import { refreshPushSubscription } from './lib/push';
 import { captureInviteFromUrl } from './lib/invite';
@@ -121,7 +121,8 @@ export function AppContent() {
     try {
       const product = await searchProductByBarcode(barcode, shopId);
       if (!product) setRegisterRequest({ barcode, mode });
-      else if (mode === 'stock_in') setStockInProduct(product);
+      // An archived product opens the product card, which explains it and offers Restore.
+      else if (mode === 'stock_in' && !isArchived(product)) setStockInProduct(product);
       else setFoundProduct(product);
     } finally {
       setIsSearching(false);
@@ -212,6 +213,7 @@ export function AppContent() {
             void saleRegister.sellProduct(product, 1);
           }
         }}
+        onRestored={setFoundProduct}
       />
 
       <ProductRegisterDialog
@@ -240,6 +242,7 @@ export function AppContent() {
           setInspectedProduct(null);
           setStockInProduct(product);
         }}
+        onProductChanged={setInspectedProduct}
       />
 
       {isSearching && (
