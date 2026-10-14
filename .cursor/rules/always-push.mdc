@@ -1,0 +1,14 @@
+---
+description: Commit and push every change to GitHub
+alwaysApply: true
+---
+
+# Always push after changes
+
+After every change to the repository, commit it and push to `origin` (https://github.com/TDKasala/SpazaStock), branch `main`, before ending the turn.
+
+- Run the relevant checks first (`npm run lint`, `npm test`, `npm run build`) and only push when they pass. If they fail, fix the failure or tell the user why nothing was pushed.
+- Use a clear commit message that describes what changed.
+- Never force-push. If the push is rejected because GitHub has newer commits, `git pull --rebase origin main`, resolve the conflicts, re-run the checks, then push.
+- Confirm the push succeeded and tell the user the new commit hash.
+- If a turn made no changes, check `git status -sb` and push any unpushed commits.
