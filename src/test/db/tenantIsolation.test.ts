@@ -14,6 +14,7 @@ import {
   rpc,
   sell,
   stockIn,
+  voidItem,
   type User,
 } from './harness';
 
@@ -27,6 +28,7 @@ let shopB: string;
 let productA: string;
 let batchA: string;
 let siphoMemberId: string;
+let saleItemA: string;
 
 const SHOP_TABLES = [
   'shop_members',
@@ -38,6 +40,7 @@ const SHOP_TABLES = [
   'stock_discrepancies',
   'notifications',
   'subscriptions',
+  'sale_item_voids',
 ];
 
 async function count(user: User, sql: string, params: unknown[] = []): Promise<number> {
@@ -60,7 +63,9 @@ beforeAll(async () => {
   // Give every shop-A table at least one row, including a discrepancy and notifications.
   productA = (await newProduct(pg, alice, shopA)).id;
   batchA = (await stockIn(pg, alice, shopA, productA, 3)).batch.id;
-  await sell(pg, sipho, shopA, [{ product_id: productA, quantity: 5 }]);
+  const sale = await sell(pg, sipho, shopA, [{ product_id: productA, quantity: 5 }]);
+  saleItemA = sale.items[0].id;
+  await voidItem(pg, alice, shopA, saleItemA, 1);
 }, 60_000);
 
 afterAll(async () => {
@@ -89,6 +94,7 @@ describe('tenant isolation', () => {
       () => stockIn(pg, bob, shopA, productA, 1),
       () => sell(pg, bob, shopA, [{ product_id: productA, quantity: 1 }]),
       () => adjust(pg, bob, shopA, batchA, -1),
+      () => voidItem(pg, bob, shopA, saleItemA, 1),
       () => rpc(pg, bob, 'invite_shop_member', { p_shop_id: shopA, p_email: 'x@example.com', p_role: 'staff' }),
       () => rpc(pg, bob, 'update_member_role', { p_member_id: siphoMemberId, p_role: 'owner' }),
       () => rpc(pg, bob, 'remove_shop_member', { p_member_id: siphoMemberId }),
@@ -106,6 +112,11 @@ describe('tenant isolation', () => {
     expect(await errorCode(newProduct(pg, null, shopA))).toBe('42501');
     expect(await errorCode(sell(pg, null, shopA, [{ product_id: productA, quantity: 1 }]))).toBe('42501');
     expect(await errorCode(rpc(pg, null, 'accept_pending_invites'))).toBe('42501');
+    expect(await errorCode(voidItem(pg, null, shopA, saleItemA, 1))).toBe('42501');
+  });
+
+  it("does not let a stranger void another shop's sale by passing their own shop id", async () => {
+    expect(await errorCode(voidItem(pg, bob, shopB, saleItemA, 1))).toBe('P0002');
   });
 
   it('stops a user creating a shop for someone else', async () => {
@@ -171,6 +182,39 @@ describe('roles inside a shop', () => {
       ["update public.subscriptions set plan = 'pro'", []],
       ["insert into public.shop_members (shop_id, user_id, role) values ($1, $2, 'owner')", [shopA, bob.id]],
       ['delete from public.products where id = $1', [productA]],
+    ] as const;
+    for (const [sql, params] of writes) {
+      expect(await errorCode(query(pg, alice, sql, [...params])), sql).toBe('42501');
+    }
+  });
+
+  it('lets staff undo only their own recent sales; owners and managers can undo any', async () => {
+    const product = await newProduct(pg, alice, shopA);
+    await stockIn(pg, alice, shopA, product.id, 20);
+    const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000);
+
+    const own = await sell(pg, sipho, shopA, [{ product_id: product.id, quantity: 2 }]);
+    expect((await voidItem(pg, sipho, shopA, own.items[0].id, 1)).duplicate).toBe(false);
+
+    const byOwner = await sell(pg, alice, shopA, [{ product_id: product.id, quantity: 2 }]);
+    expect(await errorCode(voidItem(pg, sipho, shopA, byOwner.items[0].id, 1))).toBe('42501');
+
+    const old = await sell(pg, sipho, shopA, [{ product_id: product.id, quantity: 2 }], { soldAt: minutesAgo(30) });
+    expect(await errorCode(voidItem(pg, sipho, shopA, old.items[0].id, 1))).toBe('42501');
+    expect(await errorCode(
+      voidItem(pg, sipho, shopA, own.items[0].id, 1, { occurredAt: new Date(Date.now() + 10 * 60_000) })
+    )).toBe('42501');
+
+    expect((await voidItem(pg, mandla, shopA, old.items[0].id, 1)).duplicate).toBe(false);
+    expect((await voidItem(pg, alice, shopA, byOwner.items[0].id, 2)).item.voided_quantity).toBe(2);
+  });
+
+  it('denies direct writes to sale voids', async () => {
+    const writes = [
+      ["insert into public.sale_item_voids (shop_id, sale_id, sale_item_id, quantity, idempotency_key) values ($1, $2, $2, 1, 'x')", [shopA, saleItemA]],
+      ['update public.sale_item_voids set quantity = 99', []],
+      ['delete from public.sale_item_voids', []],
+      ['update public.sale_items set voided_quantity = 0', []],
     ] as const;
     for (const [sql, params] of writes) {
       expect(await errorCode(query(pg, alice, sql, [...params])), sql).toBe('42501');

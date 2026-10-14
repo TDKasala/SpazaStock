@@ -98,6 +98,7 @@ export function mapSaleItemRow(item: Row, header?: Row): Sale {
     allocations: (item.allocations as BatchAllocation[]) ?? [],
     idempotencyKey: String(sale.idempotency_key),
     createdAt: toIso(sale.sold_at),
+    voidedQuantity: Number(item.voided_quantity ?? 0),
   };
 }
 
@@ -146,6 +147,16 @@ async function remapProduct(shopId: string, oldId: string, canonical: Product): 
         item.payload.sale.productId = canonical.id;
       }
     });
+}
+
+/**
+ * Stores the server's copy of a just-pushed sale. Voids still queued behind it are already
+ * counted locally, so the larger voided quantity wins until they reach the server.
+ */
+async function putPushedSale(sale: Sale): Promise<void> {
+  const local = await db.sales.get(sale.id);
+  const voidedQuantity = Math.max(sale.voidedQuantity ?? 0, local?.voidedQuantity ?? 0);
+  await db.sales.put({ ...sale, voidedQuantity });
 }
 
 async function sendItem(client: SupabaseClient, item: OutboxItem): Promise<SendOutcome> {
@@ -205,7 +216,27 @@ async function sendItem(client: SupabaseClient, item: OutboxItem): Promise<SendO
       return {
         kind: 'ok',
         apply: async () => {
-          if (result?.sale && line) await db.sales.put(mapSaleItemRow(line, result.sale));
+          if (result?.sale && line) await putPushedSale(mapSaleItemRow(line, result.sale));
+        },
+      };
+    }
+
+    case 'sale_void': {
+      // The local sale id is also the server sale line id (see the 'sale' case).
+      const { saleId, quantity, idempotencyKey, occurredAt } = item.payload;
+      const { data, error } = await client.rpc('void_sale_item', {
+        p_shop_id: item.shopId,
+        p_sale_item_id: saleId,
+        p_quantity: quantity,
+        p_occurred_at: occurredAt,
+        p_idempotency_key: idempotencyKey,
+      });
+      if (error) return outcomeFromError(error);
+      const result = data as { sale?: Row; item?: Row } | null;
+      return {
+        kind: 'ok',
+        apply: async () => {
+          if (result?.sale && result.item) await putPushedSale(mapSaleItemRow(result.item, result.sale));
         },
       };
     }
@@ -315,7 +346,7 @@ const PULL_SPECS: PullSpec[] = [
   {
     table: 'sale_items',
     columns:
-      'id, shop_id, product_id, quantity, unit_price, line_total, allocations, updated_at, sales(sold_at, idempotency_key)',
+      'id, shop_id, product_id, quantity, unit_price, line_total, allocations, voided_quantity, updated_at, sales(sold_at, idempotency_key)',
     initialCursor: () => new Date(Date.now() - SALES_HISTORY_DAYS * 86_400_000).toISOString(),
     apply: async (rows) => {
       await db.sales.bulkPut(rows.map((row) => mapSaleItemRow(row)));

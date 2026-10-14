@@ -205,14 +205,38 @@ export async function sell(
   caller: Caller,
   shopId: string,
   lines: SaleLine[],
-  options: { key?: string; saleId?: string } = {}
+  options: { key?: string; saleId?: string; soldAt?: Date } = {}
 ): Promise<SaleResult> {
   return rpc(pg, caller, 'record_sale', {
     p_sale_id: options.saleId ?? randomUUID(),
     p_shop_id: shopId,
     p_idempotency_key: options.key ?? randomUUID(),
-    p_sold_at: new Date().toISOString(),
+    p_sold_at: (options.soldAt ?? new Date()).toISOString(),
     p_items: lines.map((l) => ({ id: l.id ?? randomUUID(), unit_price: 18.5, ...l })),
+  });
+}
+
+export interface VoidResult {
+  sale: { id: string };
+  item: { id: string; quantity: number; voided_quantity: number };
+  stock_total: number;
+  duplicate: boolean;
+}
+
+export async function voidItem(
+  pg: PGlite,
+  caller: Caller,
+  shopId: string,
+  saleItemId: string,
+  quantity: number,
+  options: { key?: string; occurredAt?: Date } = {}
+): Promise<VoidResult> {
+  return rpc(pg, caller, 'void_sale_item', {
+    p_shop_id: shopId,
+    p_sale_item_id: saleItemId,
+    p_quantity: quantity,
+    p_occurred_at: (options.occurredAt ?? new Date()).toISOString(),
+    p_idempotency_key: options.key ?? randomUUID(),
   });
 }
 

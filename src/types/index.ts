@@ -59,7 +59,7 @@ export interface StockBatch {
   receivedAt: string;
 }
 
-export type StockMovementType = 'stock_in' | 'sale' | 'adjustment';
+export type StockMovementType = 'stock_in' | 'sale' | 'adjustment' | 'return';
 
 export interface StockMovement {
   id: string;
@@ -114,6 +114,8 @@ export interface Sale {
   allocations: BatchAllocation[];
   idempotencyKey: string;
   createdAt: string;
+  /** Units later voided (undone); `quantity` and `totalAmount` stay the gross values. */
+  voidedQuantity?: number;
 }
 
 export interface SaleInput {

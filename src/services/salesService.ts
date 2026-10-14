@@ -1,4 +1,5 @@
 import {
+  Product,
   Sale,
   SaleInput,
   SaleResult,
@@ -97,52 +98,55 @@ export async function recordSale(input: SaleInput, shopId: string): Promise<Reco
         };
       }
 
+      const now = new Date().toISOString();
+      const saleId = newId();
       let remaining = input.quantity;
+      let runningTotal = totalAvailable;
       const allocations: BatchAllocation[] = [];
+      const movements: StockMovement[] = [];
       for (const batch of sortBatchesByFEFO(batches)) {
         if (remaining <= 0) break;
         const take = Math.min(batch.quantity, remaining);
         remaining -= take;
+        runningTotal -= take;
         await db.batches.update(batch.id, { quantity: batch.quantity - take });
         allocations.push({
           batchId: batch.id,
           quantityDeducted: take,
           batchExpiryDate: batch.expiryDate,
         });
+        movements.push({
+          id: newId(),
+          shopId,
+          productId: product.id,
+          batchId: batch.id,
+          saleId,
+          type: 'sale',
+          quantityDelta: -take,
+          resultingTotalQuantity: runningTotal,
+          idempotencyKey: `sale:${idempotencyKey}:${saleId}:${batch.id}`,
+          createdAt: now,
+        });
       }
 
-      const now = new Date().toISOString();
       const unitPrice = input.unitPrice ?? product.sellingPrice ?? 0;
       const remainingTotalStock = totalAvailable - input.quantity;
 
       const sale: Sale = {
-        id: newId(),
+        id: saleId,
         shopId,
         productId: product.id,
         quantity: input.quantity,
         unitPrice,
-        totalAmount: Math.round(unitPrice * input.quantity * 100) / 100,
+        totalAmount: roundMoney(unitPrice * input.quantity),
         allocations,
         idempotencyKey,
         createdAt: now,
       };
 
-      const movement: StockMovement = {
-        id: newId(),
-        shopId,
-        productId: product.id,
-        batchId: allocations[0]?.batchId ?? null,
-        saleId: sale.id,
-        type: 'sale',
-        quantityDelta: -input.quantity,
-        resultingTotalQuantity: remainingTotalStock,
-        idempotencyKey,
-        createdAt: now,
-      };
-
       await db.sales.add(sale);
-      await db.movements.add(movement);
-      await enqueue(shopId, { type: 'sale', payload: { sale, movementId: movement.id } });
+      await db.movements.bulkAdd(movements);
+      await enqueue(shopId, { type: 'sale', payload: { sale } });
 
       return {
         result: {
@@ -159,6 +163,174 @@ export async function recordSale(input: SaleInput, shopId: string): Promise<Reco
 
   if (outcome.result) emitDataChanged('local');
   return outcome;
+}
+
+function roundMoney(amount: number): number {
+  return Math.round(amount * 100) / 100;
+}
+
+/** Units of the sale still counted as sold. */
+export function saleNetQuantity(sale: Pick<Sale, 'quantity' | 'voidedQuantity'>): number {
+  return sale.quantity - (sale.voidedQuantity ?? 0);
+}
+
+/** Amount of the sale still counted as revenue. */
+export function saleNetAmount(sale: Pick<Sale, 'quantity' | 'voidedQuantity' | 'unitPrice' | 'totalAmount'>): number {
+  if (!sale.voidedQuantity) return sale.totalAmount;
+  return roundMoney(sale.unitPrice * saleNetQuantity(sale));
+}
+
+export interface VoidReturn {
+  batchId: string;
+  quantity: number;
+}
+
+/**
+ * Where voided units go, determined only by the sale's allocations and voided quantity (the
+ * server's void_sale_item follows the same rule): units never taken from a batch (an oversell
+ * shortfall) are voided first, then units go back to their batches, last allocation first.
+ * The caller must ensure `quantity` does not exceed the sale's net quantity.
+ */
+export function planVoidReturns(
+  sale: Pick<Sale, 'quantity' | 'allocations' | 'voidedQuantity'>,
+  quantity: number
+): VoidReturn[] {
+  const voided = sale.voidedQuantity ?? 0;
+  const allocated = sale.allocations.reduce((sum, a) => sum + a.quantityDeducted, 0);
+  const shortfall = Math.max(sale.quantity - allocated, 0);
+  const voidedFromShortfall = Math.min(voided, shortfall);
+  let skip = voided - voidedFromShortfall;
+  let remaining = quantity - Math.min(quantity, shortfall - voidedFromShortfall);
+
+  const returns: VoidReturn[] = [];
+  for (const allocation of [...sale.allocations].reverse()) {
+    if (remaining <= 0) break;
+    let available = allocation.quantityDeducted;
+    const skipped = Math.min(skip, available);
+    skip -= skipped;
+    available -= skipped;
+    if (available <= 0) continue;
+    const take = Math.min(available, remaining);
+    remaining -= take;
+    returns.push({ batchId: allocation.batchId, quantity: take });
+  }
+  return returns;
+}
+
+export type VoidErrorCode = 'invalid_quantity' | 'duplicate' | 'not_found' | 'over_void';
+
+export interface VoidSaleInput {
+  saleId: string;
+  quantity: number;
+  idempotencyKey?: string;
+}
+
+export interface VoidSaleResult {
+  sale: Sale;
+  product: Product;
+  returns: VoidReturn[];
+  remainingTotalStock: number;
+}
+
+export interface VoidSaleOutcome {
+  result?: VoidSaleResult;
+  error?: string;
+  errorCode?: VoidErrorCode;
+  /** Units of the sale that could still be voided when the void was refused. */
+  available?: number;
+}
+
+/**
+ * Voids (undoes) units of a recorded sale: the units go back to the batches they came from and
+ * the void is queued for sync. Idempotent on the key, like recordSale.
+ */
+export async function voidSale(input: VoidSaleInput, shopId: string): Promise<VoidSaleOutcome> {
+  if (!Number.isInteger(input.quantity) || input.quantity <= 0) {
+    return { error: 'Quantity must be a positive whole number.', errorCode: 'invalid_quantity' };
+  }
+  const idempotencyKey = input.idempotencyKey?.trim() || newId();
+
+  const outcome = await withWriteLock(() =>
+    db.transaction('rw', db.products, db.batches, db.movements, db.sales, db.outbox, async (): Promise<VoidSaleOutcome> => {
+      const sale = await db.sales.get(input.saleId);
+      if (!sale || sale.shopId !== shopId) {
+        return { error: 'Sale not found in this shop.', errorCode: 'not_found' };
+      }
+
+      const candidateKeys = sale.allocations.map((a) => [shopId, `void:${idempotencyKey}:${a.batchId}`]);
+      const seenMovement =
+        candidateKeys.length > 0 &&
+        (await db.movements.where('[shopId+idempotencyKey]').anyOf(candidateKeys).count()) > 0;
+      const seenQueued = await db.outbox
+        .where('shopId')
+        .equals(shopId)
+        .filter((item) => item.type === 'sale_void' && item.payload.idempotencyKey === idempotencyKey)
+        .count();
+      if (seenMovement || seenQueued > 0) {
+        return { error: 'This undo was already recorded.', errorCode: 'duplicate' };
+      }
+
+      const net = saleNetQuantity(sale);
+      if (input.quantity > net) {
+        return { error: `Only ${net} units of this sale can be undone.`, errorCode: 'over_void', available: net };
+      }
+
+      const product = await db.products.get(sale.productId);
+      if (!product) {
+        return { error: 'Product not found in active shop catalog.', errorCode: 'not_found' };
+      }
+
+      const batches = await db.batches.where('[shopId+productId]').equals([shopId, sale.productId]).toArray();
+      let runningTotal = batches.reduce((sum, b) => sum + b.quantity, 0);
+      const now = new Date().toISOString();
+      const returns = planVoidReturns(sale, input.quantity);
+
+      for (const ret of returns) {
+        const batch = batches.find((b) => b.id === ret.batchId);
+        if (batch) await db.batches.update(batch.id, { quantity: batch.quantity + ret.quantity });
+        runningTotal += ret.quantity;
+        await db.movements.add({
+          id: newId(),
+          shopId,
+          productId: sale.productId,
+          batchId: ret.batchId,
+          saleId: sale.id,
+          type: 'return',
+          quantityDelta: ret.quantity,
+          resultingTotalQuantity: runningTotal,
+          idempotencyKey: `void:${idempotencyKey}:${ret.batchId}`,
+          createdAt: now,
+        });
+      }
+
+      const updated: Sale = { ...sale, voidedQuantity: (sale.voidedQuantity ?? 0) + input.quantity };
+      await db.sales.put(updated);
+      await enqueue(shopId, {
+        type: 'sale_void',
+        payload: { saleId: sale.id, quantity: input.quantity, idempotencyKey, occurredAt: now },
+      });
+
+      return { result: { sale: updated, product, returns, remainingTotalStock: runningTotal } };
+    })
+  );
+
+  if (outcome.result) emitDataChanged('local');
+  return outcome;
+}
+
+export type SaleSyncState = 'pending' | 'failed';
+
+/** Sales with a sale or void still in the outbox, so the UI can show which aren't synced yet. */
+export async function getPendingSaleIds(shopId: string): Promise<Map<string, SaleSyncState>> {
+  const states = new Map<string, SaleSyncState>();
+  const items = await db.outbox.where('shopId').equals(shopId).toArray();
+  for (const item of items) {
+    const saleId =
+      item.type === 'sale' ? item.payload.sale.id : item.type === 'sale_void' ? item.payload.saleId : null;
+    if (!saleId) continue;
+    if (item.status === 'failed' || !states.has(saleId)) states.set(saleId, item.status);
+  }
+  return states;
 }
 
 /** All sales for the shop, newest first. */

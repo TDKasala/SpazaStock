@@ -13,8 +13,11 @@ import {
   rpc,
   sell,
   stockIn,
+  voidItem,
+  type SaleResult,
   type User,
 } from './harness';
+import { planVoidReturns } from '../../services/salesService';
 
 let pg: PGlite;
 let owner: User;
@@ -49,6 +52,23 @@ async function ledger(productId: string) {
     ),
     shortfall: await one('select coalesce(sum(shortfall), 0) as n from public.stock_discrepancies where product_id = $1'),
     negativeBatches: await one('select count(*) as n from public.stock_batches where product_id = $1 and quantity < 0'),
+    voided: await one('select coalesce(sum(voided_quantity), 0) as n from public.sale_items where product_id = $1'),
+    voidReturns: await one(
+      "select coalesce(sum(quantity_delta), 0) as n from public.stock_movements where product_id = $1 and reason = 'return' and sale_item_id is not null"
+    ),
+    // Voided units that were never in stock (oversold), which by rule are voided first.
+    voidedShortfall: await one(`
+      select coalesce(sum(least(i.voided_quantity, i.quantity - coalesce(
+        (select sum((a ->> 'quantityDeducted')::int) from jsonb_array_elements(i.allocations) a), 0
+      ))), 0) as n
+      from public.sale_items i where i.product_id = $1`),
+    // A sale line can never get back more from a batch than it took from it.
+    overReturned: await one(`
+      select count(*) as n from (
+        select 1 from public.stock_movements
+        where product_id = $1 and sale_item_id is not null
+        group by sale_item_id, batch_id having sum(quantity_delta) > 0
+      ) x`),
   };
 }
 
@@ -57,6 +77,8 @@ async function expectConsistent(productId: string, expectedStock?: number) {
   expect(books.negativeBatches).toBe(0);
   expect(books.movements).toBe(books.stock);
   expect(books.saleMovements + books.shortfall).toBe(books.sold);
+  expect(books.voidReturns + books.voidedShortfall).toBe(books.voided);
+  expect(books.overReturned).toBe(0);
   if (expectedStock !== undefined) expect(books.stock).toBe(expectedStock);
 }
 
@@ -246,6 +268,129 @@ describe('sales', () => {
   });
 });
 
+describe('rapid one-unit sales', () => {
+  it('deducts exactly one unit per distinct scan and nothing for replays', async () => {
+    const product = await newProduct(pg, owner, shop);
+    await stockIn(pg, owner, shop, product.id, 20, { expiry: '2026-11-01' });
+    const scans = Array.from({ length: 20 }, () => ({ saleId: randomUUID(), key: randomUUID(), lineId: randomUUID() }));
+
+    for (const scan of scans) {
+      await sell(pg, staff, shop, [{ id: scan.lineId, product_id: product.id, quantity: 1 }], scan);
+    }
+    await expectConsistent(product.id, 0);
+
+    for (const scan of scans) {
+      const replay = await sell(pg, staff, shop, [{ id: scan.lineId, product_id: product.id, quantity: 1 }], scan);
+      expect(replay.duplicate).toBe(true);
+    }
+    await expectConsistent(product.id, 0);
+    const { rows } = await pg.query<{ n: number }>('select count(*)::int as n from public.sale_items where product_id = $1', [product.id]);
+    expect(rows[0].n).toBe(20);
+  });
+});
+
+describe('voids', () => {
+  it('returns units to the batches they came from, last allocation first', async () => {
+    const product = await newProduct(pg, owner, shop);
+    const early = await stockIn(pg, owner, shop, product.id, 3, { expiry: '2026-11-01' });
+    const late = await stockIn(pg, owner, shop, product.id, 5, { expiry: '2026-12-01' });
+    const sale = await sell(pg, staff, shop, [{ product_id: product.id, quantity: 6 }]);
+    const item = sale.items[0];
+
+    const result = await voidItem(pg, staff, shop, item.id, 4, { key: 'undo-1' });
+    expect(result).toMatchObject({ duplicate: false, stock_total: 6, item: { voided_quantity: 4, quantity: 6 } });
+
+    const batches = await pg.query<{ id: string; quantity: number }>(
+      'select id, quantity from public.stock_batches where product_id = $1',
+      [product.id]
+    );
+    const quantityOf = (id: string) => batches.rows.find((b) => b.id === id)?.quantity;
+    expect(quantityOf(late.batch.id)).toBe(5); // 2 left + 3 returned
+    expect(quantityOf(early.batch.id)).toBe(1); // 0 left + 1 returned
+
+    const returns = await pg.query<{ batch_id: string; quantity_delta: number; idempotency_key: string; actor_id: string }>(
+      "select batch_id, quantity_delta, idempotency_key, actor_id from public.stock_movements where sale_item_id = $1 and reason = 'return' order by quantity_delta desc",
+      [item.id]
+    );
+    expect(returns.rows).toEqual([
+      { batch_id: late.batch.id, quantity_delta: 3, idempotency_key: `void:undo-1:${late.batch.id}`, actor_id: staff.id },
+      { batch_id: early.batch.id, quantity_delta: 1, idempotency_key: `void:undo-1:${early.batch.id}`, actor_id: staff.id },
+    ]);
+    const voids = await pg.query<{ quantity: number; voided_by: string; sale_id: string }>(
+      'select quantity, voided_by, sale_id from public.sale_item_voids where sale_item_id = $1',
+      [item.id]
+    );
+    expect(voids.rows).toEqual([{ quantity: 4, voided_by: staff.id, sale_id: sale.sale.id }]);
+    await expectConsistent(product.id, 6);
+  });
+
+  it('applies a replayed void once and refuses to void more than is left', async () => {
+    const product = await newProduct(pg, owner, shop);
+    await stockIn(pg, owner, shop, product.id, 5);
+    const sale = await sell(pg, staff, shop, [{ product_id: product.id, quantity: 3 }]);
+    const itemId = sale.items[0].id;
+
+    await voidItem(pg, staff, shop, itemId, 2, { key: 'undo-a' });
+    const replay = await voidItem(pg, staff, shop, itemId, 2, { key: 'undo-a' });
+    expect(replay).toMatchObject({ duplicate: true, stock_total: 4, item: { voided_quantity: 2 } });
+
+    expect(await errorCode(voidItem(pg, staff, shop, itemId, 2))).toBe('22023');
+    expect(await errorCode(voidItem(pg, staff, shop, itemId, 0))).toBe('22023');
+    expect(await errorCode(voidItem(pg, staff, shop, randomUUID(), 1))).toBe('P0002');
+    expect(await errorCode(rpc(pg, staff, 'void_sale_item', {
+      p_shop_id: shop, p_sale_item_id: itemId, p_quantity: 1, p_occurred_at: null, p_idempotency_key: '  ',
+    }))).toBe('22023');
+
+    await voidItem(pg, staff, shop, itemId, 1);
+    await expectConsistent(product.id, 5);
+  });
+
+  it('voids oversold units first, so they never create stock that was not there', async () => {
+    const product = await newProduct(pg, owner, shop);
+    await stockIn(pg, owner, shop, product.id, 2);
+    const sale = await sell(pg, staff, shop, [{ product_id: product.id, quantity: 5 }]);
+    expect(sale.shortfall).toBe(3);
+    const itemId = sale.items[0].id;
+
+    expect((await voidItem(pg, staff, shop, itemId, 3)).stock_total).toBe(0);
+    await expectConsistent(product.id, 0);
+    expect((await voidItem(pg, staff, shop, itemId, 2)).stock_total).toBe(2);
+    await expectConsistent(product.id, 2);
+  });
+
+  it('agrees with the app on where voided units go', async () => {
+    const product = await newProduct(pg, owner, shop);
+    await stockIn(pg, owner, shop, product.id, 2, { expiry: '2026-11-01' });
+    await stockIn(pg, owner, shop, product.id, 2, { expiry: '2026-12-01' });
+    const sale = await sell(pg, staff, shop, [{ product_id: product.id, quantity: 6 }]);
+    const item = sale.items[0];
+
+    let voided = 0;
+    for (const quantity of [1, 2, 2, 1]) {
+      const before = await batchQuantities(product.id);
+      const planned = planVoidReturns({ quantity: item.quantity, allocations: item.allocations, voidedQuantity: voided }, quantity);
+      await voidItem(pg, staff, shop, item.id, quantity);
+      voided += quantity;
+      const after = await batchQuantities(product.id);
+      const actual = Object.entries(after)
+        .map(([batchId, q]) => ({ batchId, quantity: q - (before[batchId] ?? 0) }))
+        .filter((r) => r.quantity > 0);
+      expect(actual.sort((a, b) => a.batchId.localeCompare(b.batchId))).toEqual(
+        planned.sort((a, b) => a.batchId.localeCompare(b.batchId))
+      );
+    }
+    await expectConsistent(product.id, 4);
+  });
+});
+
+async function batchQuantities(productId: string): Promise<Record<string, number>> {
+  const { rows } = await pg.query<{ id: string; quantity: number }>(
+    'select id, quantity from public.stock_batches where product_id = $1',
+    [productId]
+  );
+  return Object.fromEntries(rows.map((r) => [r.id, r.quantity]));
+}
+
 describe('adjustments', () => {
   it('never lets a deliberate adjustment take stock below zero', async () => {
     const product = await newProduct(pg, owner, shop);
@@ -299,11 +444,12 @@ describe('ledger invariant under a random workload', () => {
     ];
     const expected = new Map(products.map((id) => [id, 0]));
     const batches = new Map<string, { productId: string; quantity: number }>();
+    const items: Array<SaleResult['items'][number] & { voided: number }> = [];
     const history: Array<() => Promise<unknown>> = [];
 
-    for (let step = 0; step < 120; step++) {
+    for (let step = 0; step < 160; step++) {
       const roll = random();
-      if (roll < 0.35 || batches.size === 0) {
+      if (roll < 0.3 || batches.size === 0) {
         const productId = pick(products);
         const quantity = 1 + Math.floor(random() * 10);
         const batchId = randomUUID();
@@ -313,7 +459,7 @@ describe('ledger invariant under a random workload', () => {
         history.push(op);
         batches.set(batchId, { productId, quantity });
         expected.set(productId, expected.get(productId)! + quantity);
-      } else if (roll < 0.75) {
+      } else if (roll < 0.65) {
         const lines = [...new Set([pick(products), pick(products)])].map((productId) => ({
           id: randomUUID(),
           product_id: productId,
@@ -329,8 +475,9 @@ describe('ledger invariant under a random workload', () => {
         }
         for (const item of result.items) {
           for (const a of item.allocations) batches.get(a.batchId)!.quantity -= a.quantityDeducted;
+          items.push({ ...item, voided: 0 });
         }
-      } else if (roll < 0.9) {
+      } else if (roll < 0.8) {
         const [batchId, batch] = pick([...batches.entries()]);
         const delta = Math.floor(random() * 9) - 6 || 1;
         const key = randomUUID();
@@ -343,6 +490,25 @@ describe('ledger invariant under a random workload', () => {
           batch.quantity += delta;
           expected.set(batch.productId, expected.get(batch.productId)! + delta);
         }
+      } else if (roll < 0.9) {
+        const open = items.filter((i) => i.quantity - i.voided > 0);
+        if (open.length === 0) continue;
+        const item = pick(open);
+        const quantity = 1 + Math.floor(random() * (item.quantity - item.voided));
+        const key = randomUUID();
+        const occurredAt = new Date();
+        const returns = planVoidReturns(
+          { quantity: item.quantity, allocations: item.allocations, voidedQuantity: item.voided },
+          quantity
+        );
+        const op = () => voidItem(pg, staff, shop, item.id, quantity, { key, occurredAt });
+        const result = await op();
+        history.push(op);
+        item.voided += quantity;
+        for (const r of returns) batches.get(r.batchId)!.quantity += r.quantity;
+        const returned = returns.reduce((sum, r) => sum + r.quantity, 0);
+        expected.set(item.product_id, expected.get(item.product_id)! + returned);
+        expect(result.stock_total).toBe(expected.get(item.product_id));
       } else if (history.length > 0) {
         await pick(history)(); // a sync retry of an earlier operation must change nothing
       }

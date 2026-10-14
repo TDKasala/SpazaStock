@@ -15,12 +15,17 @@ import { useLanguage } from '../../context/LanguageContext';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { ErrorMessage } from '../ui/ErrorMessage';
+import { createScanGate } from '../../lib/scanGate';
 
 export interface BarcodeScannerModalProps {
   isOpen: boolean;
   onClose: () => void;
   onBarcodeScanned: (barcode: string) => void;
   title?: string;
+  /** Keep the camera running and report every new scan (rapid selling). */
+  continuous?: boolean;
+  /** Rendered under the viewfinder, e.g. live sale feedback in continuous mode. */
+  children?: React.ReactNode;
 }
 
 type ScannerViewMode = 'camera' | 'manual';
@@ -41,6 +46,8 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   onClose,
   onBarcodeScanned,
   title,
+  continuous = false,
+  children,
 }) => {
   const { t } = useLanguage();
   const [viewMode, setViewMode] = useState<ScannerViewMode>('camera');
@@ -55,6 +62,16 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   const readerElementId = 'spazastock-barcode-reader';
   const hasDetectedRef = useRef(false);
   const lastCameraScanRef = useRef<{ code: string; at: number } | null>(null);
+  const scanGateRef = useRef(createScanGate());
+  // The camera callback outlives renders; always report to the latest handler and mode.
+  const onScannedRef = useRef(onBarcodeScanned);
+  onScannedRef.current = onBarcodeScanned;
+  const continuousRef = useRef(continuous);
+  continuousRef.current = continuous;
+
+  useEffect(() => {
+    if (isOpen) scanGateRef.current.reset();
+  }, [isOpen]);
 
   // Stop camera helper
   const stopCamera = async () => {
@@ -116,6 +133,11 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
       scannerRef.current = html5QrCode;
 
       const qrCodeSuccessCallback = (decodedText: string) => {
+        if (continuousRef.current) {
+          const code = decodedText.trim();
+          if (scanGateRef.current.accept(code)) onScannedRef.current(code);
+          return;
+        }
         if (hasDetectedRef.current) return;
         const code = decodedText.trim();
         const now = Date.now();
@@ -134,7 +156,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
         }
 
         void stopCamera().then(() => {
-          onBarcodeScanned(code);
+          onScannedRef.current(code);
         });
       };
 
@@ -220,14 +242,19 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
       return;
     }
     setManualInput('');
-    void stopCamera().then(() => {
-      onBarcodeScanned(clean);
-    });
+    submitCode(clean);
   };
 
-  const handleSampleBarcode = (sampleCode: string) => {
+  const handleSampleBarcode = (sampleCode: string) => submitCode(sampleCode);
+
+  /** Typed codes are deliberate, so they skip the camera's presence gate. */
+  const submitCode = (code: string) => {
+    if (continuous) {
+      onBarcodeScanned(code);
+      return;
+    }
     void stopCamera().then(() => {
-      onBarcodeScanned(sampleCode);
+      onBarcodeScanned(code);
     });
   };
 
@@ -341,7 +368,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
 
               {/* Viewfinder Canvas Container */}
               <div
-                className={`relative w-full aspect-square max-h-[320px] bg-black rounded-2xl overflow-hidden border border-zinc-800 flex items-center justify-center ${
+                className={`relative w-full aspect-square ${continuous ? 'max-h-[220px]' : 'max-h-[320px]'} bg-black rounded-2xl overflow-hidden border border-zinc-800 flex items-center justify-center ${
                   cameraError ? 'hidden' : 'block'
                 }`}
               >
@@ -449,6 +476,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
               )}
             </div>
           )}
+          {children && <div className="pt-4">{children}</div>}
         </div>
       </div>
     </div>

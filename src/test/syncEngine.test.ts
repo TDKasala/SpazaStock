@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { backoffMs, isPermanentError, MAX_ATTEMPTS, pullChanges, pushOutbox } from '../sync/syncEngine';
 import { createProduct } from '../services/productService';
 import { stockIn, getProductTotalStock } from '../services/stockService';
-import { recordSale } from '../services/salesService';
+import { recordSale, voidSale } from '../services/salesService';
 import { db, getMeta, resetLocalDatabase } from '../lib/db';
 import type { Product } from '../types';
 import { createFakeSupabase, SHOP_ID } from './helpers';
@@ -222,6 +222,67 @@ describe('pushOutbox', () => {
     expect(stored?.totalAmount).toBe(15);
   });
 
+  it('pushes an undo after its sale and keeps the local undo until the server has it', async () => {
+    const product = await makeProduct();
+    await stockIn({ productId: product.id, quantity: 5 }, SHOP_ID);
+    const { result } = await recordSale({ productId: product.id, quantity: 3, idempotencyKey: 's1' }, SHOP_ID);
+    const sale = result!.sale;
+    const undo = await voidSale({ saleId: sale.id, quantity: 1, idempotencyKey: 'u1' }, SHOP_ID);
+    expect(undo.result).toBeDefined();
+
+    const header = {
+      id: sale.id,
+      shop_id: SHOP_ID,
+      total_amount: '45.00',
+      item_count: 1,
+      idempotency_key: 's1',
+      sold_at: sale.createdAt,
+    };
+    const line = (voided: number) => ({
+      id: sale.id,
+      shop_id: SHOP_ID,
+      sale_id: sale.id,
+      product_id: product.id,
+      quantity: 3,
+      unit_price: '15.00',
+      line_total: '45.00',
+      allocations: sale.allocations,
+      voided_quantity: voided,
+    });
+    let voidReachable = false;
+    const fake = createFakeSupabase({
+      rpc: (name, args) => {
+        if (name === 'record_sale') {
+          return { data: { sale: header, items: [line(0)], duplicate: false, shortfall: 0 }, error: null };
+        }
+        if (name === 'void_sale_item') {
+          if (!voidReachable) throw new TypeError('Failed to fetch');
+          return { data: { sale: header, item: line(1), stock_total: 3, duplicate: false }, error: null };
+        }
+        return acceptAll(name, args);
+      },
+    });
+
+    // The sale reaches the server but the undo doesn't: the local undo must survive.
+    const first = await pushOutbox(fake.client, SHOP_ID, 0);
+    expect(first.pushed).toBe(3);
+    expect((await db.sales.get(sale.id))?.voidedQuantity).toBe(1);
+    expect((await db.outbox.toArray()).map((i) => i.type)).toEqual(['sale_void']);
+
+    voidReachable = true;
+    await pushOutbox(fake.client, SHOP_ID, Date.now() + 60_000);
+    const voidCall = fake.rpc.mock.calls.filter(([name]) => name === 'void_sale_item').at(-1)![1];
+    expect(voidCall).toEqual({
+      p_shop_id: SHOP_ID,
+      p_sale_item_id: sale.id,
+      p_quantity: 1,
+      p_occurred_at: expect.any(String),
+      p_idempotency_key: 'u1',
+    });
+    expect(await db.outbox.count()).toBe(0);
+    expect(await db.sales.get(sale.id)).toMatchObject({ quantity: 3, voidedQuantity: 1, totalAmount: 45 });
+  });
+
   it('marks discrepancies resolved on the server', async () => {
     const { resolveDiscrepancy } = await import('../services/stockService');
     const product = await makeProduct();
@@ -280,6 +341,7 @@ describe('pullChanges', () => {
             unit_price: '15.00',
             line_total: '45.00',
             allocations: [{ batchId: batch.id, quantityDeducted: 3, batchExpiryDate: null }],
+            voided_quantity: 1,
             updated_at: '2026-10-14T08:05:00Z',
             sales: { sold_at: '2026-10-14T08:04:00Z', idempotency_key: 'other-phone-1' },
           },
@@ -306,6 +368,7 @@ describe('pullChanges', () => {
       productId: product.id,
       quantity: 3,
       totalAmount: 45,
+      voidedQuantity: 1,
       idempotencyKey: 'other-phone-1',
       createdAt: '2026-10-14T08:04:00.000Z',
     });

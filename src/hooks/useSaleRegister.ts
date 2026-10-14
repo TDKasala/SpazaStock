@@ -1,43 +1,159 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Product, SaleResult } from '../types';
-import { recordSale, type RecordSaleOutcome } from '../services/salesService';
-import { searchProductByBarcode } from '../services/productService';
+import { getPendingSaleIds, saleNetQuantity, type SaleSyncState } from '../services/salesService';
+import { createScanSeller, UNDO_WINDOW_MS, type ScanSellOutcome } from '../services/scanSell';
 import { newId } from '../lib/ids';
+import { onDataChanged } from '../lib/events';
+import { signalError, signalNeutral, signalSuccess } from '../lib/feedback';
 import { useLanguage } from '../context/LanguageContext';
+import { useSyncStatus } from './useSyncStatus';
 
-function vibrate(pattern: number[]): void {
-  try {
-    navigator.vibrate?.(pattern);
-  } catch {
-    // Vibration can be blocked by the browser; feedback is best-effort.
-  }
+/** One sale recorded during the current rapid-sell session. */
+export interface ScanLine {
+  saleId: string;
+  product: Product;
+  quantity: number;
+  voidedQuantity: number;
+  unitPrice: number;
+  remainingStock: number;
+  expiryDate: string | null;
+  soldAt: number;
+}
+
+export interface RegisterNotice {
+  tone: 'success' | 'info' | 'error';
+  message: string;
+  /** Changes on every notice so the UI can re-run its flash animation. */
+  id: string;
+}
+
+export function canUndoLine(line: ScanLine, now: number = Date.now()): boolean {
+  return saleNetQuantity(line) > 0 && now - line.soldAt < UNDO_WINDOW_MS;
 }
 
 /**
  * Counter register state shared by camera scans (handled in App) and the Sales tab, so both
- * show the same result banner and inline errors.
+ * show the same result banner, session lines and inline errors.
  */
 export function useSaleRegister(shopId: string, onUnknownBarcode: (barcode: string) => void) {
   const { t } = useLanguage();
+  const { status } = useSyncStatus();
+  const seller = useMemo(() => createScanSeller(shopId), [shopId]);
   const [lastSaleResult, setLastSaleResult] = useState<SaleResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const busyRef = useRef(false);
+  const [notice, setNotice] = useState<RegisterNotice | null>(null);
+  const [inFlight, setInFlight] = useState(0);
+  const [lines, setLines] = useState<ScanLine[]>([]);
+  const [syncStates, setSyncStates] = useState<Map<string, SaleSyncState>>(() => new Map());
+  const linesRef = useRef(lines);
+  linesRef.current = lines;
 
-  const describeError = useCallback(
-    (outcome: RecordSaleOutcome): string => {
-      switch (outcome.errorCode) {
-        case 'insufficient_stock':
-          return t('sales.insufficientStockCount', { count: outcome.available ?? 0 });
+  const refreshSyncStates = useCallback(async () => {
+    setSyncStates(await getPendingSaleIds(shopId));
+  }, [shopId]);
+
+  useEffect(() => {
+    void refreshSyncStates();
+    return onDataChanged(() => void refreshSyncStates());
+  }, [refreshSyncStates, status.pending, status.failed]);
+
+  useEffect(() => {
+    setLines([]);
+    setLastSaleResult(null);
+  }, [shopId]);
+
+  const announce = useCallback((tone: RegisterNotice['tone'], message: string) => {
+    setNotice({ tone, message, id: newId() });
+    if (tone === 'success') signalSuccess();
+    else if (tone === 'error') signalError();
+    else signalNeutral();
+  }, []);
+
+  const track = useCallback(async <T,>(operation: Promise<T>): Promise<T> => {
+    setInFlight((n) => n + 1);
+    try {
+      return await operation;
+    } finally {
+      setInFlight((n) => n - 1);
+    }
+  }, []);
+
+  const updateStock = (productId: string, remainingStock: number) =>
+    setLines((current) => current.map((l) => (l.product.id === productId ? { ...l, remainingStock } : l)));
+
+  const handleSaleOutcome = useCallback(
+    (outcome: ScanSellOutcome): boolean => {
+      switch (outcome.kind) {
+        case 'sold': {
+          const { result } = outcome;
+          setError(null);
+          setLastSaleResult(result);
+          setLines((current) => [
+            {
+              saleId: result.sale.id,
+              product: result.product,
+              quantity: result.sale.quantity,
+              voidedQuantity: 0,
+              unitPrice: result.sale.unitPrice,
+              remainingStock: result.remainingTotalStock,
+              expiryDate: result.allocations[0]?.batchExpiryDate ?? null,
+              soldAt: Date.parse(result.sale.createdAt),
+            },
+            ...current.map((l) =>
+              l.product.id === result.product.id ? { ...l, remainingStock: result.remainingTotalStock } : l
+            ),
+          ]);
+          announce(
+            'success',
+            t('rapid.soldNotice', {
+              count: result.sale.quantity,
+              name: result.product.name,
+              left: result.remainingTotalStock,
+            })
+          );
+          void refreshSyncStates();
+          return true;
+        }
         case 'duplicate':
-          return t('sales.duplicateSale');
-        case 'invalid_quantity':
-          return t('stockIn.invalidQuantity');
-        default:
-          return outcome.error ?? t('errors.generic');
+          announce('info', t('sales.duplicateSale'));
+          return true;
+        case 'insufficient_stock': {
+          const message =
+            outcome.available === 0
+              ? t('rapid.outOfStock', { name: outcome.product.name })
+              : t('sales.insufficientStockCount', { count: outcome.available });
+          setError(message);
+          announce('error', message);
+          return false;
+        }
+        case 'unknown_barcode': {
+          const message = t('sales.notRegistered', { barcode: outcome.barcode });
+          setError(message);
+          announce('error', message);
+          onUnknownBarcode(outcome.barcode);
+          return false;
+        }
+        case 'error':
+          setError(outcome.message || t('errors.generic'));
+          announce('error', outcome.message || t('errors.generic'));
+          return false;
       }
     },
-    [t]
+    [announce, onUnknownBarcode, refreshSyncStates, t]
+  );
+
+  const runSale = useCallback(
+    async (operation: Promise<ScanSellOutcome>): Promise<boolean> => {
+      try {
+        return handleSaleOutcome(await track(operation));
+      } catch (err) {
+        const message = err instanceof Error ? err.message : t('errors.generic');
+        setError(message);
+        announce('error', message);
+        return false;
+      }
+    },
+    [announce, handleSaleOutcome, t, track]
   );
 
   /**
@@ -45,54 +161,112 @@ export function useSaleRegister(shopId: string, onUnknownBarcode: (barcode: stri
    * double tap can never record the sale twice.
    */
   const sellProduct = useCallback(
-    async (product: Product, quantity: number, idempotencyKey: string = newId()) => {
-      if (busyRef.current) return false;
-      busyRef.current = true;
-      setIsProcessing(true);
-      setError(null);
-      try {
-        const outcome = await recordSale({ productId: product.id, quantity, idempotencyKey }, shopId);
-        if (outcome.result) {
-          vibrate([40, 30, 80]);
-          setLastSaleResult(outcome.result);
-          return true;
-        }
-        vibrate([150, 100, 150]);
-        setError(describeError(outcome));
-        return false;
-      } catch (err) {
-        setError(err instanceof Error ? err.message : t('errors.generic'));
-        return false;
-      } finally {
-        busyRef.current = false;
-        setIsProcessing(false);
-      }
-    },
-    [shopId, describeError, t]
+    (product: Product, quantity: number, idempotencyKey: string = newId()) =>
+      runSale(seller.sell(product, quantity, idempotencyKey)),
+    [runSale, seller]
   );
 
   /** Rapid scan-to-sell: one unit per scan. Unknown barcodes go to product registration. */
   const sellBarcode = useCallback(
-    async (barcode: string) => {
-      const clean = barcode.trim();
-      if (!clean) return false;
-      const product = await searchProductByBarcode(clean, shopId);
-      if (!product) {
-        setError(t('sales.notRegistered', { barcode: clean }));
-        onUnknownBarcode(clean);
+    (barcode: string) => {
+      if (!barcode.trim()) return Promise.resolve(false);
+      return runSale(seller.scan(barcode, newId()));
+    },
+    [runSale, seller]
+  );
+
+  /** Undoes `quantity` units of a session line (all remaining units by default). */
+  const undo = useCallback(
+    async (saleId: string, quantity?: number): Promise<boolean> => {
+      const line = linesRef.current.find((l) => l.saleId === saleId);
+      if (!line || !canUndoLine(line)) return false;
+      const amount = quantity ?? saleNetQuantity(line);
+      try {
+        const outcome = await track(seller.void(saleId, amount, newId()));
+        switch (outcome.kind) {
+          case 'voided': {
+            const { result } = outcome;
+            setLines((current) =>
+              current.map((l) =>
+                l.saleId === saleId ? { ...l, voidedQuantity: result.sale.voidedQuantity ?? 0 } : l
+              )
+            );
+            updateStock(result.product.id, result.remainingTotalStock);
+            setLastSaleResult((last) =>
+              last && last.sale.id === saleId
+                ? { ...last, sale: result.sale, remainingTotalStock: result.remainingTotalStock }
+                : last
+            );
+            setError(null);
+            announce(
+              'info',
+              t('rapid.undoneNotice', { count: amount, name: result.product.name, left: result.remainingTotalStock })
+            );
+            void refreshSyncStates();
+            return true;
+          }
+          case 'duplicate':
+            announce('info', t('rapid.alreadyUndone'));
+            return true;
+          case 'over_void':
+            announce('error', t('rapid.nothingToUndo'));
+            return false;
+          case 'error':
+            setError(outcome.message);
+            announce('error', outcome.message);
+            return false;
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : t('errors.generic');
+        setError(message);
+        announce('error', message);
         return false;
       }
-      return sellProduct(product, 1);
     },
-    [shopId, sellProduct, onUnknownBarcode, t]
+    [announce, refreshSyncStates, seller, t, track]
   );
+
+  const lastLine = lines[0] ?? null;
+
+  /** Sells `n` more of the most recently scanned product as a new sale. */
+  const increaseLast = useCallback(
+    (n: number = 1) => {
+      const line = linesRef.current[0];
+      if (!line || !Number.isInteger(n) || n <= 0) return Promise.resolve(false);
+      return sellProduct(line.product, n);
+    },
+    [sellProduct]
+  );
+
+  /** Takes one unit off the most recent undoable line of the last scanned product. */
+  const decreaseLast = useCallback(() => {
+    const last = linesRef.current[0];
+    if (!last) return Promise.resolve(false);
+    const line = linesRef.current.find((l) => l.product.id === last.product.id && canUndoLine(l));
+    if (!line) return Promise.resolve(false);
+    return undo(line.saleId, 1);
+  }, [undo]);
+
+  const resetSession = useCallback(() => {
+    setLines([]);
+    setNotice(null);
+    setError(null);
+  }, []);
 
   return {
     lastSaleResult,
     error,
-    isProcessing,
+    notice,
+    isProcessing: inFlight > 0,
+    lines,
+    lastLine,
+    syncStates,
     sellProduct,
     sellBarcode,
+    increaseLast,
+    decreaseLast,
+    undo,
+    resetSession,
     clearError: useCallback(() => setError(null), []),
   };
 }

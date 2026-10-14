@@ -7,7 +7,8 @@ import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { ErrorMessage } from '../ui/ErrorMessage';
 import { Dialog } from '../ui/Dialog';
-import { getSales, getTodaySales } from '../../services/salesService';
+import { getSales, getTodaySales, saleNetAmount, saleNetQuantity } from '../../services/salesService';
+import { SyncChip } from './RapidSellPanel';
 import { getProducts } from '../../services/productService';
 import { getProductTotalStock } from '../../services/stockService';
 import { newId } from '../../lib/ids';
@@ -24,7 +25,7 @@ const RECENT_LIMIT = 15;
 export const SalesRegister: React.FC<SalesRegisterProps> = ({ register, onOpenScanner, refreshTrigger }) => {
   const { t } = useLanguage();
   const shopId = useShopId();
-  const { lastSaleResult, error, isProcessing, sellProduct, sellBarcode, clearError } = register;
+  const { lastSaleResult, error, isProcessing, sellProduct, sellBarcode, clearError, syncStates } = register;
 
   const [recentSales, setRecentSales] = useState<Sale[]>([]);
   const [todaySales, setTodaySales] = useState<Sale[]>([]);
@@ -84,8 +85,8 @@ export const SalesRegister: React.FC<SalesRegisterProps> = ({ register, onOpenSc
     if (ok) setAdjustModalProduct(null);
   };
 
-  const todayTotalRevenue = todaySales.reduce((sum, s) => sum + s.totalAmount, 0);
-  const todayTotalUnits = todaySales.reduce((sum, s) => sum + s.quantity, 0);
+  const todayTotalRevenue = todaySales.reduce((sum, s) => sum + saleNetAmount(s), 0);
+  const todayTotalUnits = todaySales.reduce((sum, s) => sum + saleNetQuantity(s), 0);
   const firstAllocation = lastSaleResult?.allocations[0];
 
   return (
@@ -132,18 +133,19 @@ export const SalesRegister: React.FC<SalesRegisterProps> = ({ register, onOpenSc
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-emerald-500 text-zinc-950">
-                  {t('sales.soldCount', { count: lastSaleResult.sale.quantity })}
+                  {t('sales.soldCount', { count: saleNetQuantity(lastSaleResult.sale) })}
                 </span>
                 <span className="text-xs text-zinc-400 font-mono">{lastSaleResult.product.barcode}</span>
                 {lastSaleResult.isQueuedOffline && (
                   <CloudOff className="w-3.5 h-3.5 text-amber-400" aria-label={t('sync.queuedOffline')} />
                 )}
+                <SyncChip state={syncStates.get(lastSaleResult.sale.id)} />
               </div>
               <h3 className="text-base font-bold text-zinc-100 truncate mt-1">{lastSaleResult.product.name}</h3>
             </div>
             <div className="text-right shrink-0">
               <span className="text-base font-extrabold text-emerald-400 block">
-                +R {lastSaleResult.sale.totalAmount.toFixed(2)}
+                +R {saleNetAmount(lastSaleResult.sale).toFixed(2)}
               </span>
               <span className="text-[11px] text-zinc-300 font-medium block">
                 {lastSaleResult.remainingTotalStock} {t('sales.unitsRemaining')}
@@ -202,7 +204,7 @@ export const SalesRegister: React.FC<SalesRegisterProps> = ({ register, onOpenSc
                     {productNames[sale.productId] ?? t('sales.unknownProduct')}
                   </span>
                   <span className="text-[11px] text-zinc-400 block mt-0.5">
-                    {t('sales.soldCount', { count: sale.quantity })} ·{' '}
+                    {t('sales.soldCount', { count: saleNetQuantity(sale) })} ·{' '}
                     {new Date(sale.createdAt).toLocaleString([], {
                       day: 'numeric',
                       month: 'short',
@@ -210,9 +212,19 @@ export const SalesRegister: React.FC<SalesRegisterProps> = ({ register, onOpenSc
                       minute: '2-digit',
                     })}
                   </span>
+                  {(Boolean(sale.voidedQuantity) || syncStates.has(sale.id)) && (
+                    <div className="flex items-center gap-1.5 mt-1">
+                      {Boolean(sale.voidedQuantity) && (
+                        <span className="text-[10px] text-zinc-500 line-through">
+                          {t('sales.voidedCount', { count: sale.voidedQuantity ?? 0 })}
+                        </span>
+                      )}
+                      <SyncChip state={syncStates.get(sale.id)} />
+                    </div>
+                  )}
                 </div>
                 <div className="text-right shrink-0">
-                  <span className="text-sm font-bold text-emerald-400">+R {sale.totalAmount.toFixed(2)}</span>
+                  <span className="text-sm font-bold text-emerald-400">+R {saleNetAmount(sale).toFixed(2)}</span>
                   <span className="text-[10px] text-zinc-500 block">
                     {t('sales.eachPrice', { price: sale.unitPrice.toFixed(2) })}
                   </span>

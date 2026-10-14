@@ -19,6 +19,7 @@ import { ProductStockDetailDialog } from './components/stock/ProductStockDetailD
 import { SignInScreen } from './components/auth/SignInScreen';
 import { ShopOnboarding } from './components/auth/ShopOnboarding';
 import { LoadingState } from './components/ui/LoadingState';
+import { RapidSellPanel } from './components/sales/RapidSellPanel';
 import { useSaleRegister } from './hooks/useSaleRegister';
 import { searchProductByBarcode } from './services/productService';
 import { onDataChanged } from './lib/events';
@@ -53,27 +54,34 @@ export function AppContent() {
 
   useEffect(() => onDataChanged(() => setRefreshCounter((n) => n + 1)), []);
 
-  const handleUnknownSaleBarcode = useCallback(
-    (barcode: string) => setRegisterRequest({ barcode, mode: 'sell' }),
-    []
-  );
-  const saleRegister = useSaleRegister(shopId, handleUnknownSaleBarcode);
-
-  const openScanner = useCallback((mode: ScanMode) => {
-    setFoundProduct(null);
-    setHasOpenedScanner(true);
-    setScanMode(mode);
+  const handleUnknownSaleBarcode = useCallback((barcode: string) => {
+    setScanMode(null);
+    setRegisterRequest({ barcode, mode: 'sell' });
   }, []);
+  const saleRegister = useSaleRegister(shopId, handleUnknownSaleBarcode);
+  const { resetSession } = saleRegister;
+
+  const openScanner = useCallback(
+    (mode: ScanMode) => {
+      setFoundProduct(null);
+      setHasOpenedScanner(true);
+      if (mode === 'sell') resetSession();
+      setScanMode(mode);
+    },
+    [resetSession]
+  );
 
   const handleBarcodeScanned = async (barcode: string) => {
     const mode = scanMode ?? 'lookup';
-    setScanMode(null);
 
+    // Rapid selling keeps the scanner open; each scan sells one unit.
     if (mode === 'sell') {
       setCurrentTab('sales');
       await saleRegister.sellBarcode(barcode);
       return;
     }
+
+    setScanMode(null);
 
     setIsSearching(true);
     try {
@@ -142,7 +150,10 @@ export function AppContent() {
             title={scanMode === 'sell' ? t('sales.scanToSell') : undefined}
             onClose={() => setScanMode(null)}
             onBarcodeScanned={handleBarcodeScanned}
-          />
+            continuous={scanMode === 'sell'}
+          >
+            {scanMode === 'sell' && <RapidSellPanel register={saleRegister} onDone={() => setScanMode(null)} />}
+          </BarcodeScannerModal>
         </Suspense>
       )}
 

@@ -13,7 +13,11 @@ export type OutboxOperation =
       type: 'stock_in';
       payload: { batch: StockBatch; movementId: string; idempotencyKey?: string };
     }
-  | { type: 'sale'; payload: { sale: Sale; movementId: string } }
+  | { type: 'sale'; payload: { sale: Sale; movementId?: string } }
+  | {
+      type: 'sale_void';
+      payload: { saleId: string; quantity: number; idempotencyKey: string; occurredAt: string };
+    }
   | { type: 'discrepancy_resolve'; payload: { id: string; resolvedAt: string } };
 
 export type OutboxItem = OutboxOperation & {

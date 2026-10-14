@@ -26,6 +26,16 @@ SpazaStock is a mobile-first Progressive Web App for spaza shop owners in South 
 
 Sales deduct stock **first-expired-first-out**, both on the device and on the server. The server's allocation is the one that is kept.
 
+### Rapid scan-to-sell
+
+*Sales → Tap to Rapid Scan-to-Sell* opens the camera and keeps it open. Each scan sells one unit straight away and shows the stock left, the batch it came from and whether the sale is still waiting to sync.
+
+- **Holding an item in front of the camera sells it once.** The same barcode is ignored until it has been out of view for 1.2 seconds, so present it again to sell another. A different barcode counts immediately.
+- **Scans are never dropped.** They are recorded one at a time, in the order scanned, each with its own idempotency key created at the moment of the scan. A double tap or a retried sync can never record a sale twice.
+- **Quantity.** `+` and the quick picks (+2, +3, +5, +10) sell more of the last item. `−` and **Undo** void units of a sale from this session, putting them back into the batches they came from.
+- **No overselling.** The phone refuses a sale when it doesn't have the stock and says how many units are left. Nothing is written in that case.
+- **Offline.** Sales and undos queue in the outbox in order and are marked "Waiting to sync" (or "Sync failed") until they reach the server.
+
 ## Setup
 
 Requirements: Node.js 24 and npm.
@@ -104,7 +114,8 @@ Earlier builds stored data in `localStorage`. On first launch, products and rema
 | `products` | Barcode unique within a shop, prices |
 | `stock_batches` | One delivery: quantity left, initial quantity, expiry date, purchase cost per unit |
 | `stock_movements` | Append-only audit trail: quantity change, reason, actor, device time, server time, unique idempotency key |
-| `sales`, `sale_items` | A sale header and its lines, each with its batch allocation |
+| `sales`, `sale_items` | A sale header and its lines, each with its batch allocation. `quantity` and `line_total` stay gross; `voided_quantity` counts undone units, so net = (`quantity` − `voided_quantity`) × `unit_price` |
+| `sale_item_voids` | One row per undo (who, when, how many, idempotency key) |
 | `stock_discrepancies` | Units sold that the server had no stock for (needs a recount) |
 | `notifications` | Per-user messages, such as discrepancy alerts to owners and managers |
 | `subscriptions` | Plan and billing status per shop; only the service role can write it |
@@ -114,6 +125,7 @@ Earlier builds stored data in `localStorage`. On first launch, products and rema
 **Stock only changes through functions.** Clients have read-only access to the ledger tables. These functions are `security definer`. Each one checks the caller's role, validates input, and locks the product rows before changing stock:
 
 - `upsert_product`, `record_stock_in`, `record_sale` (several lines, first-expired-first-out) and `record_stock_adjustment` (owners and managers; write-offs, corrections and returns).
+- `void_sale_item` undoes units of a sale line. Owners and managers can void any line. Staff can void only their own sales, within 15 minutes of the sale. Units that were oversold (never in stock) are voided first. The rest go back to the batches they came from, last batch first, each with a `return` movement.
 - `invite_shop_member`, `accept_pending_invites`, `update_member_role` and `remove_shop_member`.
 
 Guarantees, checked by the database tests:
@@ -122,6 +134,7 @@ Guarantees, checked by the database tests:
 - A sale synced after another phone already sold the last units is still recorded, because the goods have left the shop. The batch stops at zero, and the shortfall becomes a discrepancy and a notification.
 - Replaying any operation with the same IDs or idempotency key changes nothing.
 - For every product, the batch quantities add up to the sum of its stock movements.
+- A void can never return more to a batch than the sale took from it, or more units than are left on the line.
 
 ## Scripts
 
@@ -139,10 +152,12 @@ Guarantees, checked by the database tests:
 `npm test` runs Vitest with `happy-dom`, `fake-indexeddb` and the time zone pinned to `Africa/Johannesburg`, so bugs where a UTC date is used instead of the local date show up.
 
 - `productService`, `stockService`, `salesService`: local repositories, including idempotency across reloads, concurrent sales of the last units, and "today" just after local midnight.
+- `rapidSell`, `scanGate`: rapid scan-to-sell. Simultaneous scans of the last units (never oversold, ledger stays consistent), duplicate scans and repeated submissions, insufficient stock, per-batch movements, undo, offline queueing and pending status. Also covers the camera presence gate and the in-order scan queue.
 - `syncEngine`, `syncController`: push and pull against a fake Supabase client. Covers rejected and retryable errors, backoff, product ID remapping, and online/offline behaviour.
 - `db/tenantIsolation`, `db/stockConsistency`: apply the real migrations to [PGlite](https://pglite.dev) (Postgres in WebAssembly) with stand-ins for Supabase's roles and `auth` functions.
   - Tenant isolation: another shop's members and anonymous callers see nothing and can call nothing. Role limits for staff and managers are enforced, and the ledger tables reject direct writes. Invites can only be claimed by the invited email address, and the account owner can't be removed.
-  - Stock consistency: first-expired-first-out deduction, multi-line sales that roll back as a whole, oversell discrepancies, strict adjustments and idempotent replays. A seeded random workload checks the ledger invariant.
+  - Tenant isolation also covers voids: staff can undo only their own recent sales, and nobody can write `sale_item_voids` directly.
+  - Stock consistency: first-expired-first-out deduction, multi-line sales that roll back as a whole, oversell discrepancies, strict adjustments, voids and idempotent replays. It also checks that the database and the app agree on where voided units go. A seeded random workload checks the ledger invariant.
   - PGlite runs a single connection, so row locking under truly concurrent sessions is not exercised.
 - `secrets`: no service-role or secret key in the source, public assets or built bundle.
 - `dates`, `legacyMigration`, `i18n`: local-date helpers, the one-time localStorage import, and key and `{{placeholder}}` parity between English and isiZulu, plus a check that every `t('...')` key used in the code exists.
@@ -158,10 +173,13 @@ src/
   lib/db.ts                Dexie (IndexedDB) schema, outbox types, write lock
   lib/dates.ts             local-time-zone date helpers
   lib/legacyMigration.ts   one-time import of localStorage data
+  lib/scanGate.ts          ignores repeat camera reads of an item held in frame
+  lib/serialQueue.ts       runs scans one at a time, in order, without dropping any
   services/                product, stock and sales repositories (all writes are transactional + queued)
+  services/scanSell.ts     rapid-sell core: scan, sell more, undo
   sync/                    outbox, sync engine (push/pull) and controller (triggers, status)
   context/                 Language, Auth (email OTP), Shop, Sync providers
-  hooks/useSaleRegister.ts shared scan-to-sell logic for camera scans and the Sales tab
+  hooks/useSaleRegister.ts shared scan-to-sell state for the scanner panel and the Sales tab
   components/              UI: auth, dashboard, views, scanner (lazy-loaded), stock, sales, sync banner
   locales/                 en.ts and zu.ts
   test/                    Vitest suites
