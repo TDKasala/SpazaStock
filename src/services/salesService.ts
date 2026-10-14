@@ -11,6 +11,8 @@ import { db, withWriteLock } from '../lib/db';
 import { newId } from '../lib/ids';
 import { emitDataChanged } from '../lib/events';
 import { isSameLocalDay } from '../lib/dates';
+import { isBatchExpired, todayInZone } from '../lib/expiry';
+import { getShopSettings } from '../lib/shopSettings';
 import { enqueue } from '../sync/outbox';
 
 /**
@@ -45,10 +47,16 @@ export interface RecordSaleOutcome {
   result?: SaleResult;
   error?: string;
   errorCode?: SaleErrorCode;
-  /** Units on hand when the sale was refused for insufficient stock. */
+  /** Sellable units when the sale was refused for insufficient stock. */
   available?: number;
+  /** Units on hand that could not be sold because their batch has expired. */
+  expired?: number;
 }
 
+/**
+ * Expired batches (expiry date before today in the shop's time zone) are never sold; the server's
+ * record_sale skips them the same way.
+ */
 export async function recordSale(input: SaleInput, shopId: string): Promise<RecordSaleOutcome> {
   if (
     typeof input.quantity !== 'number' ||
@@ -66,6 +74,7 @@ export async function recordSale(input: SaleInput, shopId: string): Promise<Reco
 
   const productId = input.productId?.trim();
   const idempotencyKey = input.idempotencyKey?.trim() || newId();
+  const today = todayInZone((await getShopSettings(shopId)).timezone);
 
   const outcome = await withWriteLock(() =>
     db.transaction('rw', db.products, db.batches, db.movements, db.sales, db.outbox, async (): Promise<RecordSaleOutcome> => {
@@ -85,23 +94,28 @@ export async function recordSale(input: SaleInput, shopId: string): Promise<Reco
         return { error: 'Product not found in active shop catalog.', errorCode: 'not_found' };
       }
 
-      const batches = (
+      const stocked = (
         await db.batches.where('[shopId+productId]').equals([shopId, product.id]).toArray()
       ).filter((b) => b.quantity > 0);
+      const batches = stocked.filter((b) => !isBatchExpired(b, today));
+      const onHand = stocked.reduce((sum, b) => sum + b.quantity, 0);
       const totalAvailable = batches.reduce((sum, b) => sum + b.quantity, 0);
+      const expired = onHand - totalAvailable;
 
       if (totalAvailable < input.quantity) {
         return {
           error: `Insufficient stock: Only ${totalAvailable} units available (requested ${input.quantity}). Cannot oversell.`,
           errorCode: 'insufficient_stock',
           available: totalAvailable,
+          expired,
         };
       }
 
       const now = new Date().toISOString();
       const saleId = newId();
       let remaining = input.quantity;
-      let runningTotal = totalAvailable;
+      // Movements record stock on hand (expired units included), matching the server ledger.
+      let runningTotal = onHand;
       const allocations: BatchAllocation[] = [];
       const movements: StockMovement[] = [];
       for (const batch of sortBatchesByFEFO(batches)) {
@@ -249,6 +263,7 @@ export async function voidSale(input: VoidSaleInput, shopId: string): Promise<Vo
     return { error: 'Quantity must be a positive whole number.', errorCode: 'invalid_quantity' };
   }
   const idempotencyKey = input.idempotencyKey?.trim() || newId();
+  const today = todayInZone((await getShopSettings(shopId)).timezone);
 
   const outcome = await withWriteLock(() =>
     db.transaction('rw', db.products, db.batches, db.movements, db.sales, db.outbox, async (): Promise<VoidSaleOutcome> => {
@@ -287,7 +302,10 @@ export async function voidSale(input: VoidSaleInput, shopId: string): Promise<Vo
 
       for (const ret of returns) {
         const batch = batches.find((b) => b.id === ret.batchId);
-        if (batch) await db.batches.update(batch.id, { quantity: batch.quantity + ret.quantity });
+        if (batch) {
+          batch.quantity += ret.quantity;
+          await db.batches.update(batch.id, { quantity: batch.quantity });
+        }
         runningTotal += ret.quantity;
         await db.movements.add({
           id: newId(),
@@ -310,7 +328,10 @@ export async function voidSale(input: VoidSaleInput, shopId: string): Promise<Vo
         payload: { saleId: sale.id, quantity: input.quantity, idempotencyKey, occurredAt: now },
       });
 
-      return { result: { sale: updated, product, returns, remainingTotalStock: runningTotal } };
+      const sellable = batches
+        .filter((b) => !isBatchExpired(b, today))
+        .reduce((sum, b) => sum + b.quantity, 0);
+      return { result: { sale: updated, product, returns, remainingTotalStock: sellable } };
     })
   );
 

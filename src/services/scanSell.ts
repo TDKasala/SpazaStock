@@ -11,7 +11,7 @@ export type ScanSellOutcome =
   | { kind: 'sold'; result: SaleResult }
   | { kind: 'duplicate' }
   | { kind: 'unknown_barcode'; barcode: string }
-  | { kind: 'insufficient_stock'; product: Product; available: number }
+  | { kind: 'insufficient_stock'; product: Product; available: number; expired: number }
   | { kind: 'error'; message: string };
 
 export type ScanVoidOutcome =
@@ -42,7 +42,12 @@ export function createScanSeller(shopId: string, queue: SerialQueue = createSeri
       case 'duplicate':
         return { kind: 'duplicate' };
       case 'insufficient_stock':
-        return { kind: 'insufficient_stock', product, available: outcome.available ?? 0 };
+        return {
+          kind: 'insufficient_stock',
+          product,
+          available: outcome.available ?? 0,
+          expired: outcome.expired ?? 0,
+        };
       default:
         return { kind: 'error', message: outcome.error ?? 'Sale failed.' };
     }

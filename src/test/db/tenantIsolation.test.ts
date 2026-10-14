@@ -41,6 +41,8 @@ const SHOP_TABLES = [
   'notifications',
   'subscriptions',
   'sale_item_voids',
+  'expiry_alerts',
+  'expiry_resolutions',
 ];
 
 async function count(user: User, sql: string, params: unknown[] = []): Promise<number> {
@@ -66,6 +68,19 @@ beforeAll(async () => {
   const sale = await sell(pg, sipho, shopA, [{ product_id: productA, quantity: 5 }]);
   saleItemA = sale.items[0].id;
   await voidItem(pg, alice, shopA, saleItemA, 1);
+
+  // An expired batch, its alert, and the record of throwing it away.
+  const expired = await stockIn(pg, alice, shopA, productA, 2, { expiry: '2020-01-01' });
+  await pg.query('select private.generate_expiry_alerts()');
+  await rpc(pg, alice, 'resolve_expired_batch', {
+    p_shop_id: shopA,
+    p_batch_id: expired.batch.id,
+    p_action: 'discarded',
+    p_new_expiry_date: null,
+    p_note: null,
+    p_occurred_at: null,
+    p_idempotency_key: randomUUID(),
+  });
 }, 60_000);
 
 afterAll(async () => {
@@ -98,6 +113,17 @@ describe('tenant isolation', () => {
       () => rpc(pg, bob, 'invite_shop_member', { p_shop_id: shopA, p_email: 'x@example.com', p_role: 'staff' }),
       () => rpc(pg, bob, 'update_member_role', { p_member_id: siphoMemberId, p_role: 'owner' }),
       () => rpc(pg, bob, 'remove_shop_member', { p_member_id: siphoMemberId }),
+      () => rpc(pg, bob, 'update_shop_alert_settings', { p_shop_id: shopA, p_reminder_days: '{7}', p_timezone: 'UTC' }),
+      () =>
+        rpc(pg, bob, 'resolve_expired_batch', {
+          p_shop_id: shopA,
+          p_batch_id: batchA,
+          p_action: 'discarded',
+          p_new_expiry_date: null,
+          p_note: null,
+          p_occurred_at: null,
+          p_idempotency_key: randomUUID(),
+        }),
     ];
     for (const call of calls) {
       expect(await errorCode(call())).toBe('42501');
@@ -182,6 +208,9 @@ describe('roles inside a shop', () => {
       ["update public.subscriptions set plan = 'pro'", []],
       ["insert into public.shop_members (shop_id, user_id, role) values ($1, $2, 'owner')", [shopA, bob.id]],
       ['delete from public.products where id = $1', [productA]],
+      ['update public.expiry_alerts set resolved_at = null, resolution = null', []],
+      ['delete from public.expiry_resolutions', []],
+      ["update public.shops set expiry_reminder_days = '{1}' where id = $1", [shopA]],
     ] as const;
     for (const [sql, params] of writes) {
       expect(await errorCode(query(pg, alice, sql, [...params])), sql).toBe('42501');

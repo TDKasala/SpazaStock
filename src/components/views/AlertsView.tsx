@@ -1,18 +1,24 @@
 import React, { useEffect, useState } from 'react';
-import { CalendarClock, ShieldCheck, AlertTriangle, AlertCircle, Clock, Plus, ClipboardCheck } from 'lucide-react';
+import { CalendarClock, ShieldCheck, AlertTriangle, AlertCircle, Clock, Plus, ClipboardCheck, Ban } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
-import { useShopId } from '../../context/ShopContext';
+import { useShop, useShopId } from '../../context/ShopContext';
+import { canManageExpiry } from '../../lib/shopSettings';
 import { Button } from '../ui/Button';
 import type { Product } from '../../types';
 import {
-  getExpiringBatches,
   getOpenDiscrepancies,
   resolveDiscrepancy,
   type DiscrepancyAlert,
-  type ExpiringBatchAlert,
+  type ExpiryAlertItem,
 } from '../../services/stockService';
+import { ExpiryAlertRow } from '../expiry/ExpiryAlertRow';
+import { PushAlertsToggle } from '../expiry/PushAlertsToggle';
+import { ReminderSettings } from '../expiry/ReminderSettings';
+import { ResolveExpiryDialog } from '../expiry/ResolveExpiryDialog';
 
 export interface AlertsViewProps {
+  alerts: ExpiryAlertItem[];
+  isLoading: boolean;
   onOpenScanner: () => void;
   onSelectProduct: (product: Product) => void;
   onQuickStockIn: (product: Product) => void;
@@ -20,6 +26,8 @@ export interface AlertsViewProps {
 }
 
 export const AlertsView: React.FC<AlertsViewProps> = ({
+  alerts,
+  isLoading,
   onOpenScanner,
   onSelectProduct,
   onQuickStockIn,
@@ -27,31 +35,25 @@ export const AlertsView: React.FC<AlertsViewProps> = ({
 }) => {
   const { t } = useLanguage();
   const shopId = useShopId();
-  const [alerts, setAlerts] = useState<ExpiringBatchAlert[]>([]);
+  const { settings } = useShop();
+  const canResolve = canManageExpiry(settings.role);
   const [discrepancies, setDiscrepancies] = useState<DiscrepancyAlert[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
+  const [resolveItem, setResolveItem] = useState<ExpiryAlertItem | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
-      try {
-        const [expiring, open] = await Promise.all([getExpiringBatches(shopId), getOpenDiscrepancies(shopId)]);
-        if (cancelled) return;
-        setAlerts(expiring);
-        setDiscrepancies(open);
-      } catch (err) {
-        console.warn('Failed to load alerts:', err);
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    })();
+    getOpenDiscrepancies(shopId)
+      .then((open) => {
+        if (!cancelled) setDiscrepancies(open);
+      })
+      .catch((err) => console.warn('Failed to load discrepancies:', err));
     return () => {
       cancelled = true;
     };
   }, [shopId, refreshTrigger]);
 
-  const handleResolve = async (id: string) => {
+  const handleResolveDiscrepancy = async (id: string) => {
     setResolvingId(id);
     try {
       await resolveDiscrepancy(id, shopId);
@@ -60,55 +62,51 @@ export const AlertsView: React.FC<AlertsViewProps> = ({
     }
   };
 
-  const urgentAlerts = alerts.filter((a) => a.status === 'expired' || a.status === 'urgent');
+  const expiredAlerts = alerts.filter((a) => a.status === 'expired');
+  const urgentAlerts = alerts.filter((a) => a.status === 'urgent');
   const warningAlerts = alerts.filter((a) => a.status === 'warning');
 
-  const expiryLabel = (days: number) => {
-    if (days < 0) return t('expiry.expiredDaysAgo', { count: Math.abs(days) });
-    if (days === 0) return t('expiry.today');
-    return t('expiry.daysLeftCount', { count: days });
-  };
+  const renderAlert = (item: ExpiryAlertItem) => (
+    <ExpiryAlertRow
+      key={item.key}
+      item={item}
+      timezone={settings.timezone}
+      onSelect={() => onSelectProduct(item.product)}
+      action={
+        <>
+          {canResolve && (
+            <Button onClick={() => setResolveItem(item)} variant="secondary" size="sm" className="h-8 text-xs">
+              {t('expiry.resolve')}
+            </Button>
+          )}
+          {item.kind !== 'expired' && (
+            <Button
+              onClick={() => onQuickStockIn(item.product)}
+              variant="secondary"
+              size="sm"
+              className="h-8 text-xs"
+              leftIcon={<Plus className="w-3.5 h-3.5 text-emerald-400" />}
+            >
+              {t('expiry.addStock')}
+            </Button>
+          )}
+        </>
+      }
+    />
+  );
 
-  const renderAlert = ({ batch, product, daysUntilExpiry, status }: ExpiringBatchAlert) => {
-    const tone =
-      status === 'expired'
-        ? 'bg-rose-950/30 border-rose-800/80 text-rose-200'
-        : status === 'urgent'
-        ? 'bg-amber-950/30 border-amber-800/80 text-amber-200'
-        : 'bg-zinc-950 border-zinc-800';
-    const pill =
-      status === 'expired'
-        ? 'bg-rose-900/80 text-rose-200'
-        : status === 'urgent'
-        ? 'bg-amber-900/80 text-amber-200'
-        : 'bg-zinc-800 text-amber-400 border border-amber-500/20';
-
-    return (
-      <div key={batch.id} className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 transition-all ${tone}`}>
-        <div onClick={() => onSelectProduct(product)} className="min-w-0 flex-1 cursor-pointer">
-          <div className="flex items-center gap-2">
-            <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${pill}`}>
-              {expiryLabel(daysUntilExpiry)}
-            </span>
-            <span className="text-[11px] font-mono opacity-80">{batch.expiryDate}</span>
-          </div>
-          <h4 className="text-sm font-bold text-zinc-100 truncate mt-1">{product.name}</h4>
-          <span className="text-xs text-zinc-400 block mt-0.5">
-            {t('expiry.batchQuantity', { count: batch.quantity })}
+  const section = (items: ExpiryAlertItem[], title: string, icon: React.ReactNode, color: string) =>
+    items.length > 0 && (
+      <div className="space-y-2">
+        <h3 className={`text-xs font-bold uppercase tracking-wider px-1 flex items-center gap-1.5 ${color}`}>
+          {icon}
+          <span>
+            {title} ({items.length})
           </span>
-        </div>
-        <Button
-          onClick={() => onQuickStockIn(product)}
-          variant="secondary"
-          size="sm"
-          className="shrink-0 h-8 text-xs"
-          leftIcon={<Plus className="w-3.5 h-3.5 text-emerald-400" />}
-        >
-          {t('expiry.addStock')}
-        </Button>
+        </h3>
+        <div className="space-y-2">{items.map(renderAlert)}</div>
       </div>
     );
-  };
 
   const hasAnything = alerts.length > 0 || discrepancies.length > 0;
 
@@ -133,9 +131,12 @@ export const AlertsView: React.FC<AlertsViewProps> = ({
         <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
         <div className="text-xs text-zinc-300">
           <span className="font-semibold text-zinc-100 block mb-0.5">{t('expiry.policyTitle')}</span>
-          {t('expiry.policyMessage')}
+          {t('expiry.policyMessage', { days: settings.reminderDays.join(', ') })}
         </div>
       </div>
+
+      <PushAlertsToggle />
+      <ReminderSettings />
 
       {isLoading ? (
         <div className="space-y-3">
@@ -170,7 +171,7 @@ export const AlertsView: React.FC<AlertsViewProps> = ({
                       </span>
                     </div>
                     <Button
-                      onClick={() => void handleResolve(discrepancy.id)}
+                      onClick={() => void handleResolveDiscrepancy(discrepancy.id)}
                       variant="secondary"
                       size="sm"
                       className="shrink-0 h-8 text-xs"
@@ -184,29 +185,9 @@ export const AlertsView: React.FC<AlertsViewProps> = ({
             </div>
           )}
 
-          {urgentAlerts.length > 0 && (
-            <div className="space-y-2">
-              <h3 className="text-xs font-bold text-rose-400 uppercase tracking-wider px-1 flex items-center gap-1.5">
-                <AlertCircle className="w-3.5 h-3.5" />
-                <span>
-                  {t('expiry.urgentExpiring')} ({urgentAlerts.length})
-                </span>
-              </h3>
-              <div className="space-y-2">{urgentAlerts.map(renderAlert)}</div>
-            </div>
-          )}
-
-          {warningAlerts.length > 0 && (
-            <div className="space-y-2">
-              <h3 className="text-xs font-bold text-amber-400 uppercase tracking-wider px-1 flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5" />
-                <span>
-                  {t('expiry.warningExpiring')} ({warningAlerts.length})
-                </span>
-              </h3>
-              <div className="space-y-2">{warningAlerts.map(renderAlert)}</div>
-            </div>
-          )}
+          {section(expiredAlerts, t('expiry.expired'), <Ban className="w-3.5 h-3.5" />, 'text-rose-400')}
+          {section(urgentAlerts, t('expiry.urgentExpiring'), <AlertCircle className="w-3.5 h-3.5" />, 'text-amber-400')}
+          {section(warningAlerts, t('expiry.warningExpiring'), <Clock className="w-3.5 h-3.5" />, 'text-amber-400')}
         </div>
       ) : (
         <div className="bg-zinc-900/40 border border-dashed border-zinc-800 rounded-2xl p-8 text-center flex flex-col items-center justify-center">
@@ -217,6 +198,8 @@ export const AlertsView: React.FC<AlertsViewProps> = ({
           <p className="text-xs text-zinc-400 max-w-xs mt-1.5 leading-relaxed">{t('expiry.noAlertsMessage')}</p>
         </div>
       )}
+
+      <ResolveExpiryDialog item={resolveItem} onClose={() => setResolveItem(null)} />
     </div>
   );
 };

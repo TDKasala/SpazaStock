@@ -32,6 +32,10 @@ export default defineConfig(() => {
             { src: '/maskable-icon-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
           ],
         },
+        // Push and notification-click handlers for expiry alerts (public/push-handler.js).
+        workbox: {
+          importScripts: ['push-handler.js'],
+        },
         devOptions: {
           enabled: true,
           type: 'module',

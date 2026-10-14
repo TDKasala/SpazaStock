@@ -366,6 +366,10 @@ inspector_port = 8083
 # The Deno major version to use.
 deno_version = 2
 
+# Called by pg_cron with a shared secret from Vault rather than a user JWT.
+[functions.expiry-push]
+verify_jwt = false
+
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 

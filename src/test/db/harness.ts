@@ -40,7 +40,12 @@ export type Caller = User | null | 'service';
 export async function createDatabase(): Promise<PGlite> {
   const pg = new PGlite();
   await pg.exec(SUPABASE_STANDINS);
-  for (const file of readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql')).sort()) {
+  // *_schedule.sql needs pg_cron, pg_net and Vault, which PGlite lacks; it only schedules
+  // functions that the other migrations define and these tests exercise directly.
+  const files = readdirSync(MIGRATIONS_DIR)
+    .filter((f) => f.endsWith('.sql') && !f.endsWith('_schedule.sql'))
+    .sort();
+  for (const file of files) {
     try {
       await pg.exec(readFileSync(join(MIGRATIONS_DIR, file), 'utf8'));
     } catch (err) {

@@ -1,5 +1,7 @@
 import Dexie, { type EntityTable } from 'dexie';
 import type {
+  ExpiryAlert,
+  ExpiryResolutionAction,
   Product,
   Sale,
   StockBatch,
@@ -18,7 +20,18 @@ export type OutboxOperation =
       type: 'sale_void';
       payload: { saleId: string; quantity: number; idempotencyKey: string; occurredAt: string };
     }
-  | { type: 'discrepancy_resolve'; payload: { id: string; resolvedAt: string } };
+  | { type: 'discrepancy_resolve'; payload: { id: string; resolvedAt: string } }
+  | {
+      type: 'expiry_resolve';
+      payload: {
+        batchId: string;
+        action: ExpiryResolutionAction;
+        newExpiryDate: string | null;
+        note: string | null;
+        idempotencyKey: string;
+        occurredAt: string;
+      };
+    };
 
 export type OutboxItem = OutboxOperation & {
   seq?: number;
@@ -42,6 +55,7 @@ export type SpazaDatabase = Dexie & {
   movements: EntityTable<StockMovement, 'id'>;
   sales: EntityTable<Sale, 'id'>;
   discrepancies: EntityTable<StockDiscrepancy, 'id'>;
+  expiryAlerts: EntityTable<ExpiryAlert, 'id'>;
   outbox: EntityTable<OutboxItem, 'seq'>;
   meta: EntityTable<MetaRow, 'key'>;
 };
@@ -58,6 +72,10 @@ db.version(1).stores({
   meta: 'key',
 });
 
+db.version(2).stores({
+  expiryAlerts: 'id, shopId, batchId, productId',
+});
+
 /** Every table the write path touches, for `db.transaction('rw', WRITE_TABLES, ...)`. */
 export const WRITE_TABLES = [
   db.products,
@@ -65,6 +83,7 @@ export const WRITE_TABLES = [
   db.movements,
   db.sales,
   db.discrepancies,
+  db.expiryAlerts,
   db.outbox,
 ];
 

@@ -1,6 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type {
   BatchAllocation,
+  ExpiryAlert,
+  ExpiryAlertKind,
+  ExpiryAlertResolution,
   Product,
   ProductCategory,
   Sale,
@@ -114,6 +117,23 @@ export function mapDiscrepancyRow(row: Row): StockDiscrepancy {
   };
 }
 
+export function mapExpiryAlertRow(row: Row): ExpiryAlert {
+  return {
+    id: String(row.id),
+    shopId: String(row.shop_id),
+    batchId: String(row.batch_id),
+    productId: String(row.product_id),
+    kind: row.kind as ExpiryAlertKind,
+    thresholdDays: toNumberOrNull(row.threshold_days),
+    expiryDate: String(row.expiry_date),
+    quantity: Number(row.quantity),
+    alertDate: String(row.alert_date),
+    resolvedAt: row.resolved_at ? toIso(row.resolved_at) : null,
+    resolution: (row.resolution as ExpiryAlertResolution | null) ?? null,
+    createdAt: toIso(row.created_at),
+  };
+}
+
 // Push -----------------------------------------------------------------------------
 
 type SendOutcome =
@@ -137,6 +157,7 @@ async function remapProduct(shopId: string, oldId: string, canonical: Product): 
   await db.movements.where('productId').equals(oldId).modify({ productId: canonical.id });
   await db.sales.where('productId').equals(oldId).modify({ productId: canonical.id });
   await db.discrepancies.where('productId').equals(oldId).modify({ productId: canonical.id });
+  await db.expiryAlerts.where('productId').equals(oldId).modify({ productId: canonical.id });
   await db.outbox
     .where('shopId')
     .equals(shopId)
@@ -248,6 +269,27 @@ async function sendItem(client: SupabaseClient, item: OutboxItem): Promise<SendO
         .eq('id', item.payload.id);
       return error ? outcomeFromError(error) : { kind: 'ok' };
     }
+
+    case 'expiry_resolve': {
+      const { batchId, action, newExpiryDate, note, idempotencyKey, occurredAt } = item.payload;
+      const { data, error } = await client.rpc('resolve_expired_batch', {
+        p_shop_id: item.shopId,
+        p_batch_id: batchId,
+        p_action: action,
+        p_new_expiry_date: newExpiryDate,
+        p_note: note,
+        p_occurred_at: occurredAt,
+        p_idempotency_key: idempotencyKey,
+      });
+      if (error) return outcomeFromError(error);
+      const batch = (data as { batch?: Row } | null)?.batch;
+      return {
+        kind: 'ok',
+        apply: async () => {
+          if (batch) await db.batches.put(mapBatchRow(batch));
+        },
+      };
+    }
   }
 }
 
@@ -358,6 +400,15 @@ const PULL_SPECS: PullSpec[] = [
     initialCursor: () => new Date(0).toISOString(),
     apply: async (rows) => {
       await db.discrepancies.bulkPut(rows.map(mapDiscrepancyRow));
+    },
+  },
+  {
+    table: 'expiry_alerts',
+    columns:
+      'id, shop_id, batch_id, product_id, kind, threshold_days, expiry_date, quantity, alert_date, resolved_at, resolution, created_at, updated_at',
+    initialCursor: () => new Date(0).toISOString(),
+    apply: async (rows) => {
+      await db.expiryAlerts.bulkPut(rows.map(mapExpiryAlertRow));
     },
   },
 ];

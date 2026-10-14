@@ -77,7 +77,7 @@ export const StockView: React.FC<StockViewProps> = ({
         </div>
       ) : filteredSummaries.length > 0 ? (
         <div className="space-y-3">
-          {filteredSummaries.map(({ product, totalQuantity, batches, earliestExpiry, isExpired, isExpiringSoon }) => (
+          {filteredSummaries.map(({ product, totalQuantity, expiredQuantity, batches, earliestExpiry, isExpired, isExpiringSoon }) => (
             <div
               key={product.id}
               className="p-4 bg-zinc-950 hover:bg-zinc-900/90 rounded-2xl border border-zinc-800/80 hover:border-zinc-700 transition-all shadow-sm flex flex-col gap-3"
@@ -127,6 +127,11 @@ export const StockView: React.FC<StockViewProps> = ({
                   <span className={`text-base font-extrabold ${totalQuantity > 0 ? 'text-emerald-400' : 'text-zinc-500'}`}>
                     {totalQuantity} <span className="text-xs font-normal text-zinc-400">{t('stockIn.units')}</span>
                   </span>
+                  {expiredQuantity > 0 && (
+                    <span className="text-[10px] font-semibold text-rose-300 block">
+                      {t('expiry.expiredUnits', { count: expiredQuantity })}
+                    </span>
+                  )}
                   {product.sellingPrice != null && (
                     <span className="text-[11px] text-zinc-400 block mt-0.5">R {Number(product.sellingPrice).toFixed(2)}</span>
                   )}

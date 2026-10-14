@@ -20,8 +20,10 @@ import { ShopOnboarding } from './components/auth/ShopOnboarding';
 import { LoadingState } from './components/ui/LoadingState';
 import { RapidSellPanel } from './components/sales/RapidSellPanel';
 import { useSaleRegister } from './hooks/useSaleRegister';
+import { useExpiryAlerts } from './hooks/useExpiryAlerts';
 import { searchProductByBarcode } from './services/productService';
 import { onDataChanged } from './lib/events';
+import { refreshPushSubscription } from './lib/push';
 import type { Product, ScanMode } from './types';
 
 // html5-qrcode is large and only needed once the camera opens.
@@ -36,11 +38,37 @@ interface RegisterRequest {
   mode: ScanMode;
 }
 
+/** Notifications open the app at `/?tab=alerts`. */
+function initialTab(): AppTab {
+  if (typeof window === 'undefined') return 'dashboard';
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('tab') !== 'alerts') return 'dashboard';
+  params.delete('tab');
+  const query = params.toString();
+  window.history.replaceState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
+  return 'alerts';
+}
+
 export function AppContent() {
   const shopId = useShopId();
   const { t } = useLanguage();
-  const [currentTab, setCurrentTab] = useState<AppTab>('dashboard');
+  const { mode } = useAuth();
+  const [currentTab, setCurrentTab] = useState<AppTab>(initialTab);
   const [refreshCounter, setRefreshCounter] = useState(0);
+  const expiry = useExpiryAlerts(shopId, refreshCounter);
+
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !navigator.serviceWorker) return;
+    const handleMessage = (event: MessageEvent) => {
+      if ((event.data as { type?: string } | null)?.type === 'open-alerts') setCurrentTab('alerts');
+    };
+    navigator.serviceWorker.addEventListener('message', handleMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', handleMessage);
+  }, []);
+
+  useEffect(() => {
+    if (mode === 'cloud') void refreshPushSubscription();
+  }, [mode, shopId]);
 
   const [scanMode, setScanMode] = useState<ScanMode | null>(null);
   const [hasOpenedScanner, setHasOpenedScanner] = useState(false);
@@ -105,7 +133,15 @@ export function AppContent() {
 
       <main className="flex-1 w-full max-w-md sm:max-w-xl mx-auto px-4 py-5">
         <SyncBanner />
-        {currentTab === 'dashboard' && <Dashboard onOpenScanner={openScanner} onNavigateTab={setCurrentTab} />}
+        {currentTab === 'dashboard' && (
+          <Dashboard
+            onOpenScanner={openScanner}
+            onNavigateTab={setCurrentTab}
+            expiryAlerts={expiry.alerts}
+            isLoadingAlerts={expiry.isLoading}
+            onSelectProduct={setInspectedProduct}
+          />
+        )}
         {currentTab === 'stock' && (
           <StockView
             onOpenScanner={() => openScanner('stock_in')}
@@ -123,6 +159,8 @@ export function AppContent() {
         )}
         {currentTab === 'alerts' && (
           <AlertsView
+            alerts={expiry.alerts}
+            isLoading={expiry.isLoading}
             onOpenScanner={() => openScanner('lookup')}
             onSelectProduct={setInspectedProduct}
             onQuickStockIn={setStockInProduct}

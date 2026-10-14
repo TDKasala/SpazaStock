@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { Barcode, Calendar, Layers, Plus } from 'lucide-react';
+import { Ban, Barcode, Calendar, Layers, Plus } from 'lucide-react';
 import type { Product, StockBatch } from '../../types';
 import { useLanguage } from '../../context/LanguageContext';
-import { useShopId } from '../../context/ShopContext';
+import { useShop, useShopId } from '../../context/ShopContext';
 import { Dialog } from '../ui/Dialog';
 import { Button } from '../ui/Button';
-import { getProductBatches, getDaysUntilExpiry } from '../../services/stockService';
+import { batchCode, daysUntil, todayInZone } from '../../lib/expiry';
+import { getProductBatches } from '../../services/stockService';
 
 export interface ProductStockDetailDialogProps {
   isOpen: boolean;
@@ -24,6 +25,7 @@ export const ProductStockDetailDialog: React.FC<ProductStockDetailDialogProps> =
 }) => {
   const { t, dict } = useLanguage();
   const shopId = useShopId();
+  const { settings } = useShop();
   const [batches, setBatches] = useState<StockBatch[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -42,7 +44,10 @@ export const ProductStockDetailDialog: React.FC<ProductStockDetailDialogProps> =
 
   if (!isOpen || !product) return null;
 
-  const totalStock = batches.reduce((sum, b) => sum + b.quantity, 0);
+  const today = todayInZone(settings.timezone);
+  const isExpiredBatch = (batch: StockBatch) => batch.expiryDate !== null && batch.expiryDate < today;
+  const totalStock = batches.reduce((sum, b) => sum + (isExpiredBatch(b) ? 0 : b.quantity), 0);
+  const expiredStock = batches.reduce((sum, b) => sum + (isExpiredBatch(b) ? b.quantity : 0), 0);
   const categoryLabel = dict.product.categories[product.category] || product.category;
 
   return (
@@ -90,6 +95,11 @@ export const ProductStockDetailDialog: React.FC<ProductStockDetailDialogProps> =
               <span className="text-lg font-extrabold text-emerald-400 mt-0.5 block">
                 {totalStock} <span className="text-xs font-normal text-zinc-400">{t('stockIn.units')}</span>
               </span>
+              {expiredStock > 0 && (
+                <span className="text-[10px] font-semibold text-rose-300 block mt-0.5">
+                  {t('expiry.expiredUnits', { count: expiredStock })}
+                </span>
+              )}
             </div>
             <div className="p-3 rounded-xl bg-zinc-900 border border-zinc-800">
               <span className="text-[10px] text-zinc-400 block">{t('product.sellingPrice')}</span>
@@ -114,27 +124,37 @@ export const ProductStockDetailDialog: React.FC<ProductStockDetailDialogProps> =
           ) : batches.length > 0 ? (
             <div className="space-y-2 max-h-56 overflow-y-auto pr-0.5">
               {batches.map((batch, idx) => {
-                const daysRemaining = getDaysUntilExpiry(batch.expiryDate);
-                const isExpired = daysRemaining !== null && daysRemaining < 0;
+                const daysRemaining = batch.expiryDate ? daysUntil(batch.expiryDate, today) : null;
+                const isExpired = isExpiredBatch(batch);
                 const isUrgent = daysRemaining !== null && daysRemaining >= 0 && daysRemaining <= 7;
+                const flagged = isExpired && batch.quantity > 0;
 
                 return (
                   <div
                     key={batch.id}
-                    className="p-3 bg-zinc-900/80 rounded-xl border border-zinc-800/80 flex items-center justify-between gap-3 text-xs"
+                    className={`p-3 rounded-xl border flex items-center justify-between gap-3 text-xs ${
+                      flagged ? 'bg-rose-950/30 border-rose-800/80' : 'bg-zinc-900/80 border-zinc-800/80'
+                    }`}
                   >
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="font-bold text-zinc-100">
                           {t('stockDetail.batchNumber', { number: batches.length - idx })}
                         </span>
-                        <span className="text-emerald-400 font-semibold">
+                        <span className={`font-semibold ${flagged ? 'text-rose-300 line-through' : 'text-emerald-400'}`}>
                           {batch.quantity} / {batch.initialQuantity} {t('stockIn.units')}
                         </span>
                       </div>
                       <span className="text-[10px] text-zinc-400 block mt-0.5">
                         {t('stockDetail.received', { date: new Date(batch.receivedAt).toLocaleDateString() })}
+                        <span className="font-mono ml-1.5">{batchCode(batch.id)}</span>
                       </span>
+                      {flagged && (
+                        <span className="mt-0.5 inline-flex items-center gap-1 text-[10px] font-bold uppercase text-rose-300">
+                          <Ban className="w-3 h-3" />
+                          {t('expiry.notSellable')}
+                        </span>
+                      )}
                     </div>
 
                     <div className="text-right">

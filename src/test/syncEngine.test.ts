@@ -303,6 +303,49 @@ describe('pushOutbox', () => {
       { table: 'stock_discrepancies', values: { resolved_at: expect.any(String) }, id: 'd1' },
     ]);
   });
+
+  it('sends expiry resolutions with their idempotency key and applies the server batch', async () => {
+    const { resolveExpiredBatch } = await import('../services/stockService');
+    const product = await makeProduct();
+    const { result } = await stockIn({ productId: product.id, quantity: 4, expiryDate: '2020-01-01' }, SHOP_ID);
+    const batch = result!.batch;
+    await resolveExpiredBatch({ batchId: batch.id, action: 'discarded', note: 'Binned', idempotencyKey: 'x1' }, SHOP_ID);
+
+    const fake = createFakeSupabase({
+      rpc: (name, args) =>
+        name === 'resolve_expired_batch'
+          ? {
+              data: {
+                duplicate: false,
+                batch: {
+                  id: batch.id,
+                  shop_id: SHOP_ID,
+                  product_id: product.id,
+                  quantity: 0,
+                  initial_quantity: 4,
+                  expiry_date: '2020-01-01',
+                  cost_price_per_unit: null,
+                  received_at: batch.receivedAt,
+                },
+              },
+              error: null,
+            }
+          : acceptAll(name, args),
+    });
+    expect(await pushOutbox(fake.client, SHOP_ID)).toMatchObject({ pushed: 3, failed: 0 });
+    const call = fake.rpc.mock.calls.find(([name]) => name === 'resolve_expired_batch');
+    expect(call?.[1]).toEqual({
+      p_shop_id: SHOP_ID,
+      p_batch_id: batch.id,
+      p_action: 'discarded',
+      p_new_expiry_date: null,
+      p_note: 'Binned',
+      p_occurred_at: expect.any(String),
+      p_idempotency_key: 'x1',
+    });
+    expect((await db.batches.get(batch.id))?.quantity).toBe(0);
+    expect(await db.outbox.count()).toBe(0);
+  });
 });
 
 describe('pullChanges', () => {
@@ -375,6 +418,43 @@ describe('pullChanges', () => {
     expect((await db.products.get(product.id))?.name).toBe('Simba Chips 120g');
     expect(await db.discrepancies.count()).toBe(1);
     expect(await getMeta(`pull:${SHOP_ID}:stock_batches`)).toBe('2026-10-14T08:05:00.000Z');
+  });
+
+  it('pulls server expiry alerts so they show and dedupe on this phone', async () => {
+    const product = await makeProduct();
+    const { result } = await stockIn({ productId: product.id, quantity: 5, expiryDate: '2026-10-20' }, SHOP_ID);
+    await db.outbox.clear();
+    const batchId = result!.batch.id;
+    const fake = createFakeSupabase({
+      rows: {
+        expiry_alerts: [
+          {
+            id: 'a1',
+            shop_id: SHOP_ID,
+            batch_id: batchId,
+            product_id: product.id,
+            kind: 'reminder',
+            threshold_days: 7,
+            expiry_date: '2026-10-20',
+            quantity: 5,
+            alert_date: '2026-10-14',
+            resolved_at: null,
+            resolution: null,
+            created_at: '2026-10-14T05:00:00Z',
+            updated_at: '2026-10-14T05:00:00Z',
+          },
+        ],
+      },
+    });
+
+    expect(await pullChanges(fake.client, SHOP_ID)).toBe(1);
+    expect(await db.expiryAlerts.get('a1')).toMatchObject({
+      batchId,
+      kind: 'reminder',
+      thresholdDays: 7,
+      expiryDate: '2026-10-20',
+      resolvedAt: null,
+    });
   });
 
   it('does not pull while local changes are waiting to be pushed', async () => {

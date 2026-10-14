@@ -42,6 +42,13 @@ export function signalError(): void {
   tone(220, 250);
 }
 
+/** New expiry alert: a longer pattern than sales feedback so it is recognisable. */
+export function signalAlert(): void {
+  vibrate([200, 100, 200, 100, 300]);
+  tone(880, 160);
+  setTimeout(() => tone(660, 220), 200);
+}
+
 export function signalNeutral(): void {
   vibrate([30]);
   tone(660, 60);

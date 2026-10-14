@@ -118,10 +118,12 @@ export function useSaleRegister(shopId: string, onUnknownBarcode: (barcode: stri
           announce('info', t('sales.duplicateSale'));
           return true;
         case 'insufficient_stock': {
-          const message =
+          const base =
             outcome.available === 0
               ? t('rapid.outOfStock', { name: outcome.product.name })
               : t('sales.insufficientStockCount', { count: outcome.available });
+          const message =
+            outcome.expired > 0 ? `${base} ${t('expiry.expiredNotSellable', { count: outcome.expired })}` : base;
           setError(message);
           announce('error', message);
           return false;

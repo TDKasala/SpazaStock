@@ -4,7 +4,7 @@ import {
   getProductTotalStock,
   getProductBatches,
   getAllProductsStockSummary,
-  getExpiringBatches,
+  getExpiryAlerts,
   getOpenDiscrepancies,
   resolveDiscrepancy,
 } from '../services/stockService';
@@ -80,15 +80,17 @@ describe('stockService', () => {
     await stockIn({ productId: product.id, quantity: 2, expiryDate: addDaysLocal(-1) }, SHOP_ID);
 
     const [summary] = await getAllProductsStockSummary(SHOP_ID);
-    expect(summary.totalQuantity).toBe(12);
+    expect(summary.totalQuantity).toBe(10);
+    expect(summary.expiredQuantity).toBe(2);
     expect(summary.earliestExpiry).toBe('2026-10-13');
     expect(summary.isExpired).toBe(true);
+    expect(await getProductTotalStock(product.id, SHOP_ID)).toBe(10);
 
-    const alerts = await getExpiringBatches(SHOP_ID);
-    expect(alerts.map((a) => [a.daysUntilExpiry, a.status])).toEqual([
-      [-1, 'expired'],
-      [3, 'urgent'],
-      [20, 'warning'],
+    const alerts = await getExpiryAlerts(SHOP_ID);
+    expect(alerts.map((a) => [a.daysUntilExpiry, a.status, a.kind, a.thresholdDays])).toEqual([
+      [-1, 'expired', 'expired', null],
+      [3, 'urgent', 'reminder', 7],
+      [20, 'warning', 'reminder', 21],
     ]);
   });
 

@@ -2,15 +2,26 @@ import React from 'react';
 import { PackagePlus, ScanLine, CalendarClock, PackageSearch, ScanBarcode } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { ActionTile } from '../ui/ActionTile';
-import type { ScanMode, StockActionType } from '../../types';
+import { ExpiryAlertsCard } from '../expiry/ExpiryAlertsCard';
+import type { Product, ScanMode, StockActionType } from '../../types';
+import type { ExpiryAlertItem } from '../../services/stockService';
 import type { AppTab } from '../../App';
 
 export interface DashboardProps {
   onOpenScanner: (mode: ScanMode) => void;
   onNavigateTab: (tab: AppTab) => void;
+  expiryAlerts: ExpiryAlertItem[];
+  isLoadingAlerts: boolean;
+  onSelectProduct: (product: Product) => void;
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({ onOpenScanner, onNavigateTab }) => {
+export const Dashboard: React.FC<DashboardProps> = ({
+  onOpenScanner,
+  onNavigateTab,
+  expiryAlerts,
+  isLoadingAlerts,
+  onSelectProduct,
+}) => {
   const { t, dict } = useLanguage();
 
   const handleActionClick = (action: StockActionType) => {
@@ -69,6 +80,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ onOpenScanner, onNavigateT
           />
         </div>
       </section>
+
+      <ExpiryAlertsCard
+        alerts={expiryAlerts}
+        isLoading={isLoadingAlerts}
+        onViewAll={() => onNavigateTab('alerts')}
+        onSelectProduct={onSelectProduct}
+      />
 
       <button
         onClick={() => onOpenScanner('lookup')}

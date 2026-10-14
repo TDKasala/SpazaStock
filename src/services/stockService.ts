@@ -6,11 +6,23 @@ import {
   ProductStockSummary,
   Product,
   StockDiscrepancy,
+  ExpiryAlert,
+  ExpiryAlertKind,
+  ExpiryResolutionAction,
 } from '../types';
 import { db, withWriteLock } from '../lib/db';
 import { newId } from '../lib/ids';
 import { emitDataChanged } from '../lib/events';
 import { getDaysUntilExpiry, isValidDateFormat } from '../lib/dates';
+import {
+  alertDedupKey,
+  daysUntil,
+  isBatchExpired,
+  reminderStage,
+  todayInZone,
+  type ReminderStage,
+} from '../lib/expiry';
+import { canManageExpiry, getShopSettings } from '../lib/shopSettings';
 import { enqueue } from '../sync/outbox';
 import { getProducts } from './productService';
 
@@ -121,15 +133,23 @@ export async function getProductBatches(productId: string, shopId: string): Prom
     .sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
 }
 
-export async function getProductTotalStock(productId: string, shopId: string): Promise<number> {
-  return sumQuantity(await getProductBatches(productId, shopId));
+/** The shop's calendar date now, in its own time zone. */
+export async function getShopToday(shopId: string, now: Date = new Date()): Promise<string> {
+  return todayInZone((await getShopSettings(shopId)).timezone, now);
 }
 
-/** Every product in the shop with its available stock and batch breakdown. */
+/** Sellable units of a product: expired batches are excluded. */
+export async function getProductTotalStock(productId: string, shopId: string): Promise<number> {
+  const today = await getShopToday(shopId);
+  return sumQuantity((await getProductBatches(productId, shopId)).filter((b) => !isBatchExpired(b, today)));
+}
+
+/** Every product in the shop with its sellable stock, expired stock and batch breakdown. */
 export async function getAllProductsStockSummary(shopId: string): Promise<ProductStockSummary[]> {
-  const [products, allBatches] = await Promise.all([
+  const [products, allBatches, today] = await Promise.all([
     getProducts(shopId),
     db.batches.where('shopId').equals(shopId).toArray(),
+    getShopToday(shopId),
   ]);
 
   const batchesByProduct = new Map<string, StockBatch[]>();
@@ -147,53 +167,207 @@ export async function getAllProductsStockSummary(shopId: string): Promise<Produc
       .filter((d): d is string => d !== null)
       .sort();
     const earliestExpiry = expiryDates[0] ?? null;
-    const days = getDaysUntilExpiry(earliestExpiry);
+    const days = earliestExpiry ? daysUntil(earliestExpiry, today) : null;
+    const expiredQuantity = sumQuantity(batches.filter((b) => isBatchExpired(b, today)));
 
     return {
       product,
-      totalQuantity: sumQuantity(batches),
+      totalQuantity: sumQuantity(batches) - expiredQuantity,
+      expiredQuantity,
       batches,
       earliestExpiry,
-      isExpired: days !== null && days < 0,
+      isExpired: expiredQuantity > 0,
       isExpiringSoon: days !== null && days >= 0 && days <= 7,
     };
   });
 }
 
-export interface ExpiringBatchAlert {
+export type ExpiryStatus = 'expired' | 'urgent' | 'warning';
+
+export interface ExpiryAlertItem {
+  /** Batch, expiry date, kind and threshold: the same key the server deduplicates on. */
+  key: string;
+  /** The server's alert id once it has been generated and synced. */
+  alertId: string | null;
   batch: StockBatch;
   product: Product;
+  kind: ExpiryAlertKind;
+  thresholdDays: number | null;
   daysUntilExpiry: number;
-  status: 'expired' | 'urgent' | 'warning';
+  status: ExpiryStatus;
 }
 
-/** Batches expiring within `thresholdDays` (or already expired), soonest first. */
-export async function getExpiringBatches(
-  shopId: string,
-  thresholdDays: number = 30
-): Promise<ExpiringBatchAlert[]> {
-  const [products, batches] = await Promise.all([
+function stageRank(stage: ReminderStage): number {
+  return stage.kind === 'expired' ? -1 : stage.threshold;
+}
+
+function stageOfAlert(alert: ExpiryAlert): ReminderStage {
+  return alert.kind === 'expired'
+    ? { kind: 'expired', threshold: null }
+    : { kind: 'reminder', threshold: alert.thresholdDays ?? 0 };
+}
+
+/**
+ * Batches with stock whose expiry reminder or overdue alert is due, most urgent first. The stage
+ * is computed with the same rule the server's scheduled generator uses, so it shows immediately
+ * (even offline or in device-only mode); open server alerts fill in anything the rule no longer
+ * covers, e.g. after the reminder days were changed.
+ */
+export async function getExpiryAlerts(shopId: string, now: Date = new Date()): Promise<ExpiryAlertItem[]> {
+  const settings = await getShopSettings(shopId);
+  const today = todayInZone(settings.timezone, now);
+  const [products, batches, serverAlerts] = await Promise.all([
     getProducts(shopId),
     db.batches.where('shopId').equals(shopId).toArray(),
+    db.expiryAlerts.where('shopId').equals(shopId).toArray(),
   ]);
   const productsById = new Map(products.map((p) => [p.id, p]));
-  const alerts: ExpiringBatchAlert[] = [];
+  const openByBatch = new Map<string, ExpiryAlert[]>();
+  const alertIdByKey = new Map<string, string>();
+  for (const alert of serverAlerts) {
+    alertIdByKey.set(alertDedupKey(alert.batchId, alert.expiryDate, stageOfAlert(alert)), alert.id);
+    if (alert.resolvedAt) continue;
+    const list = openByBatch.get(alert.batchId) ?? [];
+    list.push(alert);
+    openByBatch.set(alert.batchId, list);
+  }
 
+  const items: ExpiryAlertItem[] = [];
   for (const batch of batches) {
     if (batch.quantity <= 0 || !batch.expiryDate) continue;
-    const days = getDaysUntilExpiry(batch.expiryDate);
     const product = productsById.get(batch.productId);
-    if (days === null || days > thresholdDays || !product) continue;
+    if (!product) continue;
 
-    alerts.push({
+    let stage = reminderStage(batch.expiryDate, today, settings.reminderDays);
+    if (!stage) {
+      const open = (openByBatch.get(batch.id) ?? [])
+        .filter((a) => a.expiryDate === batch.expiryDate)
+        .map(stageOfAlert)
+        .sort((a, b) => stageRank(a) - stageRank(b));
+      stage = open[0] ?? null;
+    }
+    if (!stage) continue;
+
+    const key = alertDedupKey(batch.id, batch.expiryDate, stage);
+    const days = daysUntil(batch.expiryDate, today);
+    items.push({
+      key,
+      alertId: alertIdByKey.get(key) ?? null,
       batch,
       product,
+      kind: stage.kind,
+      thresholdDays: stage.threshold,
       daysUntilExpiry: days,
-      status: days < 0 ? 'expired' : days <= 7 ? 'urgent' : 'warning',
+      status: stage.kind === 'expired' ? 'expired' : days <= 7 ? 'urgent' : 'warning',
     });
   }
 
-  return alerts.sort((a, b) => a.daysUntilExpiry - b.daysUntilExpiry);
+  return items.sort((a, b) => a.daysUntilExpiry - b.daysUntilExpiry || a.product.name.localeCompare(b.product.name));
+}
+
+export type ExpiryResolveErrorCode = 'forbidden' | 'not_found' | 'invalid' | 'duplicate' | 'empty';
+
+export interface ResolveExpiredBatchInput {
+  batchId: string;
+  action: ExpiryResolutionAction;
+  /** Required for 'expiry_corrected'. */
+  newExpiryDate?: string | null;
+  note?: string | null;
+  idempotencyKey?: string;
+}
+
+export interface ResolveExpiredBatchOutcome {
+  result?: { batch: StockBatch; removed: number };
+  error?: string;
+  errorCode?: ExpiryResolveErrorCode;
+}
+
+/**
+ * Removes an expired batch from stock (discarded or returned to the supplier) or corrects its
+ * expiry date, and queues resolve_expired_batch, which keeps a permanent expiry_resolutions record
+ * on the server. Owners and managers only, matching the server.
+ */
+export async function resolveExpiredBatch(
+  input: ResolveExpiredBatchInput,
+  shopId: string
+): Promise<ResolveExpiredBatchOutcome> {
+  const settings = await getShopSettings(shopId);
+  if (!canManageExpiry(settings.role)) {
+    return { error: 'Only an owner or manager can resolve expired stock.', errorCode: 'forbidden' };
+  }
+  const newExpiryDate = input.newExpiryDate?.trim() || null;
+  if (input.action === 'expiry_corrected' && (!newExpiryDate || !isValidDateFormat(newExpiryDate))) {
+    return { error: 'Enter the correct expiry date (YYYY-MM-DD).', errorCode: 'invalid' };
+  }
+  const note = input.note?.trim() ? input.note.trim().slice(0, 500) : null;
+  const idempotencyKey = input.idempotencyKey?.trim() || newId();
+  const movementKey = `expiry:${idempotencyKey}`;
+
+  const outcome = await withWriteLock(() =>
+    db.transaction(
+      'rw',
+      [db.batches, db.movements, db.expiryAlerts, db.outbox],
+      async (): Promise<ResolveExpiredBatchOutcome> => {
+        const batch = await db.batches.get(input.batchId);
+        if (!batch || batch.shopId !== shopId) {
+          return { error: 'Batch not found in this shop.', errorCode: 'not_found' };
+        }
+
+        const seenMovement = await db.movements.where('[shopId+idempotencyKey]').equals([shopId, movementKey]).count();
+        const seenQueued = await db.outbox
+          .where('shopId')
+          .equals(shopId)
+          .filter((item) => item.type === 'expiry_resolve' && item.payload.idempotencyKey === idempotencyKey)
+          .count();
+        if (seenMovement > 0 || seenQueued > 0) {
+          return { error: 'This was already recorded.', errorCode: 'duplicate' };
+        }
+
+        const now = new Date().toISOString();
+        let removed = 0;
+        let updated: StockBatch;
+        if (input.action === 'expiry_corrected') {
+          updated = { ...batch, expiryDate: newExpiryDate };
+        } else {
+          if (batch.quantity <= 0) {
+            return { error: 'This batch has no units left.', errorCode: 'empty' };
+          }
+          removed = batch.quantity;
+          updated = { ...batch, quantity: 0 };
+          const siblings = await db.batches.where('[shopId+productId]').equals([shopId, batch.productId]).toArray();
+          const onHandAfter = sumQuantity(siblings) - removed;
+          await db.movements.add({
+            id: newId(),
+            shopId,
+            productId: batch.productId,
+            batchId: batch.id,
+            type: input.action === 'discarded' ? 'write_off_expired' : 'supplier_return',
+            quantityDelta: -removed,
+            resultingTotalQuantity: onHandAfter,
+            idempotencyKey: movementKey,
+            createdAt: now,
+          });
+        }
+        await db.batches.put(updated);
+
+        await db.expiryAlerts
+          .where('batchId')
+          .equals(batch.id)
+          .filter((a) => !a.resolvedAt)
+          .modify({ resolvedAt: now, resolution: input.action });
+
+        await enqueue(shopId, {
+          type: 'expiry_resolve',
+          payload: { batchId: batch.id, action: input.action, newExpiryDate, note, idempotencyKey, occurredAt: now },
+        });
+
+        return { result: { batch: updated, removed } };
+      }
+    )
+  );
+
+  if (outcome.result) emitDataChanged('local');
+  return outcome;
 }
 
 export interface DiscrepancyAlert {
