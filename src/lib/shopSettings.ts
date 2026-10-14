@@ -1,5 +1,6 @@
 import type { ShopRole, ShopSettings } from '../types';
 import { getMeta, setMeta } from './db';
+import { can } from './permissions';
 import { DEFAULT_REMINDER_DAYS, deviceTimezone, isValidTimezone, normalizeReminderDays } from './expiry';
 
 const ROLES: readonly ShopRole[] = ['owner', 'manager', 'staff'];
@@ -40,5 +41,5 @@ export async function saveShopSettings(shopId: string, settings: Partial<ShopSet
 }
 
 export function canManageExpiry(role: ShopRole): boolean {
-  return role === 'owner' || role === 'manager';
+  return can(role, 'expiry.manage');
 }

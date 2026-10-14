@@ -6,6 +6,7 @@ import { useLanguage } from '../../context/LanguageContext';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { ErrorMessage } from '../ui/ErrorMessage';
+import { RevokedNotice } from '../layout/RevokedNotice';
 
 export const ShopOnboarding: React.FC = () => {
   const { createShop, error: loadError, reload } = useShop();
@@ -43,6 +44,8 @@ export const ShopOnboarding: React.FC = () => {
           <p className="text-xs text-zinc-400">{t('onboarding.subtitle')}</p>
         </div>
 
+        <RevokedNotice />
+
         {loadError ? (
           <div className="space-y-3">
             <ErrorMessage
@@ -69,6 +72,8 @@ export const ShopOnboarding: React.FC = () => {
             </Button>
           </form>
         )}
+
+        <p className="text-xs text-zinc-500 text-center leading-relaxed">{t('onboarding.hasInvite')}</p>
 
         <button
           onClick={signOut}

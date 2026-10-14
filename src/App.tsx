@@ -17,6 +17,10 @@ import { QuickStockInModal } from './components/stock/QuickStockInModal';
 import { ProductStockDetailDialog } from './components/stock/ProductStockDetailDialog';
 import { SignInScreen } from './components/auth/SignInScreen';
 import { ShopOnboarding } from './components/auth/ShopOnboarding';
+import { InviteAcceptScreen } from './components/auth/InviteAcceptScreen';
+import { NewPasswordScreen } from './components/auth/ResetPasswordScreen';
+import { TeamView } from './components/team/TeamView';
+import { RevokedNotice } from './components/layout/RevokedNotice';
 import { LoadingState } from './components/ui/LoadingState';
 import { RapidSellPanel } from './components/sales/RapidSellPanel';
 import { useSaleRegister } from './hooks/useSaleRegister';
@@ -24,6 +28,8 @@ import { useExpiryAlerts } from './hooks/useExpiryAlerts';
 import { searchProductByBarcode } from './services/productService';
 import { onDataChanged } from './lib/events';
 import { refreshPushSubscription } from './lib/push';
+import { captureInviteFromUrl } from './lib/invite';
+import { can } from './lib/permissions';
 import type { Product, ScanMode } from './types';
 
 // html5-qrcode is large and only needed once the camera opens.
@@ -31,7 +37,8 @@ const BarcodeScannerModal = lazy(() =>
   import('./components/scanner/BarcodeScannerModal').then((m) => ({ default: m.BarcodeScannerModal }))
 );
 
-export type AppTab = 'dashboard' | 'stock' | 'sales' | 'alerts';
+/** 'team' is reached from the shop menu, not the bottom navigation. */
+export type AppTab = 'dashboard' | 'stock' | 'sales' | 'alerts' | 'team';
 
 interface RegisterRequest {
   barcode: string;
@@ -51,6 +58,7 @@ function initialTab(): AppTab {
 
 export function AppContent() {
   const shopId = useShopId();
+  const { settings } = useShop();
   const { t } = useLanguage();
   const { mode } = useAuth();
   const [currentTab, setCurrentTab] = useState<AppTab>(initialTab);
@@ -129,10 +137,14 @@ export function AppContent() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col font-sans selection:bg-emerald-500 selection:text-white">
-      <Header />
+      <Header onOpenTeam={() => setCurrentTab('team')} />
 
       <main className="flex-1 w-full max-w-md sm:max-w-xl mx-auto px-4 py-5">
+        <RevokedNotice className="mb-4" />
         <SyncBanner />
+        {currentTab === 'team' && mode === 'cloud' && can(settings.role, 'team.manage') && (
+          <TeamView onBack={() => setCurrentTab('dashboard')} />
+        )}
         {currentTab === 'dashboard' && (
           <Dashboard
             onOpenScanner={openScanner}
@@ -254,16 +266,24 @@ function ShopGate() {
   const { shop, isLoading } = useShop();
   if (isLoading) return <FullScreenLoading />;
   if (!shop) return <ShopOnboarding />;
+  // Keyed by shop so switching shops restarts sync and resets every screen.
   return (
-    <SyncProvider>
+    <SyncProvider key={shop.id}>
       <AppContent />
     </SyncProvider>
   );
 }
 
 function AuthGate() {
-  const { mode, isLoading, user } = useAuth();
+  const { mode, isLoading, user, isRecoveringPassword } = useAuth();
+  const [inviteToken, setInviteToken] = useState<string | null>(() =>
+    mode === 'cloud' ? captureInviteFromUrl() : null
+  );
   if (isLoading) return <FullScreenLoading />;
+  if (mode === 'cloud' && user && isRecoveringPassword) return <NewPasswordScreen />;
+  if (mode === 'cloud' && inviteToken) {
+    return <InviteAcceptScreen token={inviteToken} onDone={() => setInviteToken(null)} />;
+  }
   if (mode === 'cloud' && !user) return <SignInScreen />;
   return (
     <ShopProvider>

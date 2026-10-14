@@ -8,7 +8,15 @@ SpazaStock is a mobile-first Progressive Web App for spaza shop owners in South 
 
 **Supabase is the shared source of truth.** When the phone is online, the sync engine sends outbox items to Supabase in order, through idempotent Postgres functions, and then pulls rows other devices have changed. Every row ID is a UUID generated on the device, so retries never create duplicates.
 
-**Each shop's data is private to its members.** Users sign in with a 6-digit code sent by email (Supabase Auth). The owner can invite managers and staff by email. Row Level Security limits every table to shops the signed-in user is a member of, and stock can only change through checked database functions (see [Database design](#database-design)).
+**Each shop's data is private to its members.** Users register with their name, email and a password, and confirm the email with a 6-digit code (Supabase Auth). They can also sign in with an emailed code instead of the password, and reset a forgotten password with a code. Row Level Security limits every table to shops the signed-in user is an active member of, and stock can only change through checked database functions (see [Database design](#database-design)).
+
+### Shops and teams
+
+- **Owners create shops.** The person who creates a shop is its account owner and can never be removed, demoted or deactivated. One account can own or work in several shops. Tap the shop name in the header to switch shops, add a shop, open *Team* or *Account*, or sign out.
+- **Inviting a worker.** Under *Team → Invite someone* the owner enters the worker's email and picks **Worker** (scan, add stock, sell, view stock and alerts) or **Manager** (also edit products and prices, correct stock, handle expiry). The app makes a single-use invite link that expires after 7 days, to send by WhatsApp, SMS or copy and paste. The worker opens it, creates an account **with that email address** and their own password, confirms the email code and joins. Nobody ever sees or shares anyone else's password.
+- **Invite security.** Only a SHA-256 hash of the link's token is stored. Accepting needs the token, a signed-in account whose email matches the invite, and a confirmed email. The token is cleared on use, *New invite link* replaces it (the old link stops working), and *Cancel invite* deletes it.
+- **Managing the team.** The team screen lists each person's name, email, role and status (Active, Invite sent, Invite expired, Deactivated). The owner can change roles, deactivate and reactivate, and remove people, each after a confirmation. Deactivation and removal take effect immediately on every phone, because every policy and database function checks for an *active* membership. Queued push notifications for that person are cancelled. On their phone, the shop's local data, including unsynced changes, is deleted the next time the app is online. Nobody can change their own role or access.
+- **Audit.** Every invite, resend, cancellation, join, role change, deactivation, reactivation and removal is written to `membership_events` by a database trigger, with who did it. Owners see the recent history on the team screen.
 
 **Device-only mode.** If no Supabase credentials are configured, the app skips sign-in and keeps everything on the phone. A banner explains that the data is not backed up.
 
@@ -72,13 +80,16 @@ Leave `.env.local` unset to run in device-only mode.
    npx supabase db push
    ```
    You can also paste the files, in filename order, into the SQL editor. Migrations only move forward; never edit one that has already been applied, add a new file instead.
-3. **Email template (required).** By default Supabase emails a magic link, but the app asks for a 6-digit code. In *Authentication → Email Templates → Magic Link*, use the contents of `supabase/templates/magic_link.html`, or any template that includes `{{ .Token }}`. Local development (`supabase start`) picks this up from `supabase/config.toml`.
+3. **Auth settings (required).** Local development (`supabase start`) picks these up from `supabase/config.toml`; on a hosted project set them in the dashboard:
+   - *Authentication → Sign In / Providers → Email*: turn on **Confirm email**. Invites can only be accepted by a confirmed email address, so without this anyone who gets hold of an invite link could register with the invited address and join without proving they own it. Set the minimum password length to **8** and require **letters and digits**, to match the app's checks.
+   - *Authentication → Email Templates*: the app asks for 6-digit codes, not links. Paste `supabase/templates/confirmation.html` into **Confirm signup**, `supabase/templates/recovery.html` into **Reset password** and `supabase/templates/magic_link.html` into **Magic Link** (or any templates that include `{{ .Token }}`).
+   - *Authentication → Emails → SMTP Settings*: set up a **custom SMTP provider** (for example Resend, Brevo, SendGrid or Amazon SES). Supabase's built-in email only delivers to the project's team members and is limited to a few messages an hour, so shop owners and workers would not receive their codes without it.
 4. In *Project Settings → API*, copy the Project URL and the anon public key into `.env.local`:
    ```env
    VITE_SUPABASE_URL="https://<project-ref>.supabase.co"
    VITE_SUPABASE_ANON_KEY="<anon-public-key>"
    ```
-5. Rebuild and redeploy. On first sign-in the owner is asked to name their shop.
+5. Rebuild and redeploy. After registering, the owner is asked to name their shop.
 
 Run the database advisors after applying the migrations (*Advisors* in the dashboard, or `npx supabase db lint`). They warn that signed-in users can execute security-definer functions; that is intended for the functions listed under [Database design](#database-design), which check shop membership themselves.
 
@@ -93,7 +104,7 @@ npx supabase start     # local Postgres, Auth, API and Studio; applies supabase/
 npx supabase status    # prints the local API URL and anon key
 ```
 
-Put the printed values in `.env.local` (`VITE_SUPABASE_URL=http://127.0.0.1:54321`, `VITE_SUPABASE_ANON_KEY=<anon key>`) and run `npm run dev`. Sign-in emails are not really sent locally: open Inbucket at <http://127.0.0.1:54324> to read the 6-digit code.
+Put the printed values in `.env.local` (`VITE_SUPABASE_URL=http://127.0.0.1:54321`, `VITE_SUPABASE_ANON_KEY=<anon key>`) and run `npm run dev`. Emails are not really sent locally: open Inbucket at <http://127.0.0.1:54324> to read the sign-up, sign-in and reset codes.
 
 To rebuild the local database from the migrations, run `npx supabase db reset`. **This deletes all data. Only run it against the local stack, never with `--linked` or against production.** `supabase/seed.sql` is intentionally empty: create test users by signing in through the app.
 
@@ -110,7 +121,7 @@ To add a schema change, create a new file with `npx supabase migration new <name
    vercel env add VITE_SUPABASE_ANON_KEY production
    ```
    The anon key can be the legacy anon JWT or a `sb_publishable_…` key.
-3. In Supabase *Authentication → URL Configuration*, set **Site URL** to the production domain (for example `https://spazastock.vercel.app`) and add `https://*-<team>.vercel.app/**` to **Redirect URLs** for preview deployments. Sign-in uses the 6-digit code, but the email still contains a link that points at these URLs.
+3. In Supabase *Authentication → URL Configuration*, set **Site URL** to the production domain (for example `https://spazastock.vercel.app`) and add `https://*-<team>.vercel.app/**` to **Redirect URLs** for preview deployments. Sign-in uses the 6-digit code, but the email still contains a link that points at these URLs. Invite links use the domain the owner is on when they create the invite.
 4. Deploy, then open the site on a phone: install the PWA, allow the camera, and do a test stock-in and sale to confirm sync.
 
 `.vercelignore` keeps `.env*` files out of CLI uploads, so the Vercel environment variables are always the ones used.
@@ -166,9 +177,10 @@ Earlier builds stored data in `localStorage`. On first launch, products and rema
 
 | Table | Purpose |
 | --- | --- |
-| `profiles` | One per user (display name, phone), created by a trigger on sign-up |
-| `shops` | A shop; `owner_id` is the account owner, who can never be removed or demoted. `timezone` and `expiry_reminder_days` drive expiry alerts |
-| `shop_members` | `owner`, `manager` or `staff` membership; a row with no `user_id` is a pending email invite |
+| `profiles` | One per user (display name, phone), created by a trigger on sign-up with the name given at registration |
+| `shops` | A shop; `owner_id` is the account owner, who can never be removed, demoted or deactivated. Created only through `create_shop`. `timezone` and `expiry_reminder_days` drive expiry alerts |
+| `shop_members` | `owner`, `manager` or `staff` (shown as "Worker") membership with a `status` of `active` or `deactivated`. A row with no `user_id` is a pending invite, holding the SHA-256 hash of its token (never readable by clients) and its expiry. Members see only their own row; owners see the whole team |
+| `membership_events` | Append-only audit trail of invites, joins, role changes, deactivations and removals, written by a trigger; owners can read it |
 | `products` | Barcode unique within a shop, prices |
 | `stock_batches` | One delivery: quantity left, initial quantity, expiry date, purchase cost per unit |
 | `stock_movements` | Append-only audit trail: quantity change, reason, actor, device time, server time, unique idempotency key |
@@ -181,13 +193,13 @@ Earlier builds stored data in `localStorage`. On first launch, products and rema
 | `push_subscriptions` | One Web Push endpoint per browser, visible only to its user |
 | `subscriptions` | Plan and billing status per shop; only the service role can write it |
 
-**Who can do what.** Every member can read their shop's data, register products, receive stock and sell. Owners and managers can also edit products, adjust stock and resolve discrepancies. Only owners can invite, change or remove members, rename the shop and see the subscription.
+**Who can do what.** Every active member can read their shop's data, register products, receive stock and sell. Owners and managers can also edit products, adjust stock, handle expiry and resolve discrepancies. Only owners can manage the team, rename the shop and see the subscription. Deactivated members can do nothing. The permission matrix lives in `private.role_permissions` (used by `private.has_permission` in the team functions) and is mirrored in `src/lib/permissions.ts` for the UI; a test fails if the two differ. To change a permission, add a migration that edits the table and update the TypeScript copy.
 
 **Stock only changes through functions.** Clients have read-only access to the ledger tables. These functions are `security definer`. Each one checks the caller's role, validates input, and locks the product rows before changing stock:
 
 - `upsert_product`, `record_stock_in`, `record_sale` (several lines, first-expired-first-out) and `record_stock_adjustment` (owners and managers; write-offs, corrections and returns).
 - `void_sale_item` undoes units of a sale line. Owners and managers can void any line. Staff can void only their own sales, within 15 minutes of the sale. Units that were oversold (never in stock) are voided first. The rest go back to the batches they came from, last batch first, each with a `return` movement.
-- `invite_shop_member`, `accept_pending_invites`, `update_member_role` and `remove_shop_member`.
+- Team (owners only): `invite_shop_member` and `resend_shop_invite` return the invite token once, plus `list_shop_team`, `update_member_role`, `set_member_status` and `remove_shop_member` (owners, or a member leaving). `accept_shop_invite` is for the invited person, and `preview_shop_invite` can be called before signing in so the invitee sees which shop and email the link is for. `my_shops` and `create_shop` cover the signed-in user's own shops.
 - `update_shop_alert_settings` and `resolve_expired_batch` (owners and managers), and `save_push_subscription`, `delete_push_subscription` and `get_push_public_key` (the signed-in user).
 - `push_config`, `claim_push_batch` and `complete_push` can be called by the service role only, which means the Edge Function.
 
@@ -221,6 +233,7 @@ Guarantees, checked by the database tests:
 - `syncEngine`, `syncController`: push and pull against a fake Supabase client. Covers rejected and retryable errors, backoff, product ID remapping, and online/offline behaviour.
 - `db/tenantIsolation`, `db/stockConsistency`: apply the real migrations to [PGlite](https://pglite.dev) (Postgres in WebAssembly) with stand-ins for Supabase's roles and `auth` functions.
   - Tenant isolation: another shop's members and anonymous callers see nothing and can call nothing. Role limits for staff and managers are enforced, and the ledger tables reject direct writes. Invites can only be claimed by the invited email address, and the account owner can't be removed.
+  - `db/teamManagement`: invite tokens (hashed, single use, expiry, resend replaces the old link, revoke), the email match and confirmed-email checks, duplicate memberships, workers and managers unable to manage the team or change their own role, protection of the account owner, deactivation and removal cutting off reads, product writes, stock-in and sales at once (and reactivation restoring them), notifications and queued pushes stopping, a user in two shops with a different role in each, the audit trail, `create_shop` ownership, and the permission matrix matching `src/lib/permissions.ts`.
   - Tenant isolation also covers voids: staff can undo only their own recent sales, and nobody can write `sale_item_voids` directly.
   - Stock consistency: first-expired-first-out deduction, multi-line sales that roll back as a whole, oversell discrepancies, strict adjustments, voids and idempotent replays. It also checks that the database and the app agree on where voided units go. A seeded random workload checks the ledger invariant.
   - `db/expiryAlerts`: the alert generator at threshold and midnight boundaries, in several time zones; no duplicates across re-runs or a clock going back; 07:00 push hold; notification content; settings validation and permissions; push claiming, retries, backoff, giving up and gone subscriptions; expired batches skipped by sales; and resolutions with their records. `pg_cron`, `pg_net` and Vault aren't available in PGlite, so the schedule migration is skipped and was smoke-tested in production.
@@ -233,9 +246,9 @@ Guarantees, checked by the database tests:
 
 ```
 supabase/
-  migrations/              schema, tenancy, ledger, RLS policies, stock functions, expiry alerts and their schedule (forward-only)
+  migrations/              schema, tenancy, ledger, RLS policies, stock functions, expiry alerts and their schedule, team management (forward-only)
   functions/expiry-push/   Edge Function that sends expiry Web Push messages (logic.ts is unit-tested)
-  templates/magic_link.html  sign-in email with the 6-digit code
+  templates/               sign-in, sign-up confirmation and password reset emails with the 6-digit code
   seed.sql                 intentionally empty (no invented users or credentials)
 src/
   lib/db.ts                Dexie (IndexedDB) schema, outbox types, write lock
@@ -248,7 +261,12 @@ src/
   services/                product, stock and sales repositories (all writes are transactional + queued)
   services/scanSell.ts     rapid-sell core: scan, sell more, undo
   sync/                    outbox, sync engine (push/pull) and controller (triggers, status)
-  context/                 Language, Auth (email OTP), Shop, Sync providers
+  lib/permissions.ts       role permission matrix (mirrors private.role_permissions)
+  lib/invite.ts            invite link building and capture from the address bar
+  lib/authValidation.ts    email, password and name rules shared by the auth forms
+  services/teamService.ts  team, invite and profile calls to the database functions
+  context/                 Language, Auth (password, email codes, reset), Shop (several shops), Sync providers
+  components/team/         team screen and invite dialog
   hooks/useSaleRegister.ts shared scan-to-sell state for the scanner panel and the Sales tab
   components/              UI: auth, dashboard, views, scanner (lazy-loaded), stock, sales, sync banner
   locales/                 en.ts and zu.ts

@@ -1,4 +1,4 @@
-import Dexie, { type EntityTable } from 'dexie';
+import Dexie, { type EntityTable, type Table } from 'dexie';
 import type {
   ExpiryAlert,
   ExpiryResolutionAction,
@@ -93,6 +93,22 @@ export async function getMeta(key: string): Promise<string | undefined> {
 
 export async function setMeta(key: string, value: string): Promise<void> {
   await db.meta.put({ key, value });
+}
+
+/**
+ * Removes everything this phone holds for one shop, including unsynced changes and sync cursors.
+ * Used when the user's access to the shop has ended.
+ */
+export async function clearShopData(shopId: string): Promise<void> {
+  await withWriteLock(() =>
+    db.transaction('rw', [...WRITE_TABLES, db.meta], async () => {
+      for (const table of WRITE_TABLES as Table[]) {
+        await table.where('shopId').equals(shopId).delete();
+      }
+      const keys = await db.meta.toCollection().primaryKeys();
+      await db.meta.bulkDelete(keys.filter((key) => String(key).includes(shopId)));
+    })
+  );
 }
 
 /** Wipes the local store; used by tests. */

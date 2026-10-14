@@ -1,6 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { isAuthRetryableFetchError } from '@supabase/supabase-js';
 import { getSupabase } from '../lib/supabase';
+import { authErrorKey } from '../lib/authErrors';
+import { normalizeDisplayName, normalizeEmail } from '../lib/authValidation';
 
 /** 'device' = Supabase not configured, data stays on this device; 'cloud' = signed-in sync. */
 export type AuthMode = 'device' | 'cloud';
@@ -10,18 +12,40 @@ export interface AuthUser {
   email: string | null;
 }
 
+/** `error` is a translation key. */
+export interface AuthResult {
+  error?: string;
+}
+
+export interface SignUpResult extends AuthResult {
+  /** True when the account exists but the emailed code must be entered before signing in. */
+  needsConfirmation?: boolean;
+}
+
 interface AuthContextValue {
   mode: AuthMode;
   isLoading: boolean;
   user: AuthUser | null;
   /** True when signed in from the cached user because the session couldn't be refreshed offline. */
   isOfflineSession: boolean;
-  sendCode: (email: string) => Promise<{ error?: string }>;
-  verifyCode: (email: string, code: string) => Promise<{ error?: string }>;
+  /** Signed in with a password-reset code; a new password must be chosen before continuing. */
+  isRecoveringPassword: boolean;
+  sendCode: (email: string) => Promise<AuthResult>;
+  verifyCode: (email: string, code: string) => Promise<AuthResult>;
+  signUp: (email: string, password: string, displayName: string) => Promise<SignUpResult>;
+  confirmSignUp: (email: string, code: string) => Promise<AuthResult>;
+  resendSignUpCode: (email: string) => Promise<AuthResult>;
+  signInWithPassword: (email: string, password: string) => Promise<SignUpResult>;
+  requestPasswordReset: (email: string) => Promise<AuthResult>;
+  verifyResetCode: (email: string, code: string) => Promise<AuthResult>;
+  updatePassword: (password: string) => Promise<AuthResult>;
+  finishPasswordRecovery: () => void;
   signOut: () => Promise<void>;
 }
 
 const LAST_USER_KEY = 'spazastock_last_user';
+const RECOVERY_KEY = 'spazastock_password_recovery';
+const NOT_CONFIGURED = 'auth.errors.generic';
 
 function readCachedUser(): AuthUser | null {
   try {
@@ -37,6 +61,27 @@ function writeCachedUser(user: AuthUser | null): void {
   else localStorage.removeItem(LAST_USER_KEY);
 }
 
+function readRecoveryFlag(): boolean {
+  try {
+    return sessionStorage.getItem(RECOVERY_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeRecoveryFlag(value: boolean): void {
+  try {
+    if (value) sessionStorage.setItem(RECOVERY_KEY, '1');
+    else sessionStorage.removeItem(RECOVERY_KEY);
+  } catch {
+    // Private browsing without storage: the flag only lives in memory.
+  }
+}
+
+function redirectTo(): string {
+  return window.location.origin;
+}
+
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -45,6 +90,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isOfflineSession, setIsOfflineSession] = useState(false);
   const [isLoading, setIsLoading] = useState(mode === 'cloud');
+  const [isRecoveringPassword, setIsRecoveringPassword] = useState(readRecoveryFlag);
+
+  const setRecovering = useCallback((value: boolean) => {
+    writeRecoveryFlag(value);
+    setIsRecoveringPassword(value);
+  }, []);
 
   useEffect(() => {
     if (!supabase) return;
@@ -63,11 +114,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsOfflineSession(cached !== null);
       } else {
         setUser(null);
+        setRecovering(false);
       }
       setIsLoading(false);
     });
 
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY') setRecovering(true);
       if (session) {
         const next = { id: session.user.id, email: session.user.email ?? null };
         writeCachedUser(next);
@@ -77,6 +130,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         writeCachedUser(null);
         setUser(null);
         setIsOfflineSession(false);
+        setRecovering(false);
       }
     });
 
@@ -84,32 +138,121 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       active = false;
       listener.subscription.unsubscribe();
     };
-  }, [supabase]);
+  }, [supabase, setRecovering]);
 
   const sendCode = useCallback(
-    async (email: string) => {
-      if (!supabase) return { error: 'Supabase is not configured.' };
+    async (email: string): Promise<AuthResult> => {
+      if (!supabase) return { error: NOT_CONFIGURED };
       const { error } = await supabase.auth.signInWithOtp({
-        email: email.trim(),
-        options: { emailRedirectTo: window.location.origin },
+        email: normalizeEmail(email),
+        options: { emailRedirectTo: redirectTo() },
       });
-      return error ? { error: error.message } : {};
+      return error ? { error: authErrorKey(error) } : {};
     },
     [supabase]
   );
 
   const verifyCode = useCallback(
-    async (email: string, code: string) => {
-      if (!supabase) return { error: 'Supabase is not configured.' };
+    async (email: string, code: string): Promise<AuthResult> => {
+      if (!supabase) return { error: NOT_CONFIGURED };
       const { error } = await supabase.auth.verifyOtp({
-        email: email.trim(),
+        email: normalizeEmail(email),
         token: code.trim(),
         type: 'email',
       });
-      return error ? { error: error.message } : {};
+      return error ? { error: authErrorKey(error) } : {};
     },
     [supabase]
   );
+
+  const signUp = useCallback(
+    async (email: string, password: string, displayName: string): Promise<SignUpResult> => {
+      if (!supabase) return { error: NOT_CONFIGURED };
+      const { data, error } = await supabase.auth.signUp({
+        email: normalizeEmail(email),
+        password,
+        options: { data: { display_name: normalizeDisplayName(displayName) }, emailRedirectTo: redirectTo() },
+      });
+      if (error) return { error: authErrorKey(error) };
+      // Supabase hides whether an address is registered by returning a user without identities.
+      if (data.user && data.user.identities?.length === 0) return { error: 'auth.errors.emailInUse' };
+      return { needsConfirmation: !data.session };
+    },
+    [supabase]
+  );
+
+  // The 'email' verification type accepts both sign-up confirmation and sign-in codes.
+  const confirmSignUp = verifyCode;
+
+  const resendSignUpCode = useCallback(
+    async (email: string): Promise<AuthResult> => {
+      if (!supabase) return { error: NOT_CONFIGURED };
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: normalizeEmail(email),
+        options: { emailRedirectTo: redirectTo() },
+      });
+      return error ? { error: authErrorKey(error) } : {};
+    },
+    [supabase]
+  );
+
+  const signInWithPassword = useCallback(
+    async (email: string, password: string): Promise<SignUpResult> => {
+      if (!supabase) return { error: NOT_CONFIGURED };
+      const { error } = await supabase.auth.signInWithPassword({ email: normalizeEmail(email), password });
+      if (!error) return {};
+      const key = authErrorKey(error);
+      if (key === 'auth.errors.emailNotConfirmed') {
+        await supabase.auth.resend({ type: 'signup', email: normalizeEmail(email) });
+        return { error: key, needsConfirmation: true };
+      }
+      return { error: key };
+    },
+    [supabase]
+  );
+
+  const requestPasswordReset = useCallback(
+    async (email: string): Promise<AuthResult> => {
+      if (!supabase) return { error: NOT_CONFIGURED };
+      const { error } = await supabase.auth.resetPasswordForEmail(normalizeEmail(email), {
+        redirectTo: redirectTo(),
+      });
+      return error ? { error: authErrorKey(error) } : {};
+    },
+    [supabase]
+  );
+
+  const verifyResetCode = useCallback(
+    async (email: string, code: string): Promise<AuthResult> => {
+      if (!supabase) return { error: NOT_CONFIGURED };
+      // Set first: the session arrives before verifyOtp resolves, and the app must show the
+      // new-password step rather than the shop.
+      setRecovering(true);
+      const { error } = await supabase.auth.verifyOtp({
+        email: normalizeEmail(email),
+        token: code.trim(),
+        type: 'recovery',
+      });
+      if (error) {
+        setRecovering(false);
+        return { error: authErrorKey(error) };
+      }
+      return {};
+    },
+    [supabase, setRecovering]
+  );
+
+  const updatePassword = useCallback(
+    async (password: string): Promise<AuthResult> => {
+      if (!supabase) return { error: NOT_CONFIGURED };
+      const { error } = await supabase.auth.updateUser({ password });
+      return error ? { error: authErrorKey(error) } : {};
+    },
+    [supabase]
+  );
+
+  const finishPasswordRecovery = useCallback(() => setRecovering(false), [setRecovering]);
 
   const signOut = useCallback(async () => {
     if (!supabase) return;
@@ -117,11 +260,46 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     writeCachedUser(null);
     setUser(null);
     setIsOfflineSession(false);
-  }, [supabase]);
+    setRecovering(false);
+  }, [supabase, setRecovering]);
 
   const value = useMemo(
-    () => ({ mode, isLoading, user, isOfflineSession, sendCode, verifyCode, signOut }),
-    [mode, isLoading, user, isOfflineSession, sendCode, verifyCode, signOut]
+    () => ({
+      mode,
+      isLoading,
+      user,
+      isOfflineSession,
+      isRecoveringPassword,
+      sendCode,
+      verifyCode,
+      signUp,
+      confirmSignUp,
+      resendSignUpCode,
+      signInWithPassword,
+      requestPasswordReset,
+      verifyResetCode,
+      updatePassword,
+      finishPasswordRecovery,
+      signOut,
+    }),
+    [
+      mode,
+      isLoading,
+      user,
+      isOfflineSession,
+      isRecoveringPassword,
+      sendCode,
+      verifyCode,
+      signUp,
+      confirmSignUp,
+      resendSignUpCode,
+      signInWithPassword,
+      requestPasswordReset,
+      verifyResetCode,
+      updatePassword,
+      finishPasswordRecovery,
+      signOut,
+    ]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -20,7 +20,12 @@ const SUPABASE_STANDINS = `
 
   create schema auth;
   grant usage on schema auth to anon, authenticated, service_role;
-  create table auth.users (id uuid primary key, email text);
+  create table auth.users (
+    id uuid primary key,
+    email text,
+    email_confirmed_at timestamptz,
+    raw_user_meta_data jsonb not null default '{}'::jsonb
+  );
   create function auth.jwt() returns jsonb language sql stable as $$
     select coalesce(nullif(current_setting('request.jwt.claims', true), ''), '{}')::jsonb
   $$;
@@ -55,9 +60,27 @@ export async function createDatabase(): Promise<PGlite> {
   return pg;
 }
 
-export async function createUser(pg: PGlite, email: string = `${randomUUID().slice(0, 8)}@example.com`): Promise<User> {
+export interface CreateUserOptions {
+  /** Leaves email_confirmed_at empty, like an account whose sign-up code was never entered. */
+  unconfirmed?: boolean;
+  displayName?: string;
+}
+
+export async function createUser(
+  pg: PGlite,
+  email: string = `${randomUUID().slice(0, 8)}@example.com`,
+  options: CreateUserOptions = {}
+): Promise<User> {
   const id = randomUUID();
-  await pg.query('insert into auth.users (id, email) values ($1, $2)', [id, email]);
+  await pg.query(
+    'insert into auth.users (id, email, email_confirmed_at, raw_user_meta_data) values ($1, $2, $3, $4)',
+    [
+      id,
+      email,
+      options.unconfirmed ? null : new Date().toISOString(),
+      JSON.stringify(options.displayName ? { display_name: options.displayName } : {}),
+    ]
+  );
   return { id, email };
 }
 
@@ -119,11 +142,32 @@ export async function query<T = Record<string, unknown>>(
 // Domain helpers -------------------------------------------------------------------
 
 export async function createShop(pg: PGlite, owner: User, name = 'Spaza'): Promise<string> {
-  const [row] = await query<{ id: string }>(pg, owner, 'insert into public.shops (name) values ($1) returning id', [name]);
-  return row.id;
+  const shop = await rpc<{ id: string }>(pg, owner, 'create_shop', { p_name: name });
+  return shop.id;
 }
 
-/** Invites `user` to the shop and has them accept, returning the membership id. */
+export interface InviteResult {
+  member_id: string;
+  email: string;
+  role: string;
+  token: string;
+  expires_at: string;
+}
+
+export async function invite(
+  pg: PGlite,
+  owner: User,
+  shopId: string,
+  email: string,
+  role: 'manager' | 'staff' = 'staff'
+): Promise<InviteResult> {
+  return rpc<InviteResult>(pg, owner, 'invite_shop_member', { p_shop_id: shopId, p_email: email, p_role: role });
+}
+
+/**
+ * Invites `user` and has them accept the link, returning the membership id. Owners are invited
+ * as managers and then promoted, because invites cannot grant ownership.
+ */
 export async function addMember(
   pg: PGlite,
   owner: User,
@@ -131,13 +175,12 @@ export async function addMember(
   user: User,
   role: 'owner' | 'manager' | 'staff'
 ): Promise<string> {
-  const invite = await rpc<{ id: string }>(pg, owner, 'invite_shop_member', {
-    p_shop_id: shopId,
-    p_email: user.email,
-    p_role: role,
-  });
-  await rpc(pg, user, 'accept_pending_invites');
-  return invite.id;
+  const invited = await invite(pg, owner, shopId, user.email, role === 'staff' ? 'staff' : 'manager');
+  await rpc(pg, user, 'accept_shop_invite', { p_token: invited.token });
+  if (role === 'owner') {
+    await rpc(pg, owner, 'update_member_role', { p_member_id: invited.member_id, p_role: 'owner' });
+  }
+  return invited.member_id;
 }
 
 export async function newProduct(

@@ -42,6 +42,17 @@ export function getDaysUntilExpiry(expiryDate: string | null, now: Date = new Da
   return Math.round((expiry.getTime() - today.getTime()) / 86_400_000);
 }
 
+/** e.g. "21 Oct 2026" for a timestamp, in the app's language. */
+export function formatShortDate(isoTimestamp: string, locale: string): string {
+  const date = new Date(isoTimestamp);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString(locale === 'zu' ? 'zu-ZA' : 'en-ZA', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
 /** True when an ISO timestamp falls on the same local calendar day as `day`. */
 export function isSameLocalDay(isoTimestamp: string, day: Date = new Date()): boolean {
   return toLocalISODate(new Date(isoTimestamp)) === toLocalISODate(day);

@@ -1,128 +1,178 @@
 import React, { useState } from 'react';
-import { Mail, KeyRound, Package, ArrowLeft } from 'lucide-react';
+import { Mail } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { ErrorMessage } from '../ui/ErrorMessage';
+import { isValidEmail } from '../../lib/authValidation';
+import { AuthLayout, LinkButton } from './AuthLayout';
+import { CodeForm } from './CodeForm';
+import { PasswordInput } from './PasswordInput';
+import { RegisterForm } from './RegisterScreen';
+import { ResetPasswordForm } from './ResetPasswordScreen';
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+type View = 'password' | 'confirm' | 'codeEmail' | 'code' | 'register' | 'reset';
 
-export const SignInScreen: React.FC = () => {
-  const { sendCode, verifyCode } = useAuth();
-  const { t, locale, setLocale } = useLanguage();
-  const [step, setStep] = useState<'email' | 'code'>('email');
-  const [email, setEmail] = useState('');
-  const [code, setCode] = useState('');
+interface SignInScreenProps {
+  /** Pre-filled, read-only email (an invite is for one address). */
+  lockedEmail?: string;
+  banner?: React.ReactNode;
+  initialView?: 'password' | 'register';
+}
+
+export const SignInScreen: React.FC<SignInScreenProps> = ({ lockedEmail, banner, initialView = 'password' }) => {
+  const { signInWithPassword, sendCode, verifyCode, confirmSignUp, resendSignUpCode } = useAuth();
+  const { t } = useLanguage();
+  const [view, setView] = useState<View>(initialView);
+  const [email, setEmail] = useState(lockedEmail ?? '');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
 
-  const handleSendCode = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!EMAIL_RE.test(email.trim())) {
+  const go = (next: View) => {
+    setError(null);
+    setView(next);
+  };
+
+  const checkEmailAndConnection = (): boolean => {
+    if (!isValidEmail(email)) {
       setError(t('auth.invalidEmail'));
-      return;
+      return false;
     }
     if (!navigator.onLine) {
       setError(t('auth.needsInternet'));
+      return false;
+    }
+    return true;
+  };
+
+  const handlePasswordSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!checkEmailAndConnection()) return;
+    if (!password) {
+      setError(t('auth.errors.passwordRequired'));
       return;
     }
+    setIsBusy(true);
+    setError(null);
+    const res = await signInWithPassword(email, password);
+    setIsBusy(false);
+    if (res.needsConfirmation) go('confirm');
+    else if (res.error) setError(t(res.error));
+  };
+
+  const handleSendCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!checkEmailAndConnection()) return;
     setIsBusy(true);
     setError(null);
     const res = await sendCode(email);
     setIsBusy(false);
-    if (res.error) setError(res.error);
-    else setStep('code');
+    if (res.error) setError(t(res.error));
+    else go('code');
   };
 
-  const handleVerify = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!/^\d{6}$/.test(code.trim())) {
-      setError(t('auth.invalidCode'));
-      return;
-    }
-    setIsBusy(true);
-    setError(null);
-    const res = await verifyCode(email, code);
-    setIsBusy(false);
-    if (res.error) setError(res.error);
-  };
+  const emailInput = (
+    <Input
+      label={t('auth.emailLabel')}
+      type="email"
+      inputMode="email"
+      autoComplete="email"
+      placeholder="you@example.com"
+      value={email}
+      onChange={(e) => setEmail(e.target.value)}
+      leftIcon={<Mail className="w-4 h-4" />}
+      readOnly={Boolean(lockedEmail)}
+      autoFocus={!lockedEmail}
+    />
+  );
+
+  if (view === 'register') {
+    return (
+      <AuthLayout title={t('auth.registerTitle')} subtitle={t('auth.registerSubtitle')} banner={banner}>
+        <RegisterForm lockedEmail={lockedEmail} initialEmail={email} onSignIn={() => go('password')} />
+      </AuthLayout>
+    );
+  }
+
+  if (view === 'reset') {
+    return (
+      <AuthLayout title={t('auth.resetTitle')} banner={banner}>
+        <ResetPasswordForm initialEmail={email} lockedEmail={lockedEmail} onBack={() => go('password')} />
+      </AuthLayout>
+    );
+  }
+
+  if (view === 'confirm') {
+    return (
+      <AuthLayout title={t('auth.confirmTitle')} banner={banner}>
+        <CodeForm
+          message={t('auth.confirmSent', { email: email.trim() })}
+          submitLabel={t('auth.confirm')}
+          onSubmit={(code) => confirmSignUp(email, code)}
+          onResend={() => resendSignUpCode(email)}
+          onBack={() => go('password')}
+          backLabel={t('auth.backToSignIn')}
+        />
+      </AuthLayout>
+    );
+  }
+
+  if (view === 'code') {
+    return (
+      <AuthLayout subtitle={t('auth.subtitle')} banner={banner}>
+        <CodeForm
+          message={t('auth.codeSent', { email: email.trim() })}
+          submitLabel={t('auth.verify')}
+          onSubmit={(code) => verifyCode(email, code)}
+          onResend={() => sendCode(email)}
+          onBack={() => go('codeEmail')}
+          backLabel={t('auth.changeEmail')}
+        />
+      </AuthLayout>
+    );
+  }
+
+  if (view === 'codeEmail') {
+    return (
+      <AuthLayout subtitle={t('auth.subtitle')} banner={banner}>
+        {error && <ErrorMessage variant="error" message={error} onDismiss={() => setError(null)} />}
+        <form onSubmit={handleSendCode} className="space-y-4">
+          {emailInput}
+          <Button type="submit" fullWidth isLoading={isBusy}>
+            {t('auth.sendCode')}
+          </Button>
+        </form>
+        <LinkButton onClick={() => go('password')}>{t('auth.usePasswordInstead')}</LinkButton>
+      </AuthLayout>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col items-center justify-center px-5 py-10">
-      <div className="w-full max-w-sm space-y-6">
-        <div className="flex flex-col items-center text-center gap-3">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center shadow-lg shadow-emerald-950/50">
-            <Package className="w-7 h-7 text-white" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold">{t('common.appName')}</h1>
-            <p className="text-xs text-zinc-400 mt-1">{t('auth.subtitle')}</p>
-          </div>
-        </div>
-
-        <div className="p-5 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4">
-          {error && <ErrorMessage variant="error" message={error} onDismiss={() => setError(null)} />}
-
-          {step === 'email' ? (
-            <form onSubmit={handleSendCode} className="space-y-4">
-              <Input
-                label={t('auth.emailLabel')}
-                type="email"
-                inputMode="email"
-                autoComplete="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                leftIcon={<Mail className="w-4 h-4" />}
-                autoFocus
-              />
-              <Button type="submit" fullWidth isLoading={isBusy}>
-                {t('auth.sendCode')}
-              </Button>
-            </form>
-          ) : (
-            <form onSubmit={handleVerify} className="space-y-4">
-              <p className="text-xs text-zinc-400 leading-relaxed">
-                {t('auth.codeSent', { email: email.trim() })}
-              </p>
-              <Input
-                label={t('auth.codeLabel')}
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                maxLength={6}
-                placeholder="123456"
-                value={code}
-                onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
-                leftIcon={<KeyRound className="w-4 h-4" />}
-                autoFocus
-              />
-              <Button type="submit" fullWidth isLoading={isBusy}>
-                {t('auth.verify')}
-              </Button>
-              <button
-                type="button"
-                onClick={() => {
-                  setStep('email');
-                  setCode('');
-                  setError(null);
-                }}
-                className="w-full text-xs text-zinc-400 hover:text-zinc-200 inline-flex items-center justify-center gap-1"
-              >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                {t('auth.changeEmail')}
-              </button>
-            </form>
-          )}
-        </div>
-
-        <button
-          onClick={() => setLocale(locale === 'en' ? 'zu' : 'en')}
-          className="w-full text-xs text-zinc-500 hover:text-zinc-300"
-        >
-          {locale === 'en' ? 'isiZulu' : 'English'}
-        </button>
+    <AuthLayout subtitle={t('auth.subtitle')} banner={banner}>
+      {error && <ErrorMessage variant="error" message={error} onDismiss={() => setError(null)} />}
+      <form onSubmit={handlePasswordSignIn} className="space-y-4">
+        {emailInput}
+        <PasswordInput
+          label={t('auth.passwordLabel')}
+          autoComplete="current-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+        <Button type="submit" fullWidth isLoading={isBusy}>
+          {t('auth.signIn')}
+        </Button>
+      </form>
+      <div className="space-y-1">
+        <LinkButton onClick={() => go('reset')}>{t('auth.forgotPassword')}</LinkButton>
+        <LinkButton onClick={() => go('codeEmail')}>{t('auth.useCodeInstead')}</LinkButton>
       </div>
-    </div>
+      <div className="pt-3 border-t border-zinc-800">
+        <Button type="button" variant="secondary" fullWidth onClick={() => go('register')}>
+          {t('auth.noAccount')}
+        </Button>
+      </div>
+    </AuthLayout>
   );
 };

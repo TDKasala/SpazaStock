@@ -34,6 +34,8 @@ export interface Shop {
   reminderDays?: number[];
   /** The signed-in user's role in this shop. */
   role?: ShopRole;
+  /** True for the person who created the shop; they can never be removed. */
+  isAccountOwner?: boolean;
 }
 
 /** Settings the services need offline, cached per shop on the device. */

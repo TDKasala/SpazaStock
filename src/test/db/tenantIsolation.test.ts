@@ -137,7 +137,9 @@ describe('tenant isolation', () => {
     }
     expect(await errorCode(newProduct(pg, null, shopA))).toBe('42501');
     expect(await errorCode(sell(pg, null, shopA, [{ product_id: productA, quantity: 1 }]))).toBe('42501');
-    expect(await errorCode(rpc(pg, null, 'accept_pending_invites'))).toBe('42501');
+    expect(await errorCode(rpc(pg, null, 'accept_shop_invite', { p_token: 'x'.repeat(64) }))).toBe('42501');
+    expect(await errorCode(rpc(pg, null, 'my_shops'))).toBe('42501');
+    expect(await errorCode(rpc(pg, null, 'create_shop', { p_name: 'Anon' }))).toBe('42501');
     expect(await errorCode(voidItem(pg, null, shopA, saleItemA, 1))).toBe('42501');
   });
 
@@ -150,6 +152,7 @@ describe('tenant isolation', () => {
       query(pg, bob, 'insert into public.shops (owner_id, name) values ($1, $2)', [alice.id, 'Fake'])
     );
     expect(code).toBe('42501');
+    expect(await errorCode(query(pg, bob, 'insert into public.shops (name) values ($1)', ['Direct']))).toBe('42501');
   });
 });
 
@@ -273,14 +276,18 @@ describe('notifications', () => {
 describe('invites and membership', () => {
   it('can only be claimed by the invited email address', async () => {
     const thandi = await createUser(pg, 'thandi@example.com');
-    await rpc(pg, alice, 'invite_shop_member', { p_shop_id: shopA, p_email: '  Thandi@Example.com ', p_role: 'staff' });
+    const { token } = await rpc<{ token: string }>(pg, alice, 'invite_shop_member', {
+      p_shop_id: shopA,
+      p_email: '  Thandi@Example.com ',
+      p_role: 'staff',
+    });
 
-    expect(await rpc<number>(pg, bob, 'accept_pending_invites')).toBe(0);
+    expect(await errorCode(rpc(pg, bob, 'accept_shop_invite', { p_token: token }))).toBe('SS003');
     expect(await count(bob, 'public.shops where id = $1', [shopA])).toBe(0);
 
-    expect(await rpc<number>(pg, thandi, 'accept_pending_invites')).toBe(1);
+    await rpc(pg, thandi, 'accept_shop_invite', { p_token: token });
     expect(await count(thandi, 'public.shops where id = $1', [shopA])).toBe(1);
-    expect(await rpc<number>(pg, thandi, 'accept_pending_invites')).toBe(0);
+    expect(await errorCode(rpc(pg, thandi, 'accept_shop_invite', { p_token: token }))).toBe('SS001');
   });
 
   it('never leaves a shop without its account owner', async () => {

@@ -1,129 +1,140 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import type { Shop, ShopRole, ShopSettings } from '../types';
+import type { Shop, ShopSettings } from '../types';
 import { getSupabase } from '../lib/supabase';
 import { importLegacyLocalStorage } from '../lib/legacyMigration';
 import { DEVICE_SHOP_ID } from '../lib/constants';
+import { clearShopData } from '../lib/db';
 import { isValidTimezone, normalizeReminderDays } from '../lib/expiry';
 import { getShopSettings, sanitizeShopSettings, saveShopSettings } from '../lib/shopSettings';
+import { pickShop, revokedShops, shopFromRow, type ShopRow } from '../lib/shopList';
 import { emitDataChanged } from '../lib/events';
 import { useAuth } from './AuthContext';
 
 export const DEVICE_SHOP: Shop = { id: DEVICE_SHOP_ID, name: 'My Spaza Shop' };
 
 interface ShopContextValue {
+  /** The shop the app is working in. */
   shop: Shop | null;
+  /** Every shop the user is an active member of. */
+  shops: Shop[];
   /** Time zone, reminder days and role, with defaults filled in. */
   settings: ShopSettings;
   isLoading: boolean;
   error: string | null;
+  /** Names of shops whose access ended since the last check; their data has been cleared. */
+  revokedShopNames: string[];
+  dismissRevoked: () => void;
   createShop: (name: string) => Promise<{ error?: string }>;
+  switchShop: (shopId: string) => void;
   updateAlertSettings: (reminderDays: number[], timezone: string) => Promise<{ error?: string }>;
   reload: () => void;
 }
 
 const ShopContext = createContext<ShopContextValue | undefined>(undefined);
 
-function cacheKey(userId: string): string {
+function shopsKey(userId: string): string {
+  return `spazastock_shops_${userId}`;
+}
+
+function selectedKey(userId: string): string {
+  return `spazastock_selected_shop_${userId}`;
+}
+
+/** Before multi-shop support only one shop was cached, under this key. */
+function legacyKey(userId: string): string {
   return `spazastock_shop_${userId}`;
 }
 
-function readCachedShop(userId: string): Shop | null {
+function readCachedShops(userId: string): Shop[] {
   try {
-    const raw = localStorage.getItem(cacheKey(userId));
-    return raw ? (JSON.parse(raw) as Shop) : null;
+    const raw = localStorage.getItem(shopsKey(userId));
+    if (raw) return JSON.parse(raw) as Shop[];
+    const legacy = localStorage.getItem(legacyKey(userId));
+    return legacy ? [JSON.parse(legacy) as Shop] : [];
   } catch {
-    return null;
+    return [];
   }
+}
+
+function writeCachedShops(userId: string, shops: Shop[]): void {
+  localStorage.setItem(shopsKey(userId), JSON.stringify(shops));
+  localStorage.removeItem(legacyKey(userId));
+}
+
+function readSelectedShopId(userId: string): string | null {
+  return localStorage.getItem(selectedKey(userId));
+}
+
+/** Lets other screens (e.g. invite acceptance) choose which shop opens next. */
+export function rememberSelectedShop(userId: string, shopId: string): void {
+  localStorage.setItem(selectedKey(userId), shopId);
 }
 
 function settingsOf(shop: Shop | null): ShopSettings {
   return sanitizeShopSettings({ timezone: shop?.timezone, reminderDays: shop?.reminderDays, role: shop?.role });
 }
 
-interface ShopRow {
-  id: string;
-  name: string;
-  timezone?: string | null;
-  expiry_reminder_days?: number[] | null;
-}
-
-function shopFromRow(row: ShopRow, role: ShopRole | undefined): Shop {
-  return {
-    id: row.id,
-    name: row.name,
-    timezone: row.timezone ?? undefined,
-    reminderDays: row.expiry_reminder_days ?? undefined,
-    role,
-  };
-}
-
 export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { mode, user } = useAuth();
   const userId = user?.id ?? null;
-  const [shop, setShop] = useState<Shop | null>(mode === 'device' ? DEVICE_SHOP : null);
+  const [shops, setShops] = useState<Shop[]>(mode === 'device' ? [DEVICE_SHOP] : []);
+  const [selectedId, setSelectedId] = useState<string | null>(mode === 'device' ? DEVICE_SHOP_ID : null);
   const [isLoading, setIsLoading] = useState(mode === 'cloud');
   const [error, setError] = useState<string | null>(null);
+  const [revokedShopNames, setRevokedShopNames] = useState<string[]>([]);
   const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     if (mode === 'device') {
-      setShop(DEVICE_SHOP);
       setIsLoading(false);
       // Device-only settings live on the phone.
       void getShopSettings(DEVICE_SHOP_ID).then((s) =>
-        setShop({ ...DEVICE_SHOP, timezone: s.timezone, reminderDays: s.reminderDays, role: 'owner' })
+        setShops([{ ...DEVICE_SHOP, timezone: s.timezone, reminderDays: s.reminderDays, role: 'owner', isAccountOwner: true }])
       );
       return;
     }
     const supabase = getSupabase();
     if (!supabase || !userId) {
-      setShop(null);
+      setShops([]);
       setIsLoading(false);
       return;
     }
 
     let active = true;
-    const cached = readCachedShop(userId);
-    setShop(cached);
+    const cached = readCachedShops(userId);
+    setShops(cached);
+    setSelectedId(readSelectedShopId(userId));
     setError(null);
 
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       setIsLoading(false);
-      if (!cached) setError('offline');
+      if (cached.length === 0) setError('offline');
       return;
     }
 
-    setIsLoading(!cached);
+    setIsLoading(cached.length === 0);
     const load = async () => {
-      // Staff invited by email join their shop here on first sign-in. A failure must not stop
-      // the user reaching shops they already belong to.
-      const { error: inviteError } = await supabase.rpc('accept_pending_invites');
-      if (inviteError) console.warn('Could not accept shop invites:', inviteError.message);
-
-      const { data, error: queryError } = await supabase
-        .from('shops')
-        .select('id, name, timezone, expiry_reminder_days')
-        .order('created_at', { ascending: true })
-        .limit(1);
+      const { data, error: queryError } = await supabase.rpc('my_shops');
       if (!active) return;
       if (queryError) {
-        if (!cached) setError(queryError.message);
-      } else if (data && data.length > 0) {
-        const row = data[0] as ShopRow;
-        const { data: member } = await supabase
-          .from('shop_members')
-          .select('role')
-          .eq('shop_id', row.id)
-          .eq('user_id', userId)
-          .maybeSingle();
-        if (!active) return;
-        const next = shopFromRow(row, (member?.role as ShopRole | undefined) ?? cached?.role);
-        localStorage.setItem(cacheKey(userId), JSON.stringify(next));
-        setShop(next);
-      } else {
-        localStorage.removeItem(cacheKey(userId));
-        setShop(null);
+        if (cached.length === 0) setError(queryError.message);
+        setIsLoading(false);
+        return;
       }
+
+      const fresh = ((data ?? []) as ShopRow[]).map(shopFromRow);
+      const revoked = revokedShops(cached, fresh);
+      if (revoked.length > 0) {
+        // Access has ended (removed or deactivated): unsynced changes can no longer be saved, and
+        // the shop's data must not stay readable on this phone.
+        await Promise.all(
+          revoked.map((s) => clearShopData(s.id).catch((err) => console.warn('Could not clear shop data:', err)))
+        );
+        if (!active) return;
+        setRevokedShopNames((names) => [...names, ...revoked.map((s) => s.name)]);
+      }
+      writeCachedShops(userId, fresh);
+      setShops(fresh);
       setIsLoading(false);
     };
     void load();
@@ -133,7 +144,9 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [mode, userId, reloadToken]);
 
+  const shop = useMemo(() => pickShop(shops, selectedId), [shops, selectedId]);
   const shopId = shop?.id ?? null;
+
   useEffect(() => {
     if (!shopId) return;
     importLegacyLocalStorage(shopId).catch((err) => console.warn('Legacy data import failed:', err));
@@ -156,6 +169,15 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .catch((err) => console.warn('Could not cache shop settings:', err));
   }, [shopId, timezone, reminderDays, role]);
 
+  const switchShop = useCallback(
+    (nextId: string) => {
+      if (!shops.some((s) => s.id === nextId)) return;
+      if (userId) rememberSelectedShop(userId, nextId);
+      setSelectedId(nextId);
+    },
+    [shops, userId]
+  );
+
   const createShop = useCallback(
     async (name: string) => {
       const supabase = getSupabase();
@@ -163,56 +185,68 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!supabase || !userId) return { error: 'Not signed in.' };
       if (!trimmed) return { error: 'Shop name is required.' };
 
-      const { data, error: insertError } = await supabase
-        .from('shops')
-        .insert({ name: trimmed })
-        .select('id, name, timezone, expiry_reminder_days')
-        .single();
-      if (insertError || !data) return { error: insertError?.message ?? 'Could not create shop.' };
+      const { data, error: rpcError } = await supabase.rpc('create_shop', { p_name: trimmed });
+      if (rpcError || !data) return { error: rpcError?.message ?? 'Could not create shop.' };
 
-      const next = shopFromRow(data as ShopRow, 'owner');
-      localStorage.setItem(cacheKey(userId), JSON.stringify(next));
-      setShop(next);
+      const created = shopFromRow(data as ShopRow);
+      const next = [...shops.filter((s) => s.id !== created.id), created];
+      writeCachedShops(userId, next);
+      rememberSelectedShop(userId, created.id);
+      setShops(next);
+      setSelectedId(created.id);
       setError(null);
       return {};
     },
-    [userId]
+    [shops, userId]
   );
 
   const updateAlertSettings = useCallback(
-    async (reminderDays: number[], timezone: string) => {
+    async (nextDays: number[], nextTimezone: string) => {
       if (!shop) return { error: 'No shop selected.' };
-      const days = normalizeReminderDays(reminderDays);
+      const days = normalizeReminderDays(nextDays);
       if (!days) return { error: 'invalid_days' };
-      if (!isValidTimezone(timezone)) return { error: 'invalid_timezone' };
+      if (!isValidTimezone(nextTimezone)) return { error: 'invalid_timezone' };
 
+      let updated: Shop = { ...shop, timezone: nextTimezone, reminderDays: days };
       if (shop.id !== DEVICE_SHOP_ID) {
         const supabase = getSupabase();
         if (!supabase) return { error: 'Not signed in.' };
         const { data, error: rpcError } = await supabase.rpc('update_shop_alert_settings', {
           p_shop_id: shop.id,
           p_reminder_days: days,
-          p_timezone: timezone,
+          p_timezone: nextTimezone,
         });
         if (rpcError) return { error: rpcError.message };
         const saved = data as { timezone: string; expiry_reminder_days: number[] };
-        const next: Shop = { ...shop, timezone: saved.timezone, reminderDays: saved.expiry_reminder_days };
-        if (userId) localStorage.setItem(cacheKey(userId), JSON.stringify(next));
-        setShop(next);
-        return {};
+        updated = { ...shop, timezone: saved.timezone, reminderDays: saved.expiry_reminder_days };
       }
 
-      setShop({ ...shop, timezone, reminderDays: days });
+      const next = shops.map((s) => (s.id === updated.id ? updated : s));
+      if (userId && shop.id !== DEVICE_SHOP_ID) writeCachedShops(userId, next);
+      setShops(next);
       return {};
     },
-    [shop, userId]
+    [shop, shops, userId]
   );
 
   const reload = useCallback(() => setReloadToken((n) => n + 1), []);
+  const dismissRevoked = useCallback(() => setRevokedShopNames([]), []);
 
   const value = useMemo(
-    () => ({ shop, settings, isLoading, error, createShop, updateAlertSettings, reload }),
-    [shop, settings, isLoading, error, createShop, updateAlertSettings, reload]
+    () => ({
+      shop,
+      shops,
+      settings,
+      isLoading,
+      error,
+      revokedShopNames,
+      dismissRevoked,
+      createShop,
+      switchShop,
+      updateAlertSettings,
+      reload,
+    }),
+    [shop, shops, settings, isLoading, error, revokedShopNames, dismissRevoked, createShop, switchShop, updateAlertSettings, reload]
   );
 
   return <ShopContext.Provider value={value}>{children}</ShopContext.Provider>;

@@ -1,16 +1,20 @@
-import React from 'react';
-import { Package, Globe, Cloud, CloudOff, RefreshCw, AlertTriangle, LogOut } from 'lucide-react';
+import React, { useState } from 'react';
+import { Package, Globe, Cloud, CloudOff, RefreshCw, AlertTriangle, ChevronDown } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
 import { useShop } from '../../context/ShopContext';
 import { useSyncStatus } from '../../hooks/useSyncStatus';
 import { PWAInstallButton } from '../pwa/PWAInstallButton';
+import { ShopMenu } from './ShopMenu';
+import { AccountDialog } from '../account/AccountDialog';
 
-export const Header: React.FC = () => {
+export const Header: React.FC<{ onOpenTeam: () => void }> = ({ onOpenTeam }) => {
   const { locale, setLocale, t } = useLanguage();
   const { mode, signOut } = useAuth();
   const { shop } = useShop();
   const { status, syncNow } = useSyncStatus();
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isAccountOpen, setIsAccountOpen] = useState(false);
 
   const handleSignOut = async () => {
     if (status.pending > 0 && !window.confirm(t('auth.signOutPendingConfirm', { count: status.pending }))) {
@@ -51,57 +55,77 @@ export const Header: React.FC = () => {
   }
 
   return (
-    <header className="sticky top-0 z-40 w-full bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800/80 pt-[env(safe-area-inset-top,0px)]">
-      <div className="max-w-md sm:max-w-xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-9 h-9 shrink-0 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center text-white shadow-md shadow-emerald-950/50">
-            <Package className="w-5 h-5 text-white" />
+    <>
+      <header className="sticky top-0 z-40 w-full bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800/80 pt-[env(safe-area-inset-top,0px)]">
+        <div className="max-w-md sm:max-w-xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-9 h-9 shrink-0 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center text-white shadow-md shadow-emerald-950/50">
+              <Package className="w-5 h-5 text-white" />
+            </div>
+            {mode === 'cloud' && shop ? (
+              <button
+                onClick={() => setIsMenuOpen(true)}
+                className="min-w-0 text-left rounded-lg -mx-1 px-1 py-0.5 hover:bg-zinc-900 transition-colors"
+                aria-haspopup="dialog"
+                aria-label={t('shops.menuTitle')}
+              >
+                <h1 className="text-base font-bold text-zinc-100 tracking-tight leading-none truncate">
+                  {t('common.appName')}
+                </h1>
+                <p className="text-[11px] text-zinc-400 leading-none mt-1 inline-flex items-center gap-1 max-w-full">
+                  <span className="truncate">{shop.name}</span>
+                  <ChevronDown className="w-3 h-3 shrink-0" />
+                </p>
+              </button>
+            ) : (
+              <div className="min-w-0">
+                <h1 className="text-base font-bold text-zinc-100 tracking-tight leading-none truncate">
+                  {t('common.appName')}
+                </h1>
+                <p className="text-[11px] text-zinc-400 leading-none mt-1 truncate">{t('common.tagline')}</p>
+              </div>
+            )}
           </div>
-          <div className="min-w-0">
-            <h1 className="text-base font-bold text-zinc-100 tracking-tight leading-none truncate">
-              {t('common.appName')}
-            </h1>
-            <p className="text-[11px] text-zinc-400 leading-none mt-1 truncate">
-              {mode === 'cloud' && shop ? shop.name : t('common.tagline')}
-            </p>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {mode === 'cloud' && (
+              <button
+                onClick={pill.onClick}
+                title={status.lastError ?? pill.label}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${pill.className}`}
+              >
+                {pill.icon}
+                <span className="hidden sm:inline">{pill.label}</span>
+              </button>
+            )}
+
+            <button
+              onClick={() => setLocale(locale === 'en' ? 'zu' : 'en')}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-zinc-200 hover:text-white transition-colors cursor-pointer"
+              aria-label={locale === 'en' ? 'Switch to isiZulu' : 'Shintshela esiNgisini'}
+            >
+              <Globe className="w-3.5 h-3.5 text-emerald-400" />
+              <span>{locale === 'en' ? 'ZU' : 'EN'}</span>
+            </button>
+
+            <PWAInstallButton compact />
           </div>
         </div>
+      </header>
 
-        <div className="flex items-center gap-2 shrink-0">
-          {mode === 'cloud' && (
-            <button
-              onClick={pill.onClick}
-              title={status.lastError ?? pill.label}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${pill.className}`}
-            >
-              {pill.icon}
-              <span className="hidden sm:inline">{pill.label}</span>
-            </button>
-          )}
-
-          <button
-            onClick={() => setLocale(locale === 'en' ? 'zu' : 'en')}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-zinc-200 hover:text-white transition-colors cursor-pointer"
-            aria-label={locale === 'en' ? 'Switch to isiZulu' : 'Shintshela esiNgisini'}
-          >
-            <Globe className="w-3.5 h-3.5 text-emerald-400" />
-            <span>{locale === 'en' ? 'ZU' : 'EN'}</span>
-          </button>
-
-          {mode === 'cloud' && (
-            <button
-              onClick={() => void handleSignOut()}
-              className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-zinc-100 transition-colors"
-              aria-label={t('auth.signOut')}
-              title={t('auth.signOut')}
-            >
-              <LogOut className="w-3.5 h-3.5" />
-            </button>
-          )}
-
-          <PWAInstallButton compact />
-        </div>
-      </div>
-    </header>
+      {/* Outside the header: its backdrop filter would confine fixed-position dialogs. */}
+      {mode === 'cloud' && (
+        <>
+          <ShopMenu
+            isOpen={isMenuOpen}
+            onClose={() => setIsMenuOpen(false)}
+            onOpenTeam={onOpenTeam}
+            onOpenAccount={() => setIsAccountOpen(true)}
+            onSignOut={() => void handleSignOut()}
+          />
+          <AccountDialog isOpen={isAccountOpen} onClose={() => setIsAccountOpen(false)} />
+        </>
+      )}
+    </>
   );
 };
