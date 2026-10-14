@@ -1,0 +1,178 @@
+import React, { useEffect, useState } from 'react';
+import {
+  Package,
+  Barcode,
+  Calendar,
+  Layers,
+  Plus,
+  Clock,
+  AlertTriangle,
+  CheckCircle,
+} from 'lucide-react';
+import { Product, StockBatch } from '../../types';
+import { useLanguage } from '../../context/LanguageContext';
+import { Dialog } from '../ui/Dialog';
+import { Button } from '../ui/Button';
+import { getProductBatches, getDaysUntilExpiry } from '../../services/stockService';
+
+export interface ProductStockDetailDialogProps {
+  isOpen: boolean;
+  product: Product | null;
+  onClose: () => void;
+  onOpenStockIn: (product: Product) => void;
+}
+
+export const ProductStockDetailDialog: React.FC<ProductStockDetailDialogProps> = ({
+  isOpen,
+  product,
+  onClose,
+  onOpenStockIn,
+}) => {
+  const { t, dict } = useLanguage();
+  const [batches, setBatches] = useState<StockBatch[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (isOpen && product) {
+      setIsLoading(true);
+      getProductBatches(product.id).then((items) => {
+        setBatches(items);
+        setIsLoading(false);
+      });
+    }
+  }, [isOpen, product]);
+
+  if (!isOpen || !product) return null;
+
+  const totalStock = batches.reduce((sum, b) => sum + b.quantity, 0);
+  const categoryLabel = dict.product.categories[product.category] || product.category;
+
+  return (
+    <Dialog
+      isOpen={isOpen}
+      onClose={onClose}
+      title={product.name}
+      description={`Catalog item details and batch history`}
+      footer={
+        <div className="flex w-full gap-2">
+          <Button
+            onClick={() => {
+              onClose();
+              onOpenStockIn(product);
+            }}
+            variant="primary"
+            size="md"
+            className="flex-1"
+            leftIcon={<Plus className="w-4 h-4" />}
+          >
+            {t('stockIn.title')}
+          </Button>
+          <Button onClick={onClose} variant="secondary" size="md">
+            {t('common.close')}
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-4 py-1">
+        {/* Top Summary Card */}
+        <div className="p-4 bg-zinc-950 rounded-2xl border border-zinc-800 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              {categoryLabel}
+            </span>
+            <span className="text-xs text-zinc-400 font-mono flex items-center gap-1">
+              <Barcode className="w-3.5 h-3.5 text-zinc-500" />
+              {product.barcode}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            <div className="p-3 rounded-xl bg-zinc-900 border border-zinc-800">
+              <span className="text-[10px] text-zinc-400 block">{t('stockIn.currentStock')}</span>
+              <span className="text-lg font-extrabold text-emerald-400 mt-0.5 block">
+                {totalStock} <span className="text-xs font-normal text-zinc-400">{t('stockIn.units')}</span>
+              </span>
+            </div>
+            <div className="p-3 rounded-xl bg-zinc-900 border border-zinc-800">
+              <span className="text-[10px] text-zinc-400 block">{t('product.sellingPrice')}</span>
+              <span className="text-base font-bold text-zinc-100 mt-0.5 block">
+                {product.sellingPrice != null ? `R ${Number(product.sellingPrice).toFixed(2)}` : '—'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Distinct Delivery Batches Breakdown */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between px-1">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-300 flex items-center gap-1.5">
+              <Layers className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Delivery Batches ({batches.length})</span>
+            </h4>
+          </div>
+
+          {isLoading ? (
+            <div className="h-20 bg-zinc-900 rounded-xl animate-pulse" />
+          ) : batches.length > 0 ? (
+            <div className="space-y-2 max-h-56 overflow-y-auto pr-0.5">
+              {batches.map((batch, idx) => {
+                const daysRemaining = getDaysUntilExpiry(batch.expiryDate);
+                const isExpired = daysRemaining !== null && daysRemaining < 0;
+                const isUrgent = daysRemaining !== null && daysRemaining >= 0 && daysRemaining <= 7;
+
+                return (
+                  <div
+                    key={batch.id}
+                    className="p-3 bg-zinc-900/80 rounded-xl border border-zinc-800/80 flex items-center justify-between gap-3 text-xs"
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-zinc-100">
+                          Batch #{batches.length - idx}
+                        </span>
+                        <span className="text-emerald-400 font-semibold">
+                          +{batch.quantity} {t('stockIn.units')}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-zinc-400 block mt-0.5">
+                        Received: {new Date(batch.receivedAt).toLocaleDateString()}
+                      </span>
+                    </div>
+
+                    <div className="text-right">
+                      {batch.expiryDate ? (
+                        <div
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-semibold border ${
+                            isExpired
+                              ? 'bg-rose-950/60 text-rose-300 border-rose-800'
+                              : isUrgent
+                              ? 'bg-amber-950/60 text-amber-300 border-amber-800'
+                              : 'bg-zinc-800 text-zinc-300 border-zinc-700'
+                          }`}
+                        >
+                          <Calendar className="w-3 h-3" />
+                          <span>{batch.expiryDate}</span>
+                          {daysRemaining !== null && (
+                            <span className="opacity-80">
+                              ({isExpired ? `${Math.abs(daysRemaining)}d ago` : `${daysRemaining}d`})
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-zinc-500">No Expiry Date</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="p-4 bg-zinc-900/40 rounded-xl border border-dashed border-zinc-800 text-center text-xs text-zinc-400">
+              No stock batches recorded yet. Tap "Stock-In Delivery" to receive inventory.
+            </div>
+          )}
+        </div>
+      </div>
+    </Dialog>
+  );
+};

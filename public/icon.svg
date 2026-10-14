@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="spazaGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10B981"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F172A"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="128" fill="url(#bgGrad)"/>
+  <rect x="32" y="32" width="448" height="448" rx="112" fill="none" stroke="#1E293B" stroke-width="4"/>
+  <!-- Isometric Box Icon -->
+  <g transform="translate(136, 120)">
+    <!-- Top Face -->
+    <polygon points="120,0 240,64 120,128 0,64" fill="#34D399" opacity="0.9"/>
+    <!-- Left Face -->
+    <polygon points="0,64 120,128 120,256 0,192" fill="#059669"/>
+    <!-- Right Face -->
+    <polygon points="120,128 240,64 240,192 120,256" fill="#10B981"/>
+    <!-- Spark / Plus Accent -->
+    <circle cx="210" cy="40" r="32" fill="#F59E0B" filter="drop-shadow(0 4px 6px rgba(0,0,0,0.4))"/>
+    <path d="M210 24 V56 M194 40 H226" stroke="#0F172A" stroke-width="8" stroke-linecap="round"/>
+  </g>
+</svg>
