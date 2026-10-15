@@ -1,11 +1,16 @@
 /** The app's languages, each named in its own language so speakers can find it from any screen. */
 export const LANGUAGES = [
-  { code: 'en', name: 'English', intl: 'en-ZA' },
-  { code: 'zu', name: 'isiZulu', intl: 'zu-ZA' },
-  { code: 'am', name: 'አማርኛ', intl: 'am-ET' },
-  { code: 'so', name: 'Soomaali', intl: 'so-SO' },
-  /** Bangladesh Standard Bangla (bn-BD); not West Bengal (bn-IN). */
-  { code: 'bn', name: 'বাংলা (বাংলাদেশ)', intl: 'bn-BD' },
+  { code: 'en', name: 'English', pickerLabel: 'English', intl: 'en-ZA' },
+  { code: 'zu', name: 'isiZulu', pickerLabel: 'isiZulu', intl: 'zu-ZA' },
+  { code: 'am', name: 'አማርኛ', pickerLabel: 'አማርኛ', intl: 'am-ET' },
+  { code: 'so', name: 'Soomaali', pickerLabel: 'Soomaali', intl: 'so-SO' },
+  // Bangladesh Standard Bangla (bn-BD); pickerLabel is Latin so the option is visible without Bengali system fonts.
+  {
+    code: 'bn',
+    name: 'বাংলা (বাংলাদেশ)',
+    pickerLabel: 'Bangla (Bangladesh)',
+    intl: 'bn-BD',
+  },
 ] as const;
 
 export type Locale = (typeof LANGUAGES)[number]['code'];
