@@ -1,4 +1,5 @@
 import zxingReaderWasmUrl from 'zxing-wasm/reader/zxing_reader.wasm?url';
+import type { ReadBox } from './camera';
 
 /** Product (EAN/UPC), shelf-label (Code 128) and case (ITF-14) barcodes. QR codes are not products. */
 export const RETAIL_FORMATS = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'itf'] as const;
@@ -6,6 +7,8 @@ export const RETAIL_FORMATS = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 
 export interface BarcodeRead {
   rawValue: string;
   format: string;
+  /** Where the code is in the decoded image. */
+  boundingBox?: ReadBox;
 }
 
 export type DetectorKind = 'native' | 'wasm';

@@ -6,6 +6,7 @@ import {
   CAMERA_CONSTRAINTS,
   WASM_MAX_DECODE_WIDTH,
   mapCameraError,
+  orderByCentre,
   scanCrop,
   type CameraError,
 } from '../lib/barcode/camera';
@@ -101,7 +102,7 @@ export function useBarcodeCamera({ active, onCode }: UseBarcodeCameraOptions) {
         return;
       }
       if (cancelled) return;
-      for (const read of reads) {
+      for (const read of orderByCentre(reads, canvas.width, canvas.height)) {
         const code = validateBarcode(read.rawValue, read.format);
         if (!code) continue;
         if (confirmer.push(code)) onCodeRef.current(code);

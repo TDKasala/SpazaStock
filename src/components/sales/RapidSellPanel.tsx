@@ -33,21 +33,26 @@ function lineAmount(line: ScanLine): number {
   });
 }
 
+/** Units and rand value still sold in this scanning session, after undos. */
+export function sessionTotals(lines: readonly ScanLine[]): { units: number; amount: number } {
+  return {
+    units: lines.reduce((sum, l) => sum + saleNetQuantity(l), 0),
+    amount: lines.reduce((sum, l) => sum + lineAmount(l), 0),
+  };
+}
+
 export interface RapidSellPanelProps {
   register: SaleRegister;
-  onDone: () => void;
 }
 
 /** Live feedback and corrections shown under the camera while rapid selling. */
-export const RapidSellPanel: React.FC<RapidSellPanelProps> = ({ register, onDone }) => {
+export const RapidSellPanel: React.FC<RapidSellPanelProps> = ({ register }) => {
   const { t } = useLanguage();
   const { lines, lastLine, notice, syncStates, increaseLast, decreaseLast, undo } = register;
 
   const productLines = lastLine ? lines.filter((l) => l.product.id === lastLine.product.id) : [];
   const productNet = productLines.reduce((sum, l) => sum + saleNetQuantity(l), 0);
   const canDecrease = productLines.some((l) => canUndoLine(l));
-  const sessionUnits = lines.reduce((sum, l) => sum + saleNetQuantity(l), 0);
-  const sessionAmount = lines.reduce((sum, l) => sum + lineAmount(l), 0);
 
   const noticeStyles = {
     success: 'bg-emerald-950/60 border-emerald-500/60 text-emerald-200',
@@ -175,15 +180,27 @@ export const RapidSellPanel: React.FC<RapidSellPanelProps> = ({ register, onDone
           })}
         </div>
       )}
+    </div>
+  );
+};
 
-      <div className="flex items-center justify-between gap-3 pt-1">
-        <span className="text-xs text-zinc-300 font-medium">
-          {t('rapid.sessionTotal', { units: sessionUnits, amount: sessionAmount.toFixed(2) })}
-        </span>
-        <Button onClick={onDone} variant="primary" size="sm">
-          {t('rapid.done')}
-        </Button>
-      </div>
+export interface RapidSellSummaryProps {
+  register: SaleRegister;
+  onDone: () => void;
+}
+
+/** Session total and Done, pinned under the scanner so they never scroll away or cover the camera. */
+export const RapidSellSummary: React.FC<RapidSellSummaryProps> = ({ register, onDone }) => {
+  const { t } = useLanguage();
+  const { units, amount } = sessionTotals(register.lines);
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span role="status" aria-live="polite" className="text-sm text-zinc-200 font-semibold min-w-0">
+        {t('rapid.sessionTotal', { units, amount: amount.toFixed(2) }).replace(/R (?=\d)/g, 'R\u00a0')}
+      </span>
+      <Button onClick={onDone} variant="primary" className="shrink-0 min-w-[96px]">
+        {t('rapid.done')}
+      </Button>
     </div>
   );
 };

@@ -5,7 +5,7 @@ export type CameraError = 'permission_denied' | 'not_supported' | 'device_not_fo
  * image decodes faster and cannot pick up a neighbouring product. The on-screen reticle uses
  * the same fractions so what the user aims at is exactly what is read.
  */
-export const SCAN_BAND = { width: 0.85, height: 0.4 } as const;
+export const SCAN_BAND = { width: 0.9, height: 0.5 } as const;
 
 /** The WASM decoder slows down sharply on large images; EAN bars stay readable at this width. */
 export const WASM_MAX_DECODE_WIDTH = 1280;
@@ -64,6 +64,38 @@ export function scanCrop(
     width: Math.max(1, Math.round(sw * scale)),
     height: Math.max(1, Math.round(sh * scale)),
   };
+}
+
+export interface ReadBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * The band is large enough to hold two products' barcodes at once. Reading the one nearest the
+ * centre of the frame (what the user is aiming at) first keeps consecutive frames agreeing on the
+ * same code instead of flipping between neighbours. Reads without a box keep their order, last.
+ */
+export function orderByCentre<T extends { boundingBox?: ReadBox }>(
+  reads: readonly T[],
+  width: number,
+  height: number
+): T[] {
+  const cx = width / 2;
+  const cy = height / 2;
+  const distance = (read: T) => {
+    const box = read.boundingBox;
+    if (!box) return Number.POSITIVE_INFINITY;
+    const dx = box.x + box.width / 2 - cx;
+    const dy = box.y + box.height / 2 - cy;
+    return dx * dx + dy * dy;
+  };
+  return reads
+    .map((read, index) => ({ read, index, distance: distance(read) }))
+    .sort((a, b) => (a.distance === b.distance ? a.index - b.index : a.distance - b.distance))
+    .map((entry) => entry.read);
 }
 
 export function mapCameraError(err: unknown): CameraError {

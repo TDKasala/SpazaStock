@@ -23,7 +23,7 @@ import { TeamView } from './components/team/TeamView';
 import { RevokedNotice } from './components/layout/RevokedNotice';
 import { SuspendedNotice } from './components/layout/SuspendedNotice';
 import { LoadingState } from './components/ui/LoadingState';
-import { RapidSellPanel } from './components/sales/RapidSellPanel';
+import { RapidSellPanel, RapidSellSummary } from './components/sales/RapidSellPanel';
 import { useSaleRegister } from './hooks/useSaleRegister';
 import { useExpiryAlerts } from './hooks/useExpiryAlerts';
 import { isArchived, searchProductByBarcode } from './services/productService';
@@ -203,8 +203,11 @@ export function AppContent() {
             onClose={() => setScanMode(null)}
             onBarcodeScanned={handleBarcodeScanned}
             continuous={scanMode === 'sell'}
+            footer={
+              scanMode === 'sell' && <RapidSellSummary register={saleRegister} onDone={() => setScanMode(null)} />
+            }
           >
-            {scanMode === 'sell' && <RapidSellPanel register={saleRegister} onDone={() => setScanMode(null)} />}
+            {scanMode === 'sell' && <RapidSellPanel register={saleRegister} />}
           </BarcodeScannerModal>
         </Suspense>
       )}

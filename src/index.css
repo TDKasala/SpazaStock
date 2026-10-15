@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Tablets and desktops: tall enough for a centred dialog. Phones (and phones in landscape) go full screen. */
+@custom-variant modal (@media (min-width: 640px) and (min-height: 501px));
+
 @layer base {
   :root {
     --sat: env(safe-area-inset-top, 0px);
@@ -17,5 +20,61 @@
     color: #f4f4f5;
     font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
     touch-action: manipulation;
+  }
+}
+
+/*
+ * Barcode scanner. These rules sit outside any layer so they win over utilities. The `vh` lines are
+ * fallbacks for browsers without dynamic viewport units, which drop the `dvh` line.
+ */
+.scanner-viewfinder {
+  height: clamp(200px, 42vh, 520px);
+  height: clamp(200px, 42dvh, 520px);
+}
+
+@media (min-width: 640px) and (min-height: 501px) {
+  .scanner-viewfinder {
+    height: clamp(260px, 45vh, 440px);
+    height: clamp(260px, 45dvh, 440px);
+  }
+}
+
+/* Phones in landscape: camera on the left at full height, sale feedback and totals on the right. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .scanner-split {
+    flex-direction: row;
+  }
+  .scanner-split > .scanner-media {
+    width: 55%;
+    min-height: 0;
+  }
+  .scanner-split .scanner-viewfinder {
+    height: auto;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+  .scanner-split > .scanner-side {
+    border-left: 1px solid rgb(39 39 42 / 0.8);
+  }
+}
+
+.scanner-line {
+  top: 50%;
+  animation: scanner-sweep 1.8s ease-in-out infinite alternate;
+}
+
+@keyframes scanner-sweep {
+  from {
+    top: 12%;
+  }
+  to {
+    top: 88%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scanner-line {
+    animation: none;
+    top: 50%;
   }
 }

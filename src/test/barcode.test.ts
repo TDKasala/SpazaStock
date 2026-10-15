@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { expandUpcE, hasValidGtinCheckDigit, validateBarcode } from '../lib/barcode/validate';
 import { createReadConfirmer } from '../lib/barcode/confirm';
-import { SCAN_BAND, mapCameraError, scanCrop } from '../lib/barcode/camera';
+import { SCAN_BAND, mapCameraError, orderByCentre, scanCrop } from '../lib/barcode/camera';
 import { RETAIL_FORMATS, createNativeDecoder } from '../lib/barcode/detector';
 
 const ponyfill = vi.hoisted(() => ({
@@ -100,7 +100,32 @@ describe('read confirmation', () => {
 describe('scan crop', () => {
   it('takes the centre band of a frame that fills the view', () => {
     const crop = scanCrop(1600, 1200, 400, 300);
-    expect(crop).toEqual({ sx: 120, sy: 360, sw: 1360, sh: 480, width: 1360, height: 480 });
+    expect(crop).toEqual({ sx: 80, sy: 300, sw: 1440, sh: 600, width: 1440, height: 600 });
+  });
+
+  it('matches the frame in a full-width phone viewfinder for portrait and landscape video', () => {
+    // 390x330 viewfinder (about 42% of a 412x915 phone's height, edge to edge).
+    const viewW = 390;
+    const viewH = 330;
+
+    // Portrait stream: full width is visible, the top and bottom are hidden by object-cover.
+    const portrait = scanCrop(1080, 1920, viewW, viewH);
+    const visiblePortraitH = 1080 / (viewW / viewH);
+    expect(portrait.sw).toBe(Math.round(1080 * SCAN_BAND.width));
+    expect(portrait.sh).toBe(Math.round(visiblePortraitH * SCAN_BAND.height));
+    expect(Math.abs(portrait.sx + portrait.sw / 2 - 1080 / 2)).toBeLessThanOrEqual(1);
+    expect(Math.abs(portrait.sy + portrait.sh / 2 - 1920 / 2)).toBeLessThanOrEqual(1);
+    // The crop covers the same fraction of the visible picture as the frame covers of the box.
+    expect(portrait.sw / 1080).toBeCloseTo(SCAN_BAND.width, 2);
+    expect(portrait.sh / visiblePortraitH).toBeCloseTo(SCAN_BAND.height, 2);
+
+    // Landscape stream: full height is visible, the sides are hidden.
+    const landscape = scanCrop(1920, 1080, viewW, viewH);
+    const visibleLandscapeW = 1080 * (viewW / viewH);
+    expect(landscape.sw / visibleLandscapeW).toBeCloseTo(SCAN_BAND.width, 2);
+    expect(landscape.sh / 1080).toBeCloseTo(SCAN_BAND.height, 2);
+    expect(Math.abs(landscape.sx + landscape.sw / 2 - 1920 / 2)).toBeLessThanOrEqual(1);
+    expect(Math.abs(landscape.sy + landscape.sh / 2 - 1080 / 2)).toBeLessThanOrEqual(1);
   });
 
   it('crops from the visible part when object-cover hides the sides', () => {
@@ -114,9 +139,28 @@ describe('scan crop', () => {
 
   it('downscales the decoder image to the maximum width', () => {
     const crop = scanCrop(3840, 2160, 0, 0, 1280);
-    expect(crop.sw).toBe(3264);
+    expect(crop.sw).toBe(3456);
     expect(crop.width).toBe(1280);
-    expect(crop.height).toBe(Math.round(crop.sh * (1280 / 3264)));
+    expect(crop.height).toBe(Math.round(crop.sh * (1280 / 3456)));
+  });
+});
+
+describe('read order', () => {
+  const box = (cx: number, cy: number) => ({ x: cx - 50, y: cy - 10, width: 100, height: 20 });
+
+  it('puts the code nearest the centre of the frame first', () => {
+    const reads = [
+      { rawValue: 'edge', boundingBox: box(80, 100) },
+      { rawValue: 'centre', boundingBox: box(410, 160) },
+      { rawValue: 'other-edge', boundingBox: box(760, 220) },
+    ];
+    expect(orderByCentre(reads, 800, 300).map((r) => r.rawValue)).toEqual(['centre', 'edge', 'other-edge']);
+  });
+
+  it('keeps reads without a position, in their original order, after located ones', () => {
+    const reads = [{ rawValue: 'a' }, { rawValue: 'b', boundingBox: box(700, 250) }, { rawValue: 'c' }];
+    expect(orderByCentre(reads, 800, 300).map((r) => r.rawValue)).toEqual(['b', 'a', 'c']);
+    expect(orderByCentre([], 800, 300)).toEqual([]);
   });
 });
 
