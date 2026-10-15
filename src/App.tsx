@@ -29,12 +29,13 @@ import { RapidSellPanel, RapidSellSummary } from './components/sales/RapidSellPa
 import { useSaleRegister } from './hooks/useSaleRegister';
 import { useExpiryAlerts } from './hooks/useExpiryAlerts';
 import { isArchived, resolveBarcode } from './services/productService';
+import { cacheShopProductLocally, lookupProductByBarcode } from './services/productLookupService';
 import { onDataChanged } from './lib/events';
 import { refreshPushSubscription } from './lib/push';
 import { captureInviteFromUrl } from './lib/invite';
 import { can } from './lib/permissions';
 import { clearFreshSignIn, hasFreshSignIn, postSignInDestination } from './lib/platformAdmin';
-import type { Product, ResolvedBarcode, ScanMode } from './types';
+import type { Product, ProductLookupSuggestion, ResolvedBarcode, ScanMode } from './types';
 
 // The scanner (and its WASM decoder fallback) is only needed once the camera opens.
 const BarcodeScannerModal = lazy(() =>
@@ -54,6 +55,7 @@ export type AppTab = 'dashboard' | 'stock' | 'sales' | 'alerts' | 'team';
 interface RegisterRequest {
   barcode: string;
   mode: ScanMode;
+  suggestion?: ProductLookupSuggestion | null;
 }
 
 /** The pack or case barcode a delivery was scanned with, carried into stock-in. */
@@ -119,10 +121,25 @@ export function AppContent() {
       resolved.barcodeId ? { packagingId: resolved.packaging?.id ?? null, barcodeId: resolved.barcodeId } : null
     );
 
-  const handleUnknownSaleBarcode = useCallback((barcode: string) => {
-    setScanMode(null);
-    setRegisterRequest({ barcode, mode: 'sell' });
-  }, []);
+  const handleUnknownSaleBarcode = useCallback(
+    (barcode: string) => {
+      setScanMode(null);
+      void (async () => {
+        const lookup = await lookupProductByBarcode(barcode, shopId);
+        if (lookup.status === 'found' && lookup.matchSource === 'shop' && lookup.shopProduct) {
+          const product = await cacheShopProductLocally(lookup.shopProduct);
+          setFoundProduct(product);
+          return;
+        }
+        const suggestion =
+          lookup.status === 'found' && lookup.suggestion && lookup.matchSource !== 'shop'
+            ? lookup.suggestion
+            : null;
+        setRegisterRequest({ barcode, mode: 'sell', suggestion });
+      })();
+    },
+    [shopId]
+  );
   const saleRegister = useSaleRegister(shopId, handleUnknownSaleBarcode);
   const { resetSession } = saleRegister;
 
@@ -135,6 +152,22 @@ export function AppContent() {
     },
     [resetSession]
   );
+
+  const openRegister = async (barcode: string, mode: ScanMode) => {
+    // Soft-fail enrichment: never blocks manual registration if the network or OFF is down.
+    const lookup = await lookupProductByBarcode(barcode, shopId);
+    if (lookup.status === 'found' && lookup.matchSource === 'shop' && lookup.shopProduct) {
+      const product = await cacheShopProductLocally(lookup.shopProduct);
+      if (mode === 'stock_in' && !isArchived(product)) openStockIn(product);
+      else setFoundProduct(product);
+      return;
+    }
+    const suggestion =
+      lookup.status === 'found' && lookup.suggestion && lookup.matchSource !== 'shop'
+        ? lookup.suggestion
+        : null;
+    setRegisterRequest({ barcode, mode, suggestion });
+  };
 
   const handleBarcodeScanned = async (barcode: string) => {
     const mode = scanMode ?? 'lookup';
@@ -154,7 +187,7 @@ export function AppContent() {
       // A delivery with an unknown barcode may be a product the shop already has (a case, a
       // new supplier code), so linking is offered before registering it.
       if (!resolved && mode === 'stock_in') setUnknownStockBarcode(barcode);
-      else if (!resolved) setRegisterRequest({ barcode, mode });
+      else if (!resolved) await openRegister(barcode, mode);
       // An archived product opens the product card, which explains it and offers Restore.
       else if (mode === 'stock_in' && !isArchived(resolved.product)) openStockInResolved(resolved);
       else setFoundProduct(resolved.product);
@@ -257,6 +290,7 @@ export function AppContent() {
       <ProductRegisterDialog
         isOpen={registerRequest !== null}
         initialBarcode={registerRequest?.barcode ?? ''}
+        suggestion={registerRequest?.suggestion}
         onClose={() => setRegisterRequest(null)}
         onProductRegistered={handleProductRegistered}
       />
@@ -271,8 +305,9 @@ export function AppContent() {
           setUnknownStockBarcode(null);
         }}
         onCreateNew={() => {
-          setRegisterRequest({ barcode: unknownStockBarcode ?? '', mode: 'stock_in' });
+          const barcode = unknownStockBarcode ?? '';
           setUnknownStockBarcode(null);
+          void openRegister(barcode, 'stock_in');
         }}
       />
 

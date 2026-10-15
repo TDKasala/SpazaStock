@@ -337,6 +337,11 @@ export const zu: Translations = {
     registerProduct: 'Bhalisa Umkhiqizo Omusha',
     registerSubtitle:
       'Leli bhakhodi alitholakalanga esitolo sakho. Libhalise ukuze uqale ukuphatha impahla nokudayisa.',
+    lookupSuggestion:
+      'Imininingwane iphakanyiswe kusuka kukhathalogi yokudla evulekile. Qoka bese ugcina ukuze wengeze lo mkhiqizo esitolo sakho.',
+    lookupSuggestedImageAlt: 'Isithombe somkhiqizo esiphakanyisiwe',
+    lookupSuggestedImageHint:
+      'Lesithombe siphakanyisiwe ukuze ubone kuphela. Thatha noma ukhethe isithombe ngezansi ukuze usigcine esitolo sakho.',
     name: 'Igama Lomkhiqizo',
     namePlaceholder: 'isib. Albany Superior White Bread 700g',
     nameRequired: 'Igama lomkhiqizo liyadingeka.',

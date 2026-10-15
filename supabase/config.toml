@@ -380,6 +380,10 @@ deno_version = 2
 [functions.expiry-push]
 verify_jwt = false
 
+# Called by signed-in shop members to identify barcodes (shop catalog, cache, Open Food Facts).
+[functions.product-lookup]
+verify_jwt = true
+
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 

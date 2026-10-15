@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { CheckCircle2 } from 'lucide-react';
-import type { Product } from '../../types';
+import type { Product, ProductLookupSuggestion } from '../../types';
 import { useLanguage } from '../../context/LanguageContext';
 import { useShop, useShopId } from '../../context/ShopContext';
 import { Dialog } from '../ui/Dialog';
@@ -8,6 +8,7 @@ import { Button } from '../ui/Button';
 import { ErrorMessage } from '../ui/ErrorMessage';
 import { createProduct, isArchived, setProductArchived } from '../../services/productService';
 import { saveProductImage } from '../../services/productImageService';
+import { productFormFromSuggestion } from '../../services/productLookupService';
 import { can } from '../../lib/permissions';
 import { ProductImagePicker, UNCHANGED_IMAGE, type ImageDraft } from '../stock/ProductImagePicker';
 import {
@@ -21,6 +22,8 @@ import {
 export interface ProductRegisterDialogProps {
   isOpen: boolean;
   initialBarcode: string;
+  /** External catalog suggestion to prefill; never auto-saved. */
+  suggestion?: ProductLookupSuggestion | null;
   onClose: () => void;
   onProductRegistered: (product: Product) => void;
 }
@@ -28,6 +31,7 @@ export interface ProductRegisterDialogProps {
 export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
   isOpen,
   initialBarcode,
+  suggestion = null,
   onClose,
   onProductRegistered,
 }) => {
@@ -47,15 +51,18 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
 
   React.useEffect(() => {
     if (!isOpen) return;
-    setValues(emptyProductForm(initialBarcode));
+    setValues(suggestion ? productFormFromSuggestion(initialBarcode, suggestion) : emptyProductForm(initialBarcode));
     setErrors({});
     setServerError(null);
     setArchivedMatch(null);
     setImage(UNCHANGED_IMAGE);
     setRegistered(null);
-  }, [initialBarcode, isOpen]);
+  }, [initialBarcode, isOpen, suggestion]);
 
   if (!isOpen) return null;
+
+  const suggestedImageUrl = suggestion?.imageUrl.value ?? null;
+  const fromExternal = Boolean(suggestion && suggestion.name.source === 'external');
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -148,6 +155,23 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
             }`}
             action={canEdit ? { label: t('product.restore'), onClick: () => void handleRestore() } : undefined}
           />
+        )}
+
+        {fromExternal && (
+          <p className="text-[11px] text-emerald-400/90 leading-relaxed px-0.5">{t('product.lookupSuggestion')}</p>
+        )}
+
+        {suggestedImageUrl && image.kind === 'unchanged' && (
+          <div className="flex items-center gap-3 p-2 rounded-xl bg-zinc-950 border border-zinc-800">
+            <img
+              src={suggestedImageUrl}
+              alt={t('product.lookupSuggestedImageAlt')}
+              className="w-14 h-14 rounded-lg object-cover bg-zinc-900 shrink-0"
+              loading="lazy"
+              referrerPolicy="no-referrer"
+            />
+            <p className="text-[11px] text-zinc-400 leading-relaxed">{t('product.lookupSuggestedImageHint')}</p>
+          </div>
         )}
 
         <ProductImagePicker draft={image} onChange={setImage} disabled={isSubmitting || Boolean(registered)} />

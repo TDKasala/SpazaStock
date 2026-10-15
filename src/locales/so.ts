@@ -332,6 +332,11 @@ export const so: Translations = {
     foundInCatalog: 'Waxay ku diiwaangashan tahay liiska dukaankaaga',
     registerProduct: 'Diiwaangeli alaab cusub',
     registerSubtitle: 'Barcode-kan lagama helin dukaankaaga. Diiwaangeli si aad u bilowdo maaraynta alaabta iyo iibka.',
+    lookupSuggestion:
+      'Faahfaahinta waxaa laga soo jeediyay kaydka cuntada ee furan. Hubi, ka dibna kaydi si aad ugu darto alaabtán dukaankaaga.',
+    lookupSuggestedImageAlt: 'Sawirka alaabta ee la soo jeediyay',
+    lookupSuggestedImageHint:
+      'Sawirkan waa tixraac oo keliya. Qaado ama dooro sawir hoose si aad ugu kaydiso dukaankaaga.',
     name: 'Magaca alaabta',
     namePlaceholder: 'tusaale Albany Superior Rooti Cad 700g',
     nameRequired: 'Magaca alaabta waa loo baahan yahay.',

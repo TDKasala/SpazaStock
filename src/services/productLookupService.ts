@@ -1,0 +1,98 @@
+import { getSupabase } from '../lib/supabase';
+import { db } from '../lib/db';
+import type {
+  Product,
+  ProductCategory,
+  ProductLookupResult,
+  ProductLookupSuggestion,
+} from '../types';
+import type { ProductFormValues } from '../components/stock/ProductFormFields';
+
+/**
+ * Asks the server to identify a barcode (shop catalog → shared cache → Open Food Facts).
+ * Soft-fails: network errors, missing client, and unexpected bodies become `unavailable`
+ * so registration and stock-in are never blocked.
+ */
+export async function lookupProductByBarcode(barcode: string, shopId: string): Promise<ProductLookupResult> {
+  const client = getSupabase();
+  if (!client || !navigator.onLine) return { status: 'unavailable' };
+
+  try {
+    const { data, error } = await client.functions.invoke<ProductLookupResult>('product-lookup', {
+      body: { barcode, shopId },
+    });
+    if (error || !data || typeof data !== 'object' || !('status' in data)) {
+      return { status: 'unavailable' };
+    }
+    return normalizeLookupResult(data);
+  } catch {
+    return { status: 'unavailable' };
+  }
+}
+
+function normalizeLookupResult(data: ProductLookupResult): ProductLookupResult {
+  const status = data.status;
+  if (
+    status !== 'found' &&
+    status !== 'not_found' &&
+    status !== 'unavailable' &&
+    status !== 'rate_limited' &&
+    status !== 'invalid_barcode' &&
+    status !== 'forbidden'
+  ) {
+    return { status: 'unavailable' };
+  }
+
+  const shopProduct = data.shopProduct ? coerceShopProduct(data.shopProduct) : undefined;
+  return {
+    status,
+    barcode: data.barcode,
+    matchSource: data.matchSource,
+    suggestion: data.suggestion,
+    shopProduct: shopProduct ?? undefined,
+  };
+}
+
+/** Accepts camelCase from the Edge Function (and tolerates accidental snake_case). */
+function coerceShopProduct(raw: Product | Record<string, unknown>): Product | null {
+  const r = raw as Record<string, unknown>;
+  const id = String(r.id ?? '');
+  const shopId = String(r.shopId ?? r.shop_id ?? '');
+  const barcode = String(r.barcode ?? '');
+  const name = String(r.name ?? '');
+  if (!id || !shopId || !barcode || !name) return null;
+  return {
+    id,
+    shopId,
+    barcode,
+    name,
+    category: (r.category as ProductCategory) ?? 'other',
+    buyingPrice: (r.buyingPrice ?? r.buying_price ?? null) as number | null,
+    sellingPrice: (r.sellingPrice ?? r.selling_price ?? null) as number | null,
+    createdAt: String(r.createdAt ?? r.created_at ?? new Date().toISOString()),
+    updatedAt: String(r.updatedAt ?? r.updated_at ?? new Date().toISOString()),
+    archivedAt: (r.archivedAt ?? r.archived_at ?? null) as string | null,
+    brand: (r.brand ?? null) as string | null,
+    size: (r.size ?? null) as string | null,
+    imagePath: (r.imagePath ?? r.image_path ?? null) as string | null,
+  };
+}
+
+/** Writes a server-known shop product into Dexie without enqueueing an outbox item. */
+export async function cacheShopProductLocally(product: Product): Promise<Product> {
+  await db.products.put(product);
+  return product;
+}
+
+/** Prefill register form fields from an external suggestion; prices stay blank for the user. */
+export function productFormFromSuggestion(barcode: string, suggestion: ProductLookupSuggestion): ProductFormValues {
+  return {
+    barcode,
+    name: suggestion.name.value ?? '',
+    category: suggestion.category.value ?? 'groceries',
+    buyingPrice: '',
+    sellingPrice: '',
+    brand: suggestion.brand.value ?? '',
+    size: suggestion.size.value ?? '',
+  };
+}

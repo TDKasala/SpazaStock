@@ -274,3 +274,45 @@ export interface StockDiscrepancy {
   resolvedAt: string | null;
   createdAt: string;
 }
+
+/** Where a Smart Product Scan field value came from. */
+export type ProductLookupFieldSource = 'verified' | 'external' | 'user' | 'missing';
+
+export interface ProductLookupField<T = string> {
+  value: T | null;
+  source: ProductLookupFieldSource;
+}
+
+/** Normalized suggestion returned by the product-lookup Edge Function (never auto-saved). */
+export interface ProductLookupSuggestion {
+  name: ProductLookupField;
+  brand: ProductLookupField;
+  size: ProductLookupField;
+  category: ProductLookupField<ProductCategory>;
+  barcode: ProductLookupField;
+  imageUrl: ProductLookupField;
+  food?: {
+    ingredients: ProductLookupField;
+    nutriscore: ProductLookupField;
+  };
+}
+
+export type ProductLookupStatus =
+  | 'found'
+  | 'not_found'
+  | 'unavailable'
+  | 'rate_limited'
+  | 'invalid_barcode'
+  | 'forbidden';
+
+export type ProductLookupMatchSource = 'shop' | 'cache' | 'open_food_facts';
+
+/** Payload from `product-lookup`. Soft-fail statuses still let the phone open manual registration. */
+export interface ProductLookupResult {
+  status: ProductLookupStatus;
+  barcode?: string;
+  matchSource?: ProductLookupMatchSource;
+  suggestion?: ProductLookupSuggestion;
+  /** Present when matchSource is `shop` — already in this shop's catalog on the server. */
+  shopProduct?: Product;
+}

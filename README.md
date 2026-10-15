@@ -63,6 +63,14 @@ The register and edit forms have an optional picture: **Take photo** or **Choose
 - **Storage.** Files live in the private `product-images` bucket as `<shop id>/<hash>.webp`; the product only stores that path. The name is a hash of the picture, so a retried upload never stores it twice. After a replacement or removal the phone deletes the old file, but the database refuses to delete a file any product still uses.
 - **Who.** Anyone who can register a product can give it its first picture. Replacing or removing a picture is a product edit, so it needs an owner or manager.
 
+### Smart product scan
+
+When a scanned barcode is not in the phone's local catalog, the app asks the `product-lookup` Edge Function (if online) to identify it.
+
+- **Shop first.** If another phone already registered that barcode in this shop, the server returns that product and the phone opens it as usual.
+- **Shared cache, then Open Food Facts.** Otherwise it checks a platform barcode cache, then Open Food Facts (EAN/UPC, 4-second timeout). Hits are cached for reuse across shops; misses are cached briefly. Failures and rate limits never block registration or stock-in.
+- **Suggest, never overwrite.** Matching details prefill the register form with provenance (`verified` / `external` / `missing`). The person must tap Save; shop products are never written from the cache or OFF. Suggested catalog pictures are shown for reference only and are not uploaded to Storage unless the user takes or chooses a photo.
+
 ### Rapid scan-to-sell
 
 *Sales → Tap to Rapid Scan-to-Sell* opens the camera and keeps it open. Each scan sells one unit straight away and shows the stock left, the batch it came from and whether the sale is still waiting to sync.
@@ -308,6 +316,8 @@ Earlier builds stored data in `localStorage`. On first launch, products and rema
 | `membership_events` | Append-only audit trail of invites, joins, role changes, deactivations and removals, written by a trigger; owners can read it |
 | `products` | Barcode unique within a shop, prices, optional `brand` and `size`, `archived_at` (set when archived; never deleted), optional `image_path` (`<shop_id>/<32 hex>.webp` or `.jpg` in the `product-images` bucket). Changed only through `upsert_product`, `update_product`, `set_product_archived` and `set_product_image` |
 | `storage.objects` in `product-images` | Private bucket for product pictures (WebP or JPEG, up to 256 KB). Active members of the shop named in the first folder can read and upload; owners and managers can delete a file only while no product points at it. There is no update policy: files never change |
+| `product_lookup_cache` | Shared barcode suggestions from Open Food Facts (`found` / `not_found` with expiry). Service role only; never auto-writes shop products |
+| `product_lookup_rate` | Per-shop per-minute counters for the product-lookup Edge Function (30/minute). Service role only |
 | `product_packagings` | Ways a product is bought, e.g. *Case* of 24 units. The name and conversion never change; `retired_at` hides it from new links |
 | `product_barcodes` | Extra barcodes for a product, on the single item (`packaging_id` null) or on a packaging. One active meaning per barcode per shop, shared with `products.barcode`. Unlinked rows keep who, when and why |
 | `stock_batches` | One delivery: quantity left, initial quantity, expiry date, purchase cost per unit. When received as packs: `packaging_id`, `package_quantity`, `units_per_package` (copied at receipt) and `received_barcode_id` |
@@ -389,7 +399,9 @@ Guarantees, checked by the database tests:
   - `db/platformMetrics`: overview and analytics counts against seeded rows, range boundaries and the 366-day cap, day/week/month buckets in South African time, tenant search (wildcards taken literally), filters, sorting and paging, the audited export, sync failure aggregation and validation, and operations health reporting unavailable parts (no `pg_cron` in PGlite) without secret values.
   - `db/barcodeAliases`: pack conversions (1, 6, 24), restocking from zero and on top of stock, separate batches per delivery, quantity mismatches, another product's packaging, barcode conflicts between products and links (including another shop using the same code), replays, immutable conversions, retiring, unlinking with and without taking back unsold deliveries, permissions, tenant isolation, suspended shops, and calls from phones running the previous version.
   - `db/productImages` (with a small stand-in for Supabase's `storage` schema): the bucket is private, members upload only to their own shop's folder and only valid picture paths, other shops and anonymous callers can't read them, suspended shops can't upload, staff can set a first picture but not replace or remove one, managers get the old path back for cleanup, missing or foreign files are refused, the column can't be written directly, and a file a product still uses can't be deleted.
+  - `db/productLookup`: the shared barcode cache and rate tables exist with RLS on and no client policies; authenticated and anonymous callers cannot read or write; the service role can insert found and not-found rows.
   - PGlite runs a single connection, so row locking under truly concurrent sessions is not exercised.
+- `productLookup`, `productLookupService`: EAN/UPC canonicalization, Open Food Facts mapping and category map, cache TTLs, register-form prefill, and soft-fail when the lookup function is offline or errors.
 - `expiry`, `expiryPush`: shop-local dates (including daylight saving and UTC+14), reminder stages, expired stock refused on the phone, resolving, one-time alert sounds, and the Edge Function's retry and authentication logic.
 - `imageCompression`, `productImageService`: resizing to fit 600×600 without enlarging, the quality loop down to 100 KB, the JPEG fallback, file validation, content-hash paths, queueing behind the product, collapsing repeated replacements, removal, staff limits and cache pruning. `syncEngine` also covers picture uploads (an existing file counts as done, old files cleaned up best effort, refusals and suspension).
 - `syncBlocked`: suspended and plan-limited changes held in order without using up attempts, then sent after reactivation; failure reports carrying only change types and codes, sent once and retried if reporting fails.
@@ -403,6 +415,7 @@ Guarantees, checked by the database tests:
 supabase/
   migrations/              schema, tenancy, ledger, RLS policies, stock functions, expiry alerts and their schedule, team management, product editing and archiving, platform administration, suspension and plans (forward-only)
   functions/expiry-push/   Edge Function that sends expiry Web Push messages (logic.ts is unit-tested)
+  functions/product-lookup/ Edge Function: shop catalog → shared cache → Open Food Facts (JWT; logic.ts unit-tested)
   templates/               sign-in, sign-up confirmation and password reset emails with the 6-digit code
   seed.sql                 intentionally empty (no invented users or credentials)
 src/
