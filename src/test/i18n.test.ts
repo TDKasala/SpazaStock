@@ -121,6 +121,9 @@ describe('language choice', () => {
     expect(detectLocale(['am'])).toBe('am');
     expect(detectLocale(['AM-et'])).toBe('am');
     expect(detectLocale(['fr-FR', 'zu_ZA'])).toBe('zu');
+    expect(detectLocale(['bn-BD', 'en'])).toBe('bn');
+    expect(detectLocale(['bn'])).toBe('bn');
+    expect(detectLocale(['bn-IN', 'en'])).toBe('en');
     expect(detectLocale(['fr-FR'])).toBe('en');
     expect(detectLocale([])).toBe('en');
   });

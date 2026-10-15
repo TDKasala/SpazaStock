@@ -1,5 +1,6 @@
 import { Translations } from './en';
 
+/** Shop UI copy in Bangladesh Standard Bangla (bn-BD). */
 export const bn: Translations = {
   common: {
     appName: 'SpazaStock',

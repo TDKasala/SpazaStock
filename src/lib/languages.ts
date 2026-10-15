@@ -4,7 +4,8 @@ export const LANGUAGES = [
   { code: 'zu', name: 'isiZulu', intl: 'zu-ZA' },
   { code: 'am', name: 'አማርኛ', intl: 'am-ET' },
   { code: 'so', name: 'Soomaali', intl: 'so-SO' },
-  { code: 'bn', name: 'বাংলা', intl: 'bn-BD' },
+  /** Bangladesh Standard Bangla (bn-BD); not West Bengal (bn-IN). */
+  { code: 'bn', name: 'বাংলা (বাংলাদেশ)', intl: 'bn-BD' },
 ] as const;
 
 export type Locale = (typeof LANGUAGES)[number]['code'];
@@ -18,7 +19,14 @@ export function isLocale(value: unknown): value is Locale {
 /** The first supported language in the browser's preference list ('so-SO' -> 'so'), else English. */
 export function detectLocale(preferred: readonly string[]): Locale {
   for (const tag of preferred) {
-    const base = tag.toLowerCase().split(/[-_]/)[0];
+    const parts = tag.toLowerCase().split(/[-_]/);
+    const base = parts[0];
+    if (base === 'bn') {
+      const region = parts[1];
+      // Only Bangladesh Bangla; skip Indian Bengali (bn-IN) in the phone's list.
+      if (region && region !== 'bd') continue;
+      return 'bn';
+    }
     if (isLocale(base)) return base;
   }
   return DEFAULT_LOCALE;
