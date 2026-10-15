@@ -8,6 +8,7 @@ import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { ErrorMessage } from '../ui/ErrorMessage';
 import { stockIn, getProductTotalStock, isValidDateFormat } from '../../services/stockService';
+import { ExpiryDateOcr } from './ExpiryDateOcr';
 import { getPackagings } from '../../services/barcodeLinkService';
 import { addDaysLocal } from '../../lib/dates';
 import { newId } from '../../lib/ids';
@@ -478,6 +479,14 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
                     }}
                     leftIcon={<Calendar className="w-4 h-4 text-amber-500" />}
                     required={hasExpiry}
+                  />
+
+                  <ExpiryDateOcr
+                    disabled={isSubmitting}
+                    onSuggest={(isoDate) => {
+                      setExpiryDate(isoDate);
+                      if (errorMsg) setErrorMsg(null);
+                    }}
                   />
 
                   {/* Expiry Presets (+5 days, +7 days, +30 days, +90 days) */}
