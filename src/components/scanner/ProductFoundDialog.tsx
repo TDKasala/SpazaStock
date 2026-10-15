@@ -8,6 +8,7 @@ import { Button } from '../ui/Button';
 import { ErrorMessage } from '../ui/ErrorMessage';
 import { can } from '../../lib/permissions';
 import { isArchived, setProductArchived } from '../../services/productService';
+import { ProductThumbnail } from '../stock/ProductThumbnail';
 
 export interface ProductFoundDialogProps {
   isOpen: boolean;
@@ -77,9 +78,13 @@ export const ProductFoundDialog: React.FC<ProductFoundDialogProps> = ({
         {/* Product Card Highlight */}
         <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-3">
           <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center border border-emerald-500/20 shrink-0">
-              <PackageCheck className="w-5 h-5" />
-            </div>
+            {product.imagePath ? (
+              <ProductThumbnail path={product.imagePath} size="md" alt={product.name} />
+            ) : (
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center border border-emerald-500/20 shrink-0">
+                <PackageCheck className="w-5 h-5" />
+              </div>
+            )}
             <div className="flex-1 min-w-0">
               <span className="text-[11px] font-semibold uppercase text-emerald-400 tracking-wider">
                 {categoryLabel}

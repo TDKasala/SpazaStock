@@ -43,7 +43,8 @@ export type OutboxOperation =
   | {
       type: 'barcode_unlink';
       payload: { barcodeId: string; reason: string; reverseUnsold: boolean; occurredAt: string };
-    };
+    }
+  | { type: 'product_image'; payload: { productId: string; imagePath: string | null } };
 
 export type OutboxItem = OutboxOperation & {
   seq?: number;
@@ -67,6 +68,20 @@ export interface MetaRow {
   value: string;
 }
 
+/**
+ * A compressed product picture kept on the phone: taken here and waiting to upload (`pending`), or
+ * downloaded once so thumbnails show offline. Bytes, not a Blob: Blobs in IndexedDB are unreliable
+ * on older iPhones.
+ */
+export interface ProductImage {
+  path: string;
+  shopId: string;
+  bytes: ArrayBuffer;
+  mimeType: string;
+  pending: boolean;
+  cachedAt: string;
+}
+
 export type SpazaDatabase = Dexie & {
   products: EntityTable<Product, 'id'>;
   batches: EntityTable<StockBatch, 'id'>;
@@ -76,6 +91,7 @@ export type SpazaDatabase = Dexie & {
   expiryAlerts: EntityTable<ExpiryAlert, 'id'>;
   packagings: EntityTable<ProductPackaging, 'id'>;
   barcodes: EntityTable<ProductBarcode, 'id'>;
+  productImages: EntityTable<ProductImage, 'path'>;
   outbox: EntityTable<OutboxItem, 'seq'>;
   meta: EntityTable<MetaRow, 'key'>;
 };
@@ -101,6 +117,10 @@ db.version(3).stores({
   barcodes: 'id, shopId, productId, packagingId, [shopId+barcode]',
 });
 
+db.version(4).stores({
+  productImages: 'path, shopId',
+});
+
 /** Every table the write path touches, for `db.transaction('rw', WRITE_TABLES, ...)`. */
 export const WRITE_TABLES = [
   db.products,
@@ -111,6 +131,7 @@ export const WRITE_TABLES = [
   db.expiryAlerts,
   db.packagings,
   db.barcodes,
+  db.productImages,
   db.outbox,
 ];
 

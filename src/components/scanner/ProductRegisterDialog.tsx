@@ -7,7 +7,9 @@ import { Dialog } from '../ui/Dialog';
 import { Button } from '../ui/Button';
 import { ErrorMessage } from '../ui/ErrorMessage';
 import { createProduct, isArchived, setProductArchived } from '../../services/productService';
+import { saveProductImage } from '../../services/productImageService';
 import { can } from '../../lib/permissions';
+import { ProductImagePicker, UNCHANGED_IMAGE, type ImageDraft } from '../stock/ProductImagePicker';
 import {
   ProductFormFields,
   emptyProductForm,
@@ -39,6 +41,9 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
   const [serverError, setServerError] = useState<string | null>(null);
   /** An archived product already uses the barcode: offer to restore it instead. */
   const [archivedMatch, setArchivedMatch] = useState<Product | null>(null);
+  const [image, setImage] = useState<ImageDraft>(UNCHANGED_IMAGE);
+  /** Saved, but its picture could not be stored: the next tap continues instead of registering again. */
+  const [registered, setRegistered] = useState<Product | null>(null);
 
   React.useEffect(() => {
     if (!isOpen) return;
@@ -46,6 +51,8 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
     setErrors({});
     setServerError(null);
     setArchivedMatch(null);
+    setImage(UNCHANGED_IMAGE);
+    setRegistered(null);
   }, [initialBarcode, isOpen]);
 
   if (!isOpen) return null;
@@ -53,6 +60,10 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (isSubmitting) return;
+    if (registered) {
+      onProductRegistered(registered);
+      return;
+    }
     const { input, errors: formErrors } = parseProductForm(values, t);
     setErrors(formErrors);
     if (!input) return;
@@ -70,7 +81,18 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
         setServerError(result.isDuplicate ? t('product.duplicateError') : result.error);
         return;
       }
-      if (result.product) onProductRegistered(result.product);
+      if (!result.product) return;
+      let product = result.product;
+      if (image.kind === 'new') {
+        const saved = await saveProductImage(product.id, shopId, image.image).catch(() => null);
+        if (!saved?.product) {
+          setRegistered(product);
+          setServerError(t('productImage.saveFailed'));
+          return;
+        }
+        product = saved.product;
+      }
+      onProductRegistered(product);
     } catch (err) {
       setServerError(err instanceof Error ? err.message : t('errors.generic'));
     } finally {
@@ -127,6 +149,8 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
             action={canEdit ? { label: t('product.restore'), onClick: () => void handleRestore() } : undefined}
           />
         )}
+
+        <ProductImagePicker draft={image} onChange={setImage} disabled={isSubmitting || Boolean(registered)} />
 
         <ProductFormFields values={values} errors={errors} onChange={setValues} autoFocusName />
 

@@ -12,6 +12,7 @@ import { ProductEditDialog } from './ProductEditDialog';
 import { ArchiveProductDialog } from './ArchiveProductDialog';
 import { ProductBarcodesSection } from './ProductBarcodesSection';
 import { brandAndSize } from './packagingLabel';
+import { ProductThumbnail } from './ProductThumbnail';
 
 export interface ProductStockDetailDialogProps {
   isOpen: boolean;
@@ -152,7 +153,14 @@ export const ProductStockDetailDialog: React.FC<ProductStockDetailDialogProps> =
               {product.barcode}
             </span>
           </div>
-          {brandAndSize(product) && <p className="text-xs text-zinc-300">{brandAndSize(product)}</p>}
+          {product.imagePath ? (
+            <div className="flex items-center gap-3">
+              <ProductThumbnail path={product.imagePath} size="lg" alt={product.name} />
+              {brandAndSize(product) && <p className="text-xs text-zinc-300 min-w-0">{brandAndSize(product)}</p>}
+            </div>
+          ) : (
+            brandAndSize(product) && <p className="text-xs text-zinc-300">{brandAndSize(product)}</p>
+          )}
 
           <div className="grid grid-cols-2 gap-2 pt-1">
             <div className="p-3 rounded-xl bg-zinc-900 border border-zinc-800">

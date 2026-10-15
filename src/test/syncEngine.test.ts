@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { backoffMs, isPermanentError, MAX_ATTEMPTS, pullChanges, pushOutbox } from '../sync/syncEngine';
 import { createProduct, resolveBarcode, setProductArchived, updateProduct } from '../services/productService';
 import { createPackaging, linkBarcode, unlinkBarcode } from '../services/barcodeLinkService';
+import { removeProductImage, saveProductImage } from '../services/productImageService';
 import { saveShopSettings } from '../lib/shopSettings';
 import { stockIn, getProductTotalStock } from '../services/stockService';
 import { recordSale, voidSale } from '../services/salesService';
@@ -884,5 +885,161 @@ describe('packagings and barcode links', () => {
     expect(await pullChanges(fake.client, SHOP_ID)).toBe(2);
     const resolved = await resolveBarcode('16001087361257', SHOP_ID);
     expect(resolved).toMatchObject({ product: { id: product.id }, packaging: { unitsPerPackage: 24 }, barcodeId: 'b-case' });
+  });
+});
+
+describe('product pictures', () => {
+  const SERVER_TIME = '2026-10-15T09:00:00.000Z';
+  const picture = { bytes: new Uint8Array([1, 2, 3, 4]).buffer, mimeType: 'image/webp' as const };
+  const otherPicture = { bytes: new Uint8Array([9, 8, 7, 6]).buffer, mimeType: 'image/webp' as const };
+
+  /** Answers set_product_image like the real function, reporting `previous` as the old path. */
+  function imageRpcs(product: Product, previous: string | null = null) {
+    return (name: string, args: Record<string, unknown>) => {
+      if (name === 'set_product_image') {
+        return {
+          data: {
+            product: productRow(product, { image_path: args.p_image_path, updated_at: SERVER_TIME }),
+            previous_path: previous,
+          },
+          error: null,
+        };
+      }
+      return acceptAll(name, args);
+    };
+  }
+
+  beforeEach(async () => {
+    await resetLocalDatabase();
+    await saveShopSettings(SHOP_ID, { role: 'owner' });
+  });
+
+  it('uploads a new product and its picture in order, then marks the picture as uploaded', async () => {
+    const product = await makeProduct();
+    const { product: withImage } = await saveProductImage(product.id, SHOP_ID, picture);
+    const path = withImage!.imagePath!;
+
+    const fake = createFakeSupabase({ rpc: imageRpcs(product) });
+    expect(await pushOutbox(fake.client, SHOP_ID)).toEqual({ pushed: 2, failed: 0, retryAt: null });
+
+    expect(fake.rpc.mock.calls.map(([name]) => name)).toEqual(['upsert_product', 'set_product_image']);
+    expect(fake.upload).toHaveBeenCalledTimes(1);
+    expect(fake.upload.mock.calls[0][0]).toBe(path);
+    expect(fake.upload.mock.calls[0][2]).toMatchObject({ contentType: 'image/webp', upsert: false });
+    expect(fake.storage.from).toHaveBeenCalledWith('product-images');
+    expect(fake.rpc.mock.calls[1][1]).toEqual({ p_shop_id: SHOP_ID, p_product_id: product.id, p_image_path: path });
+
+    expect(await db.products.get(product.id)).toMatchObject({ imagePath: path, updatedAt: SERVER_TIME });
+    expect((await db.productImages.get(path))?.pending).toBe(false);
+  });
+
+  it('treats an upload that already happened as done', async () => {
+    const product = await makeProduct();
+    await saveProductImage(product.id, SHOP_ID, picture);
+    const fake = createFakeSupabase({
+      rpc: imageRpcs(product),
+      upload: () => ({ data: null, error: { message: 'The resource already exists', statusCode: '409', status: 400 } }),
+    });
+    expect((await pushOutbox(fake.client, SHOP_ID)).pushed).toBe(2);
+    expect(fake.rpc).toHaveBeenCalledWith('set_product_image', expect.anything());
+  });
+
+  it('deletes the replaced picture from storage', async () => {
+    const product = await makeProduct();
+    await db.outbox.clear();
+    const old = `${SHOP_ID}/${'c'.repeat(32)}.webp`;
+    await db.products.update(product.id, { imagePath: old });
+    await saveProductImage(product.id, SHOP_ID, otherPicture);
+
+    const fake = createFakeSupabase({ rpc: imageRpcs(product, old) });
+    expect((await pushOutbox(fake.client, SHOP_ID)).pushed).toBe(1);
+    expect(fake.remove).toHaveBeenCalledWith([old]);
+  });
+
+  it('still succeeds when cleaning up the old picture fails', async () => {
+    const product = await makeProduct();
+    await db.outbox.clear();
+    await db.products.update(product.id, { imagePath: `${SHOP_ID}/${'d'.repeat(32)}.webp` });
+    await removeProductImage(product.id, SHOP_ID);
+
+    const fake = createFakeSupabase({
+      rpc: imageRpcs(product, `${SHOP_ID}/${'d'.repeat(32)}.webp`),
+      remove: () => {
+        throw new Error('offline');
+      },
+    });
+    expect(await pushOutbox(fake.client, SHOP_ID)).toEqual({ pushed: 1, failed: 0, retryAt: null });
+    expect(fake.upload).not.toHaveBeenCalled();
+    expect(fake.rpc.mock.calls[0][1]).toMatchObject({ p_image_path: null });
+  });
+
+  it('fails for good when storage refuses the picture and the server confirms the refusal', async () => {
+    const product = await makeProduct();
+    await db.outbox.clear();
+    await saveProductImage(product.id, SHOP_ID, picture);
+    const fake = createFakeSupabase({
+      upload: () => ({ data: null, error: { message: 'new row violates row-level security policy', statusCode: '403' } }),
+      rpc: () => ({ data: null, error: { code: '42501', message: 'You do not have access to this shop.' } }),
+      rows: { products: [productRow(product, { image_path: null, updated_at: SERVER_TIME })] },
+    });
+
+    const result = await pushOutbox(fake.client, SHOP_ID);
+    expect(result.failed).toBe(1);
+    expect((await db.outbox.toArray())[0]).toMatchObject({ type: 'product_image', status: 'failed' });
+    expect((await db.products.get(product.id))?.imagePath).toBeNull();
+  });
+
+  it('holds the picture back while the shop is suspended', async () => {
+    const product = await makeProduct();
+    await db.outbox.clear();
+    await saveProductImage(product.id, SHOP_ID, picture);
+    const fake = createFakeSupabase({
+      upload: () => ({ data: null, error: { message: 'new row violates row-level security policy', statusCode: '403' } }),
+      rpc: () => ({ data: null, error: { code: 'SP001', message: 'This shop is suspended.' } }),
+    });
+    const result = await pushOutbox(fake.client, SHOP_ID);
+    expect(result.blocked).toBe('suspended');
+    expect((await db.outbox.toArray())[0]).toMatchObject({ type: 'product_image', status: 'pending' });
+  });
+
+  it('retries when the upload fails because of the network', async () => {
+    const product = await makeProduct();
+    await db.outbox.clear();
+    await saveProductImage(product.id, SHOP_ID, picture);
+    const fake = createFakeSupabase({ upload: () => ({ data: null, error: { message: 'Failed to fetch' } }) });
+    const result = await pushOutbox(fake.client, SHOP_ID);
+    expect(result).toMatchObject({ pushed: 0, failed: 0 });
+    expect(result.retryAt).not.toBeNull();
+    expect(fake.rpc).not.toHaveBeenCalled();
+  });
+
+  it('moves a queued picture to the server product when the product is remapped', async () => {
+    const product = await makeProduct();
+    await saveProductImage(product.id, SHOP_ID, picture);
+    const canonicalId = '44444444-4444-4444-8444-444444444444';
+    const fake = createFakeSupabase({
+      rpc: (name, args) => {
+        if (name === 'upsert_product') return { data: productRow(product, { id: canonicalId }), error: null };
+        return imageRpcs({ ...product, id: canonicalId })(name, args);
+      },
+    });
+    expect((await pushOutbox(fake.client, SHOP_ID)).pushed).toBe(2);
+    expect(fake.rpc.mock.calls[1][1]).toMatchObject({ p_product_id: canonicalId });
+    expect((await db.products.get(canonicalId))?.imagePath).toMatch(/\.webp$/);
+  });
+
+  it('pulls pictures set on other phones and drops cached pictures nothing uses', async () => {
+    const product = await makeProduct();
+    await db.outbox.clear();
+    const stale = `${SHOP_ID}/${'e'.repeat(32)}.webp`;
+    await db.productImages.put({ path: stale, shopId: SHOP_ID, bytes: new ArrayBuffer(2), mimeType: 'image/webp', pending: false, cachedAt: SERVER_TIME });
+    const fresh = `${SHOP_ID}/${'f'.repeat(32)}.webp`;
+    const fake = createFakeSupabase({
+      rows: { products: [productRow(product, { image_path: fresh, updated_at: SERVER_TIME })] },
+    });
+
+    expect(await pullChanges(fake.client, SHOP_ID)).toBe(1);
+    expect((await db.products.get(product.id))?.imagePath).toBe(fresh);
+    expect(await db.productImages.get(stale)).toBeUndefined();
   });
 });

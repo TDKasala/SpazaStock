@@ -12,13 +12,21 @@ export function setOnline(online: boolean): void {
 type RpcResult = { data: unknown; error: { code?: string; message: string } | null };
 type RpcHandler = (name: string, args: Record<string, unknown>) => RpcResult | Promise<RpcResult>;
 type Rows = Record<string, Array<Record<string, unknown>>>;
+type StorageResult = { data: unknown; error: { message: string; status?: number; statusCode?: string } | null };
 
 /**
  * Minimal stand-in for the parts of supabase-js the sync engine uses:
- * `rpc`, `from().select().eq().gt().order().order().range()`, `from().select().eq().eq().maybeSingle()`
- * and `from().update().eq()`.
+ * `rpc`, `from().select().eq().gt().order().order().range()`, `from().select().eq().eq().maybeSingle()`,
+ * `from().update().eq()` and `storage.from().upload()` / `.remove()`.
  */
-export function createFakeSupabase(options: { rpc?: RpcHandler; rows?: Rows } = {}) {
+export function createFakeSupabase(
+  options: {
+    rpc?: RpcHandler;
+    rows?: Rows;
+    upload?: (path: string) => StorageResult | Promise<StorageResult>;
+    remove?: (paths: string[]) => StorageResult | Promise<StorageResult>;
+  } = {}
+) {
   const rows: Rows = options.rows ?? {};
   const rpc = vi.fn(async (name: string, args: Record<string, unknown>) =>
     options.rpc ? options.rpc(name, args) : { data: null, error: null }
@@ -65,6 +73,12 @@ export function createFakeSupabase(options: { rpc?: RpcHandler; rows?: Rows } = 
     };
   });
 
-  const client = { rpc, from } as unknown as SupabaseClient;
-  return { client, rpc, from, rows, updates };
+  const upload = vi.fn(async (path: string, _body: unknown, _options?: Record<string, unknown>) =>
+    options.upload ? options.upload(path) : { data: { path }, error: null }
+  );
+  const remove = vi.fn(async (paths: string[]) => (options.remove ? options.remove(paths) : { data: [], error: null }));
+  const storage = { from: vi.fn((_bucket: string) => ({ upload, remove })) };
+
+  const client = { rpc, from, storage } as unknown as SupabaseClient;
+  return { client, rpc, from, rows, updates, upload, remove, storage };
 }

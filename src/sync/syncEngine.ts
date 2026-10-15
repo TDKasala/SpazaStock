@@ -13,6 +13,7 @@ import type {
   StockDiscrepancy,
 } from '../types';
 import { db, getMeta, setMeta, withWriteLock, WRITE_TABLES, type OutboxItem } from '../lib/db';
+import { PRODUCT_IMAGE_BUCKET, pruneImageCache } from '../services/productImageService';
 
 export const MAX_ATTEMPTS = 10;
 const PULL_PAGE_SIZE = 500;
@@ -20,7 +21,8 @@ const PULL_PAGE_SIZE = 500;
 const PULL_OVERLAP_MS = 2 * 60 * 1000;
 const SALES_HISTORY_DAYS = 7;
 const PRODUCT_COLUMNS =
-  'id, shop_id, barcode, name, category, buying_price, selling_price, created_at, updated_at, archived_at, brand, size';
+  'id, shop_id, barcode, name, category, buying_price, selling_price, created_at, updated_at, archived_at, brand, size, ' +
+  'image_path';
 const BATCH_COLUMNS =
   'id, shop_id, product_id, quantity, initial_quantity, expiry_date, cost_price_per_unit, received_at, updated_at, ' +
   'packaging_id, package_quantity, units_per_package, received_barcode_id';
@@ -95,6 +97,7 @@ export function mapProductRow(row: Row): Product {
     archivedAt: row.archived_at ? toIso(row.archived_at) : null,
     brand: (row.brand as string | null) ?? null,
     size: (row.size as string | null) ?? null,
+    imagePath: (row.image_path as string | null) ?? null,
   };
 }
 
@@ -233,7 +236,7 @@ async function remapProduct(shopId: string, oldId: string, canonical: Product): 
       } else if (item.type === 'sale' && item.payload.sale.productId === oldId) {
         item.payload.sale.productId = canonical.id;
       } else if (
-        (item.type === 'product_update' || item.type === 'product_archive') &&
+        (item.type === 'product_update' || item.type === 'product_archive' || item.type === 'product_image') &&
         item.payload.productId === oldId
       ) {
         item.payload.productId = canonical.id;
@@ -303,7 +306,7 @@ async function hasLaterProductChange(item: OutboxItem, productId: string): Promi
     .filter(
       (other) =>
         other.seq! > item.seq! &&
-        (other.type === 'product_update' || other.type === 'product_archive') &&
+        (other.type === 'product_update' || other.type === 'product_archive' || other.type === 'product_image') &&
         other.payload.productId === productId
     )
     .count();
@@ -330,6 +333,79 @@ async function sendProductChange(
     return server ? { ...outcome, apply: putProductUnlessChangedLater(item, server) } : outcome;
   }
   return { kind: 'ok', apply: putProductUnlessChangedLater(item, mapProductRow(data as Row)) };
+}
+
+interface StorageErrorLike {
+  message?: string;
+  status?: number;
+  statusCode?: string | number;
+}
+
+/** Storage reports the real status in `statusCode` (often inside an HTTP 400) or in `status`. */
+function storageStatus(error: StorageErrorLike): number {
+  const status = Number(error.statusCode ?? error.status);
+  return Number.isFinite(status) ? status : 0;
+}
+
+/**
+ * Uploads the picture, then points the product at it. Uploading the same path twice is harmless
+ * (the name is the picture's hash), so a retry after a lost response just carries on.
+ */
+async function sendProductImage(
+  client: SupabaseClient,
+  item: OutboxItem & { type: 'product_image' }
+): Promise<SendOutcome> {
+  const { productId, imagePath } = item.payload;
+  const bucket = client.storage.from(PRODUCT_IMAGE_BUCKET);
+
+  if (imagePath) {
+    const image = await db.productImages.get(imagePath);
+    if (!image) return { kind: 'fail', error: 'The picture is no longer on this phone.', code: 'missing_image' };
+    const { error } = await bucket.upload(imagePath, image.bytes, {
+      contentType: image.mimeType,
+      upsert: false,
+      cacheControl: '31536000',
+    });
+    if (error) {
+      const status = storageStatus(error as StorageErrorLike);
+      const duplicate = status === 409 || /already exists|duplicate/i.test(error.message);
+      // A 403 can mean "not a member" or "shop suspended"; the function below says which.
+      if (!duplicate && status !== 403) {
+        return [400, 413, 415, 422].includes(status)
+          ? { kind: 'fail', error: error.message, code: `storage_${status}` }
+          : { kind: 'retry', error: error.message };
+      }
+    }
+  }
+
+  const { data, error } = await client.rpc('set_product_image', {
+    p_shop_id: item.shopId,
+    p_product_id: productId,
+    p_image_path: imagePath,
+  });
+  if (error) {
+    const outcome = outcomeFromError(error);
+    if (outcome.kind !== 'fail') return outcome;
+    const server = await productRollback(client, item.shopId, productId);
+    return server ? { ...outcome, apply: putProductUnlessChangedLater(item, server) } : outcome;
+  }
+
+  const result = data as { product: Row; previous_path: string | null };
+  if (result.previous_path) {
+    // Best effort: a picture left behind costs a little storage, never a broken product.
+    try {
+      await bucket.remove([result.previous_path]);
+    } catch {
+      // Ignored.
+    }
+  }
+  return {
+    kind: 'ok',
+    apply: async () => {
+      if (imagePath) await db.productImages.update(imagePath, { pending: false });
+      await putProductUnlessChangedLater(item, mapProductRow(result.product))();
+    },
+  };
 }
 
 /**
@@ -568,6 +644,9 @@ async function sendItem(client: SupabaseClient, item: OutboxItem): Promise<SendO
         },
       };
     }
+
+    case 'product_image':
+      return sendProductImage(client, item);
 
     case 'barcode_unlink': {
       const { barcodeId, reason, reverseUnsold, occurredAt } = item.payload;
@@ -850,5 +929,6 @@ export async function pullChanges(client: SupabaseClient, shopId: string): Promi
     throw err;
   }
 
+  if (applied > 0) await withWriteLock(() => pruneImageCache(shopId));
   return applied;
 }

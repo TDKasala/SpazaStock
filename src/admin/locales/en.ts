@@ -621,6 +621,7 @@ export const adminEn = {
     product_upsert: 'New product',
     product_update: 'Product edit',
     product_archive: 'Archive or restore',
+    product_image: 'Product picture',
     stock_in: 'Stock in',
     sale: 'Sale',
     sale_void: 'Sale reversal',

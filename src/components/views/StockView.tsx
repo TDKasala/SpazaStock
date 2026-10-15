@@ -8,6 +8,7 @@ import type { Product, ProductStockSummary } from '../../types';
 import { getAllProductsStockSummary } from '../../services/stockService';
 import { getArchivedProducts, setProductArchived } from '../../services/productService';
 import { can } from '../../lib/permissions';
+import { ProductThumbnail } from '../stock/ProductThumbnail';
 
 export interface StockViewProps {
   onOpenScanner: () => void;
@@ -98,6 +99,7 @@ export const StockView: React.FC<StockViewProps> = ({
                 onClick={() => onSelectProduct(product)}
                 className="flex items-start justify-between gap-3 cursor-pointer select-none"
               >
+                {product.imagePath && <ProductThumbnail path={product.imagePath} alt={product.name} />}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 border border-zinc-700/50">

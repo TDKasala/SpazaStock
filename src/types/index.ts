@@ -80,6 +80,8 @@ export interface Product {
   brand?: string | null;
   /** Optional size of the single item, e.g. 330ml. */
   size?: string | null;
+  /** Path of the product picture in the product-images bucket (`<shopId>/<hash>.webp`). */
+  imagePath?: string | null;
 }
 
 export interface ProductRegistrationInput {

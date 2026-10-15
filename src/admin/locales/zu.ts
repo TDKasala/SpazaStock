@@ -623,6 +623,7 @@ export const adminZu: AdminTranslations = {
     product_upsert: 'Umkhiqizo omusha',
     product_update: 'Ukuhlela umkhiqizo',
     product_archive: 'Ukugcina noma ukubuyisa',
+    product_image: 'Isithombe somkhiqizo',
     stock_in: 'Ukungenisa impahla',
     sale: 'Ukuthengisa',
     sale_void: 'Ukuhlehlisa ukuthengisa',

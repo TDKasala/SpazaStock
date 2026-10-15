@@ -10,6 +10,8 @@ import { ErrorMessage } from '../ui/ErrorMessage';
 import { batchCode } from '../../lib/expiry';
 import { newId } from '../../lib/ids';
 import { normalizeBarcode, updateProduct } from '../../services/productService';
+import { removeProductImage, saveProductImage } from '../../services/productImageService';
+import { ProductImagePicker, UNCHANGED_IMAGE, type ImageDraft } from './ProductImagePicker';
 import { batchExpiryChanges, getProductBatches, resolveExpiredBatch } from '../../services/stockService';
 import {
   ProductFormFields,
@@ -50,6 +52,7 @@ export const ProductEditDialog: React.FC<ProductEditDialogProps> = ({ isOpen, pr
   const [expiryErrors, setExpiryErrors] = useState<Record<string, string>>({});
   // One key per batch while the dialog is open, so a double tap records each correction once.
   const [expiryKeys, setExpiryKeys] = useState<Record<string, string>>({});
+  const [image, setImage] = useState<ImageDraft>(UNCHANGED_IMAGE);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -57,6 +60,7 @@ export const ProductEditDialog: React.FC<ProductEditDialogProps> = ({ isOpen, pr
     setErrors({});
     setServerError(null);
     setSaved(product);
+    setImage(UNCHANGED_IMAGE);
     setExpiryDrafts({});
     setExpiryErrors({});
     setExpiryKeys({});
@@ -96,6 +100,20 @@ export const ProductEditDialog: React.FC<ProductEditDialogProps> = ({ isOpen, pr
         }
         current = result.product;
         setSaved(current);
+      }
+
+      if (image.kind !== 'unchanged') {
+        const outcome =
+          image.kind === 'new'
+            ? await saveProductImage(product.id, shopId, image.image)
+            : await removeProductImage(product.id, shopId);
+        if (!outcome.product) {
+          setServerError(outcome.errorCode === 'forbidden' ? t('product.editForbidden') : t('productImage.saveFailed'));
+          return;
+        }
+        current = outcome.product;
+        setSaved(current);
+        setImage(UNCHANGED_IMAGE);
       }
 
       const keys = { ...expiryKeys };
@@ -162,6 +180,8 @@ export const ProductEditDialog: React.FC<ProductEditDialogProps> = ({ isOpen, pr
         {serverError && (
           <ErrorMessage variant="error" message={serverError} onDismiss={() => setServerError(null)} />
         )}
+        <ProductImagePicker currentPath={saved.imagePath} draft={image} onChange={setImage} disabled={isSubmitting} />
+
         <ProductFormFields values={values} errors={errors} onChange={setValues} />
 
         {batches.length > 0 && (
