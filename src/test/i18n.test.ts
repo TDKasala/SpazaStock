@@ -5,6 +5,7 @@ import { en } from '../locales/en';
 import { zu } from '../locales/zu';
 import { am } from '../locales/am';
 import { so } from '../locales/so';
+import { bn } from '../locales/bn';
 import { interpolate } from '../context/LanguageContext';
 import { detectLocale, intlTag, isLocale, LANGUAGES, type Locale } from '../lib/languages';
 import { formatShortDate } from '../lib/dates';
@@ -38,7 +39,7 @@ function sourceFiles(dir: string): string[] {
 }
 
 const enFlat = flatten(en);
-const others = { zu, am, so } as const;
+const others = { zu, am, so, bn } as const;
 const otherFlat = Object.entries(others).map(([code, dict]) => [code, flatten(dict)] as const);
 
 /** Strings that are deliberately the same in every language. */
@@ -81,6 +82,13 @@ describe('translations', () => {
     }
   });
 
+  it('writes Bangla in Bengali script', () => {
+    const bengali = /[\u0980-\u09FF]/;
+    for (const key of ['common.tagline', 'auth.signIn', 'landing.headline', 'navigation.sales', 'sales.sell']) {
+      expect(bengali.test(String(flatten(bn).get(key))), key).toBe(true);
+    }
+  });
+
   it('defines every key the app looks up with t()', () => {
     const used = new Set<string>();
     for (const file of sourceFiles(join(__dirname, '..'))) {
@@ -104,7 +112,7 @@ describe('translations', () => {
 
 describe('language choice', () => {
   it('recognises only supported codes', () => {
-    for (const code of ['en', 'zu', 'am', 'so']) expect(isLocale(code)).toBe(true);
+    for (const code of ['en', 'zu', 'am', 'so', 'bn']) expect(isLocale(code)).toBe(true);
     for (const value of ['fr', 'EN', '', null, undefined, 42]) expect(isLocale(value)).toBe(false);
   });
 
@@ -113,15 +121,20 @@ describe('language choice', () => {
     expect(detectLocale(['am'])).toBe('am');
     expect(detectLocale(['AM-et'])).toBe('am');
     expect(detectLocale(['fr-FR', 'zu_ZA'])).toBe('zu');
+    expect(detectLocale(['bn-BD', 'en'])).toBe('bn');
+    expect(detectLocale(['bn'])).toBe('bn');
+    expect(detectLocale(['bn-IN', 'en'])).toBe('en');
     expect(detectLocale(['fr-FR'])).toBe('en');
     expect(detectLocale([])).toBe('en');
   });
 
   it('formats dates for every language without failing', () => {
-    const codes: Locale[] = ['en', 'zu', 'am', 'so'];
+    const codes: Locale[] = ['en', 'zu', 'am', 'so', 'bn'];
     for (const code of codes) {
       expect(intlTag(code)).toMatch(/^[a-z]{2}-[A-Z]{2}$/);
-      expect(formatShortDate('2026-10-21T10:00:00Z', code)).toMatch(/2026/);
+      const formatted = formatShortDate('2026-10-21T10:00:00Z', code);
+      // bn-BD may render the year in Bengali digits (২০২৬).
+      expect(formatted).toMatch(code === 'bn' ? /(2026|২০২৬)/ : /2026/);
     }
     expect(formatShortDate('2026-10-21T10:00:00Z', 'xx')).toMatch(/2026/);
     expect(formatShortDate('not a date', 'am')).toBe('');

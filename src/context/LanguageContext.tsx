@@ -4,6 +4,7 @@ import { en, Translations } from '../locales/en';
 import { zu } from '../locales/zu';
 import { am } from '../locales/am';
 import { so } from '../locales/so';
+import { bn } from '../locales/bn';
 
 const STORAGE_KEY = 'spazastock_locale';
 
@@ -35,7 +36,7 @@ export function interpolate(template: string, vars?: TranslateVars): string {
   );
 }
 
-const dictionaries: Record<Locale, Translations> = { en, zu, am, so };
+const dictionaries: Record<Locale, Translations> = { en, zu, am, so, bn };
 
 /** The saved choice, else the phone's language when the app supports it, else English. */
 function initialLocale(): Locale {

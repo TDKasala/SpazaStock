@@ -4,7 +4,7 @@ import { useLanguage } from '../../context/LanguageContext';
 import { isLocale, LANGUAGES } from '../../lib/languages';
 
 interface LanguagePickerProps {
-  /** Header style: shows the language code (EN, ZU, AM, SO) instead of the full name. */
+  /** Header style: shows the language code (EN, ZU, AM, SO, BN) instead of the full name. */
   compact?: boolean;
   className?: string;
 }
@@ -13,9 +13,14 @@ interface LanguagePickerProps {
  * A native select over a styled label, so phones show their own picker and screen readers
  * announce it as a list. Each language is listed by its own name.
  */
+function optionText(lang: (typeof LANGUAGES)[number]): string {
+  return lang.pickerLabel === lang.name ? lang.name : `${lang.pickerLabel} — ${lang.name}`;
+}
+
 export const LanguagePicker: React.FC<LanguagePickerProps> = ({ compact = false, className = '' }) => {
   const { locale, setLocale, t } = useLanguage();
   const current = LANGUAGES.find((l) => l.code === locale) ?? LANGUAGES[0];
+  const visibleLabel = compact ? current.code.toUpperCase() : optionText(current);
 
   return (
     <label
@@ -26,7 +31,9 @@ export const LanguagePicker: React.FC<LanguagePickerProps> = ({ compact = false,
       } ${className}`}
     >
       <Globe className={`w-3.5 h-3.5 ${compact ? 'text-emerald-400' : ''}`} />
-      <span aria-hidden="true">{compact ? current.code.toUpperCase() : current.name}</span>
+      <span aria-hidden="true" className={compact ? '' : 'max-w-[11rem] sm:max-w-none truncate'}>
+        {visibleLabel}
+      </span>
       {!compact && <ChevronDown className="w-3 h-3" />}
       <select
         value={locale}
@@ -38,7 +45,7 @@ export const LanguagePicker: React.FC<LanguagePickerProps> = ({ compact = false,
       >
         {LANGUAGES.map((l) => (
           <option key={l.code} value={l.code} lang={l.code}>
-            {l.name}
+            {optionText(l)}
           </option>
         ))}
       </select>
