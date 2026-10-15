@@ -1,8 +1,8 @@
 # SpazaStock
 
-SpazaStock is a mobile-first Progressive Web App for spaza shop owners in South Africa. It records deliveries as expiry-dated batches, sells by barcode scan, warns about stock nearing expiry, and works without an internet connection. It is available in English, isiZulu, Amharic (አማርኛ) and Somali (Soomaali).
+SpazaStock is a mobile-first Progressive Web App for spaza shop owners in South Africa. It records deliveries as expiry-dated batches, sells by barcode scan, warns about stock nearing expiry, and works without an internet connection. It is available in English, isiZulu, Amharic (አማርኛ), Somali (Soomaali) and Bangla (বাংলা).
 
-**Languages.** The language picker (globe icon) is in the header, on the landing page and on the sign-in screens. On the first visit the app picks the phone's language if it is one of the four, otherwise English, and remembers the choice on that phone. Text lives in `src/locales/` (`en.ts` is the source; the others must have exactly the same keys, which TypeScript and `src/test/i18n.test.ts` enforce). The Amharic and Somali text has not yet been reviewed by native speakers, so have it checked before relying on it with customers. Notifications created on the server, such as push alerts, are still in English.
+**Languages.** The language picker (globe icon) is in the header, on the landing page and on the sign-in screens. On the first visit the app picks the phone's language if it is one of the five, otherwise English, and remembers the choice on that phone. Text lives in `src/locales/` (`en.ts` is the source; the others must have exactly the same keys, which TypeScript and `src/test/i18n.test.ts` enforce). The Amharic, Somali and Bangla text has not yet been reviewed by native speakers, so have it checked before relying on it with customers. Notifications created on the server, such as push alerts, are still in English.
 
 ## How it works
 
@@ -365,7 +365,7 @@ Guarantees, checked by the database tests:
 - `syncBlocked`: suspended and plan-limited changes held in order without using up attempts, then sent after reactivation; failure reports carrying only change types and codes, sent once and retried if reporting fails.
 - `admin`, `adminI18n`: role and section access, the guard trusting only the server's role, error mapping, routes, CSV formula neutralising, date ranges in South African days, price parsing and reason rules; English and isiZulu parity, every `at('...')` key defined, and a label for every audit action.
 - `secrets`: no service-role or secret key in the source, public assets or built bundle.
-- `dates`, `legacyMigration`, `i18n`: local-date helpers, the one-time localStorage import, and key and `{{placeholder}}` parity between English and every other language (isiZulu, Amharic, Somali), checks that each one is actually translated (Amharic in Ethiopic script), the phone-language detection, plus a check that every `t('...')` key used in the code exists.
+- `dates`, `legacyMigration`, `i18n`: local-date helpers, the one-time localStorage import, and key and `{{placeholder}}` parity between English and every other language (isiZulu, Amharic, Somali, Bangla), checks that each one is actually translated (Amharic in Ethiopic script, Bangla in Bengali script), the phone-language detection, plus a check that every `t('...')` key used in the code exists.
 
 ## Project layout
 

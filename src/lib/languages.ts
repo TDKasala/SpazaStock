@@ -4,6 +4,7 @@ export const LANGUAGES = [
   { code: 'zu', name: 'isiZulu', intl: 'zu-ZA' },
   { code: 'am', name: 'አማርኛ', intl: 'am-ET' },
   { code: 'so', name: 'Soomaali', intl: 'so-SO' },
+  { code: 'bn', name: 'বাংলা', intl: 'bn-BD' },
 ] as const;
 
 export type Locale = (typeof LANGUAGES)[number]['code'];

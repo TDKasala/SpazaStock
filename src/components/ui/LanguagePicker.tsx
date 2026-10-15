@@ -4,7 +4,7 @@ import { useLanguage } from '../../context/LanguageContext';
 import { isLocale, LANGUAGES } from '../../lib/languages';
 
 interface LanguagePickerProps {
-  /** Header style: shows the language code (EN, ZU, AM, SO) instead of the full name. */
+  /** Header style: shows the language code (EN, ZU, AM, SO, BN) instead of the full name. */
   compact?: boolean;
   className?: string;
 }
