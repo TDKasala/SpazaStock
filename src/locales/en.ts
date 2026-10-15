@@ -619,6 +619,10 @@ export const en = {
     totalPrice: 'Total Price:',
     confirmSale: 'Confirm Sale',
     voidedCount: '{{count}} undone',
+    previousPage: 'Previous',
+    nextPage: 'Next',
+    pageRange: '{{from}}–{{to}} of {{total}}',
+    paginationLabel: 'Transaction pages',
   },
   rapid: {
     keepScanning: 'Keep scanning. Each scan sells 1 unit.',

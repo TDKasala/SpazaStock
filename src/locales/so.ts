@@ -621,6 +621,10 @@ export const so: Translations = {
     totalPrice: 'Wadarta qiimaha:',
     confirmSale: 'Xaqiiji iibka',
     voidedCount: '{{count}} la celiyay',
+    previousPage: 'Hore',
+    nextPage: 'Xiga',
+    pageRange: '{{from}}–{{to}} oo ka mid ah {{total}}',
+    paginationLabel: 'Bogagga iibka',
   },
   rapid: {
     keepScanning: 'Sii wad iskaanka. Iskaan kasta wuxuu iibiyaa 1 xabbo.',

@@ -630,6 +630,10 @@ export const zu: Translations = {
     totalPrice: 'Intengo Iyonke:',
     confirmSale: 'Qinisekisa Ukudayisa',
     voidedCount: 'Kuhoxiswe {{count}}',
+    previousPage: 'Okwangaphambili',
+    nextPage: 'Okulandelayo',
+    pageRange: '{{from}}–{{to}} kokungu-{{total}}',
+    paginationLabel: 'Amakhasi okudayisa',
   },
   rapid: {
     keepScanning: 'Qhubeka uskena. Ukuskena ngakunye kuthengisa ucezu olu-1.',

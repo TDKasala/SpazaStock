@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ScanBarcode, ShoppingCart, Plus, Minus, Barcode, Layers, CloudOff } from 'lucide-react';
+import { ScanBarcode, ShoppingCart, Plus, Minus, Barcode, Layers, CloudOff, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { Product, Sale } from '../../types';
 import { useLanguage } from '../../context/LanguageContext';
 import { useShopId } from '../../context/ShopContext';
@@ -20,7 +20,7 @@ export interface SalesRegisterProps {
   refreshTrigger?: number;
 }
 
-const RECENT_LIMIT = 15;
+const PAGE_SIZE = 15;
 
 export const SalesRegister: React.FC<SalesRegisterProps> = ({ register, onOpenScanner, refreshTrigger }) => {
   const { t } = useLanguage();
@@ -28,6 +28,7 @@ export const SalesRegister: React.FC<SalesRegisterProps> = ({ register, onOpenSc
   const { lastSaleResult, error, isProcessing, sellProduct, sellBarcode, clearError, syncStates } = register;
 
   const [recentSales, setRecentSales] = useState<Sale[]>([]);
+  const [page, setPage] = useState(0);
   const [todaySales, setTodaySales] = useState<Sale[]>([]);
   const [productNames, setProductNames] = useState<Record<string, string>>({});
   const [manualBarcode, setManualBarcode] = useState('');
@@ -47,7 +48,7 @@ export const SalesRegister: React.FC<SalesRegisterProps> = ({ register, onOpenSc
         getProducts(shopId, { includeArchived: true }),
       ]);
       if (cancelled) return;
-      setRecentSales(sales.slice(0, RECENT_LIMIT));
+      setRecentSales(sales);
       setTodaySales(today);
       setProductNames(Object.fromEntries(products.map((p) => [p.id, p.name])));
     })();
@@ -55,6 +56,10 @@ export const SalesRegister: React.FC<SalesRegisterProps> = ({ register, onOpenSc
       cancelled = true;
     };
   }, [shopId, refreshTrigger, lastSaleResult]);
+
+  useEffect(() => {
+    setPage(0);
+  }, [shopId, lastSaleResult]);
 
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -88,6 +93,12 @@ export const SalesRegister: React.FC<SalesRegisterProps> = ({ register, onOpenSc
   const todayTotalRevenue = todaySales.reduce((sum, s) => sum + saleNetAmount(s), 0);
   const todayTotalUnits = todaySales.reduce((sum, s) => sum + saleNetQuantity(s), 0);
   const firstAllocation = lastSaleResult?.allocations[0];
+
+  const pageCount = Math.max(1, Math.ceil(recentSales.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount - 1);
+  const pageStart = currentPage * PAGE_SIZE;
+  const pageEnd = Math.min(pageStart + PAGE_SIZE, recentSales.length);
+  const pageSales = recentSales.slice(pageStart, pageEnd);
 
   return (
     <div className="space-y-5 pb-24">
@@ -194,7 +205,7 @@ export const SalesRegister: React.FC<SalesRegisterProps> = ({ register, onOpenSc
 
         {recentSales.length > 0 ? (
           <div className="space-y-2">
-            {recentSales.map((sale) => (
+            {pageSales.map((sale) => (
               <div
                 key={sale.id}
                 className="p-3.5 bg-zinc-950 rounded-2xl border border-zinc-800 flex items-center justify-between gap-3 text-xs"
@@ -231,6 +242,33 @@ export const SalesRegister: React.FC<SalesRegisterProps> = ({ register, onOpenSc
                 </div>
               </div>
             ))}
+            {recentSales.length > PAGE_SIZE && (
+              <nav className="flex items-center justify-between gap-3 pt-1" aria-label={t('sales.paginationLabel')}>
+                <p className="text-xs text-zinc-400" aria-live="polite">
+                  {t('sales.pageRange', { from: pageStart + 1, to: pageEnd, total: recentSales.length })}
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage(currentPage - 1)}
+                    disabled={currentPage === 0}
+                    leftIcon={<ChevronLeft className="w-4 h-4" />}
+                  >
+                    {t('sales.previousPage')}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage(currentPage + 1)}
+                    disabled={currentPage >= pageCount - 1}
+                    rightIcon={<ChevronRight className="w-4 h-4" />}
+                  >
+                    {t('sales.nextPage')}
+                  </Button>
+                </div>
+              </nav>
+            )}
           </div>
         ) : (
           <div className="p-8 bg-zinc-900/40 rounded-2xl border border-dashed border-zinc-800 text-center text-xs text-zinc-400">

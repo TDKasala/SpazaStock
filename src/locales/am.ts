@@ -620,6 +620,10 @@ export const am: Translations = {
     totalPrice: 'ጠቅላላ ዋጋ፦',
     confirmSale: 'ሽያጩን አረጋግጥ',
     voidedCount: '{{count}} ተመልሷል',
+    previousPage: 'ቀዳሚ',
+    nextPage: 'ቀጣይ',
+    pageRange: 'ከ{{total}} ውስጥ {{from}}–{{to}}',
+    paginationLabel: 'የግብይት ገጾች',
   },
   rapid: {
     keepScanning: 'ስካን ማድረግዎን ይቀጥሉ። እያንዳንዱ ስካን 1 ይሸጣል።',

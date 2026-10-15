@@ -622,6 +622,10 @@ export const bn: Translations = {
     totalPrice: 'মোট মূল্য:',
     confirmSale: 'বিক্রি নিশ্চিত',
     voidedCount: '{{count}} বাতিল',
+    previousPage: 'আগের',
+    nextPage: 'পরের',
+    pageRange: '{{total}}টির মধ্যে {{from}}–{{to}}',
+    paginationLabel: 'লেনদেনের পাতা',
   },
   rapid: {
     keepScanning: 'স্ক্যান চালিয়ে যান। প্রতি স্ক্যানে ১ ইউনিট বিক্রি।',
