@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { CalendarClock, ShieldCheck, AlertTriangle, AlertCircle, Clock, Plus, ClipboardCheck, Ban } from 'lucide-react';
+import { CalendarClock, ShieldCheck, AlertCircle, Clock, Plus, ClipboardCheck, Ban } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { useShop, useShopId } from '../../context/ShopContext';
 import { canManageExpiry } from '../../lib/shopSettings';
@@ -125,14 +125,6 @@ export const AlertsView: React.FC<AlertsViewProps> = ({
         >
           {t('scanner.scanAction')}
         </Button>
-      </div>
-
-      <div className="bg-amber-950/20 border border-amber-900/50 rounded-2xl p-4 flex items-start gap-3">
-        <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
-        <div className="text-xs text-zinc-300">
-          <span className="font-semibold text-zinc-100 block mb-0.5">{t('expiry.policyTitle')}</span>
-          {t('expiry.policyMessage', { days: settings.reminderDays.join(', ') })}
-        </div>
       </div>
 
       <PushAlertsToggle />
