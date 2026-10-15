@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Always push after changes
 
-After every change to the repository, commit it and push to `origin` (https://github.com/TDKasala/SpazaStock), branch `main`, before ending the turn.
+After every change to the repository, land it on `main` and push to `origin` (https://github.com/TDKasala/SpazaStock) before ending the turn. Do not leave completed work only on a feature branch—merge (or fast-forward) into `main` and push `main`.
 
 - Run the relevant checks first (`npm run lint`, `npm test`, `npm run build`) and only push when they pass. If they fail, fix the failure or tell the user why nothing was pushed.
 - Use a clear commit message that describes what changed.
