@@ -76,6 +76,10 @@ export interface Product {
   updatedAt: string;
   /** Set when archived: hidden from lists, scans and alerts, but its history is kept. */
   archivedAt?: string | null;
+  /** Optional brand, e.g. Coca-Cola. */
+  brand?: string | null;
+  /** Optional size of the single item, e.g. 330ml. */
+  size?: string | null;
 }
 
 export interface ProductRegistrationInput {
@@ -84,6 +88,47 @@ export interface ProductRegistrationInput {
   category: ProductCategory;
   buyingPrice?: number | null;
   sellingPrice?: number | null;
+  brand?: string | null;
+  size?: string | null;
+}
+
+/**
+ * A way a product is bought, e.g. a case of 24. The conversion never changes: a different size is
+ * a new packaging and the old one is retired.
+ */
+export interface ProductPackaging {
+  id: string;
+  shopId: string;
+  productId: string;
+  name: string;
+  unitsPerPackage: number;
+  createdAt: string;
+  updatedAt: string;
+  retiredAt: string | null;
+}
+
+/** An extra barcode for a product: another single-item code (no packaging) or a pack or case. */
+export interface ProductBarcode {
+  id: string;
+  shopId: string;
+  productId: string;
+  /** Null: the barcode is on the single item. */
+  packagingId: string | null;
+  barcode: string;
+  createdAt: string;
+  updatedAt: string;
+  /** Unlinked barcodes are kept as history and no longer match scans. */
+  unlinkedAt: string | null;
+  unlinkReason: string | null;
+}
+
+/** What a scanned barcode means in this shop. */
+export interface ResolvedBarcode {
+  product: Product;
+  /** The pack or case the barcode is on; null for the single item. */
+  packaging: ProductPackaging | null;
+  /** The alias that matched; null when it is the product's own barcode. */
+  barcodeId: string | null;
 }
 
 /** Every editable field; an edit always sends the full set, so the last write wins. */
@@ -98,6 +143,13 @@ export interface StockBatch {
   expiryDate: string | null; // YYYY-MM-DD or null
   costPricePerUnit?: number | null;
   receivedAt: string;
+  /** Set when the delivery was counted in packages; quantities above are always in units. */
+  packagingId?: string | null;
+  packageQuantity?: number | null;
+  /** The conversion used when received, kept even if the packaging is retired later. */
+  unitsPerPackage?: number | null;
+  /** The alias that was scanned to receive it, so a mistaken link can be corrected. */
+  receivedBarcodeId?: string | null;
 }
 
 export type StockMovementType =
@@ -123,10 +175,15 @@ export interface StockMovement {
 
 export interface StockInInput {
   productId: string;
+  /** Units; with a packaging, the number of packages instead. */
   quantity: number;
   expiryDate?: string | null;
   costPricePerUnit?: number | null;
   idempotencyKey?: string;
+  /** Counts `quantity` in this packaging's packages. */
+  packagingId?: string | null;
+  /** The alias that was scanned, recorded on the batch. */
+  barcodeId?: string | null;
 }
 
 export interface StockInResult {

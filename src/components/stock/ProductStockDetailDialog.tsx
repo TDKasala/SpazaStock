@@ -10,6 +10,8 @@ import { can } from '../../lib/permissions';
 import { getProductBatches } from '../../services/stockService';
 import { ProductEditDialog } from './ProductEditDialog';
 import { ArchiveProductDialog } from './ArchiveProductDialog';
+import { ProductBarcodesSection } from './ProductBarcodesSection';
+import { brandAndSize } from './packagingLabel';
 
 export interface ProductStockDetailDialogProps {
   isOpen: boolean;
@@ -150,6 +152,7 @@ export const ProductStockDetailDialog: React.FC<ProductStockDetailDialogProps> =
               {product.barcode}
             </span>
           </div>
+          {brandAndSize(product) && <p className="text-xs text-zinc-300">{brandAndSize(product)}</p>}
 
           <div className="grid grid-cols-2 gap-2 pt-1">
             <div className="p-3 rounded-xl bg-zinc-900 border border-zinc-800">
@@ -211,6 +214,14 @@ export const ProductStockDetailDialog: React.FC<ProductStockDetailDialogProps> =
                         {t('stockDetail.received', { date: new Date(batch.receivedAt).toLocaleDateString() })}
                         <span className="font-mono ml-1.5">{batchCode(batch.id)}</span>
                       </span>
+                      {batch.packageQuantity && batch.unitsPerPackage ? (
+                        <span className="text-[10px] text-zinc-400 block">
+                          {t('stockDetail.receivedPackages', {
+                            count: batch.packageQuantity,
+                            units: batch.unitsPerPackage,
+                          })}
+                        </span>
+                      ) : null}
                       {flagged && (
                         <span className="mt-0.5 inline-flex items-center gap-1 text-[10px] font-bold uppercase text-rose-300">
                           <Ban className="w-3 h-3" />
@@ -256,6 +267,13 @@ export const ProductStockDetailDialog: React.FC<ProductStockDetailDialogProps> =
             </div>
           )}
         </div>
+
+        <ProductBarcodesSection
+          product={product}
+          canEdit={canEdit}
+          canAdjust={can(settings.role, 'stock.adjust')}
+          refreshTrigger={refreshTrigger}
+        />
       </div>
     </Dialog>
   );

@@ -3,7 +3,9 @@ import type {
   ExpiryAlert,
   ExpiryResolutionAction,
   Product,
+  ProductBarcode,
   ProductEditInput,
+  ProductPackaging,
   Sale,
   StockBatch,
   StockDiscrepancy,
@@ -34,6 +36,13 @@ export type OutboxOperation =
         idempotencyKey: string;
         occurredAt: string;
       };
+    }
+  | { type: 'packaging_create'; payload: { packaging: ProductPackaging } }
+  | { type: 'packaging_retire'; payload: { packagingId: string } }
+  | { type: 'barcode_link'; payload: { link: ProductBarcode } }
+  | {
+      type: 'barcode_unlink';
+      payload: { barcodeId: string; reason: string; reverseUnsold: boolean; occurredAt: string };
     };
 
 export type OutboxItem = OutboxOperation & {
@@ -65,6 +74,8 @@ export type SpazaDatabase = Dexie & {
   sales: EntityTable<Sale, 'id'>;
   discrepancies: EntityTable<StockDiscrepancy, 'id'>;
   expiryAlerts: EntityTable<ExpiryAlert, 'id'>;
+  packagings: EntityTable<ProductPackaging, 'id'>;
+  barcodes: EntityTable<ProductBarcode, 'id'>;
   outbox: EntityTable<OutboxItem, 'seq'>;
   meta: EntityTable<MetaRow, 'key'>;
 };
@@ -85,6 +96,11 @@ db.version(2).stores({
   expiryAlerts: 'id, shopId, batchId, productId',
 });
 
+db.version(3).stores({
+  packagings: 'id, shopId, productId, [shopId+productId]',
+  barcodes: 'id, shopId, productId, packagingId, [shopId+barcode]',
+});
+
 /** Every table the write path touches, for `db.transaction('rw', WRITE_TABLES, ...)`. */
 export const WRITE_TABLES = [
   db.products,
@@ -93,6 +109,8 @@ export const WRITE_TABLES = [
   db.sales,
   db.discrepancies,
   db.expiryAlerts,
+  db.packagings,
+  db.barcodes,
   db.outbox,
 ];
 

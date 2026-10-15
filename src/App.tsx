@@ -15,6 +15,8 @@ import { ProductFoundDialog } from './components/scanner/ProductFoundDialog';
 import { ProductRegisterDialog } from './components/scanner/ProductRegisterDialog';
 import { QuickStockInModal } from './components/stock/QuickStockInModal';
 import { ProductStockDetailDialog } from './components/stock/ProductStockDetailDialog';
+import { UnknownBarcodeDialog } from './components/stock/UnknownBarcodeDialog';
+import { LinkBarcodeDialog } from './components/stock/LinkBarcodeDialog';
 import { LandingPage } from './components/auth/LandingPage';
 import { ShopOnboarding } from './components/auth/ShopOnboarding';
 import { InviteAcceptScreen } from './components/auth/InviteAcceptScreen';
@@ -26,13 +28,13 @@ import { LoadingState } from './components/ui/LoadingState';
 import { RapidSellPanel, RapidSellSummary } from './components/sales/RapidSellPanel';
 import { useSaleRegister } from './hooks/useSaleRegister';
 import { useExpiryAlerts } from './hooks/useExpiryAlerts';
-import { isArchived, searchProductByBarcode } from './services/productService';
+import { isArchived, resolveBarcode } from './services/productService';
 import { onDataChanged } from './lib/events';
 import { refreshPushSubscription } from './lib/push';
 import { captureInviteFromUrl } from './lib/invite';
 import { can } from './lib/permissions';
 import { clearFreshSignIn, hasFreshSignIn, postSignInDestination } from './lib/platformAdmin';
-import type { Product, ScanMode } from './types';
+import type { Product, ResolvedBarcode, ScanMode } from './types';
 
 // The scanner (and its WASM decoder fallback) is only needed once the camera opens.
 const BarcodeScannerModal = lazy(() =>
@@ -52,6 +54,12 @@ export type AppTab = 'dashboard' | 'stock' | 'sales' | 'alerts' | 'team';
 interface RegisterRequest {
   barcode: string;
   mode: ScanMode;
+}
+
+/** The pack or case barcode a delivery was scanned with, carried into stock-in. */
+interface StockInVia {
+  packagingId: string | null;
+  barcodeId: string | null;
 }
 
 /** Notifications open the app at `/?tab=alerts`. */
@@ -93,9 +101,23 @@ export function AppContent() {
   const [foundProduct, setFoundProduct] = useState<Product | null>(null);
   const [registerRequest, setRegisterRequest] = useState<RegisterRequest | null>(null);
   const [stockInProduct, setStockInProduct] = useState<Product | null>(null);
+  const [stockInVia, setStockInVia] = useState<StockInVia | null>(null);
+  const [unknownStockBarcode, setUnknownStockBarcode] = useState<string | null>(null);
+  const [linkBarcode, setLinkBarcode] = useState<string | null>(null);
   const [inspectedProduct, setInspectedProduct] = useState<Product | null>(null);
 
   useEffect(() => onDataChanged(() => setRefreshCounter((n) => n + 1)), []);
+
+  const openStockIn = useCallback((product: Product, via: StockInVia | null = null) => {
+    setStockInVia(via);
+    setStockInProduct(product);
+  }, []);
+
+  const openStockInResolved = (resolved: ResolvedBarcode) =>
+    openStockIn(
+      resolved.product,
+      resolved.barcodeId ? { packagingId: resolved.packaging?.id ?? null, barcodeId: resolved.barcodeId } : null
+    );
 
   const handleUnknownSaleBarcode = useCallback((barcode: string) => {
     setScanMode(null);
@@ -128,11 +150,14 @@ export function AppContent() {
 
     setIsSearching(true);
     try {
-      const product = await searchProductByBarcode(barcode, shopId);
-      if (!product) setRegisterRequest({ barcode, mode });
+      const resolved = await resolveBarcode(barcode, shopId);
+      // A delivery with an unknown barcode may be a product the shop already has (a case, a
+      // new supplier code), so linking is offered before registering it.
+      if (!resolved && mode === 'stock_in') setUnknownStockBarcode(barcode);
+      else if (!resolved) setRegisterRequest({ barcode, mode });
       // An archived product opens the product card, which explains it and offers Restore.
-      else if (mode === 'stock_in' && !isArchived(product)) setStockInProduct(product);
-      else setFoundProduct(product);
+      else if (mode === 'stock_in' && !isArchived(resolved.product)) openStockInResolved(resolved);
+      else setFoundProduct(resolved.product);
     } finally {
       setIsSearching(false);
     }
@@ -141,7 +166,7 @@ export function AppContent() {
   const handleProductRegistered = (product: Product) => {
     const mode = registerRequest?.mode ?? 'lookup';
     setRegisterRequest(null);
-    if (mode === 'stock_in') setStockInProduct(product);
+    if (mode === 'stock_in') openStockIn(product);
     else setFoundProduct(product);
   };
 
@@ -169,7 +194,7 @@ export function AppContent() {
           <StockView
             onOpenScanner={() => openScanner('stock_in')}
             onSelectProduct={setInspectedProduct}
-            onQuickStockIn={setStockInProduct}
+            onQuickStockIn={openStockIn}
             refreshTrigger={refreshCounter}
           />
         )}
@@ -186,7 +211,7 @@ export function AppContent() {
             isLoading={expiry.isLoading}
             onOpenScanner={() => openScanner('lookup')}
             onSelectProduct={setInspectedProduct}
-            onQuickStockIn={setStockInProduct}
+            onQuickStockIn={openStockIn}
             refreshTrigger={refreshCounter}
           />
         )}
@@ -220,7 +245,7 @@ export function AppContent() {
         onQuickAction={(action, product) => {
           setFoundProduct(null);
           if (action === 'add_stock') {
-            setStockInProduct(product);
+            openStockIn(product);
           } else {
             setCurrentTab('sales');
             void saleRegister.sellProduct(product, 1);
@@ -236,9 +261,36 @@ export function AppContent() {
         onProductRegistered={handleProductRegistered}
       />
 
+      <UnknownBarcodeDialog
+        isOpen={unknownStockBarcode !== null}
+        barcode={unknownStockBarcode ?? ''}
+        canLink={can(settings.role, 'products.edit')}
+        onClose={() => setUnknownStockBarcode(null)}
+        onLinkExisting={() => {
+          setLinkBarcode(unknownStockBarcode);
+          setUnknownStockBarcode(null);
+        }}
+        onCreateNew={() => {
+          setRegisterRequest({ barcode: unknownStockBarcode ?? '', mode: 'stock_in' });
+          setUnknownStockBarcode(null);
+        }}
+      />
+
+      <LinkBarcodeDialog
+        isOpen={linkBarcode !== null}
+        barcode={linkBarcode ?? ''}
+        onClose={() => setLinkBarcode(null)}
+        onLinked={(resolved) => {
+          setLinkBarcode(null);
+          openStockInResolved(resolved);
+        }}
+      />
+
       <QuickStockInModal
         isOpen={stockInProduct !== null}
         product={stockInProduct}
+        packagingId={stockInVia?.packagingId ?? null}
+        barcodeId={stockInVia?.barcodeId ?? null}
         onClose={() => setStockInProduct(null)}
         onStockInAnother={() => {
           setStockInProduct(null);
@@ -253,7 +305,7 @@ export function AppContent() {
         onClose={() => setInspectedProduct(null)}
         onOpenStockIn={(product) => {
           setInspectedProduct(null);
-          setStockInProduct(product);
+          openStockIn(product);
         }}
         onProductChanged={setInspectedProduct}
       />

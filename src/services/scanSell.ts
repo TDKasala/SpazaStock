@@ -1,14 +1,15 @@
-import type { Product, SaleResult } from '../types';
+import type { Product, ProductPackaging, SaleResult } from '../types';
 import { newId } from '../lib/ids';
 import { createSerialQueue, type SerialQueue } from '../lib/serialQueue';
-import { isArchived, searchProductByBarcode } from './productService';
+import { isArchived, resolveBarcode } from './productService';
 import { recordSale, voidSale, type VoidSaleResult } from './salesService';
 
 /** Staff may undo their own sales for this long; the server enforces the same limit. */
 export const UNDO_WINDOW_MS = 15 * 60 * 1000;
 
 export type ScanSellOutcome =
-  | { kind: 'sold'; result: SaleResult }
+  /** `packaging` is set when a pack or case barcode sold the whole package. */
+  | { kind: 'sold'; result: SaleResult; packaging?: ProductPackaging | null }
   | { kind: 'duplicate' }
   | { kind: 'unknown_barcode'; barcode: string }
   | { kind: 'archived'; product: Product }
@@ -28,6 +29,7 @@ export type ScanVoidOutcome =
  * reuses its key and can never be recorded twice.
  */
 export interface ScanSeller {
+  /** Sells one unit, or a whole package when the barcode is on a pack or case. */
   scan(barcode: string, idempotencyKey?: string): Promise<ScanSellOutcome>;
   sell(product: Product, quantity: number, idempotencyKey?: string): Promise<ScanSellOutcome>;
   void(saleId: string, quantity: number, idempotencyKey?: string): Promise<ScanVoidOutcome>;
@@ -59,10 +61,13 @@ export function createScanSeller(shopId: string, queue: SerialQueue = createSeri
       const clean = barcode.trim();
       return queue.run(async (): Promise<ScanSellOutcome> => {
         if (!clean) return { kind: 'error', message: 'Empty barcode.' };
-        const product = await searchProductByBarcode(clean, shopId);
-        if (!product) return { kind: 'unknown_barcode', barcode: clean };
+        const resolved = await resolveBarcode(clean, shopId);
+        if (!resolved) return { kind: 'unknown_barcode', barcode: clean };
+        const { product, packaging } = resolved;
         if (isArchived(product)) return { kind: 'archived', product };
-        return sellNow(product, 1, idempotencyKey);
+        // A pack or case barcode sells the whole package at the unit price per unit.
+        const outcome = await sellNow(product, packaging?.unitsPerPackage ?? 1, idempotencyKey);
+        return outcome.kind === 'sold' && packaging ? { ...outcome, packaging } : outcome;
       });
     },
 

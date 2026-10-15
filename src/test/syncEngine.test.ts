@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { backoffMs, isPermanentError, MAX_ATTEMPTS, pullChanges, pushOutbox } from '../sync/syncEngine';
-import { createProduct, setProductArchived, updateProduct } from '../services/productService';
+import { createProduct, resolveBarcode, setProductArchived, updateProduct } from '../services/productService';
+import { createPackaging, linkBarcode, unlinkBarcode } from '../services/barcodeLinkService';
 import { saveShopSettings } from '../lib/shopSettings';
 import { stockIn, getProductTotalStock } from '../services/stockService';
 import { recordSale, voidSale } from '../services/salesService';
@@ -616,5 +617,272 @@ describe('pullChanges', () => {
     await pullChanges(fake.client, SHOP_ID);
     expect(await db.products.count()).toBe(2);
     expect(await getMeta(`pull:${SHOP_ID}:products`)).toBe('2026-10-14T09:00:00.000Z');
+  });
+});
+
+describe('packagings and barcode links', () => {
+  const SERVER_TIME = '2026-10-15T09:00:00.000Z';
+
+  /** Answers the packaging and link functions like the real ones. */
+  function linkRpcs(name: string, args: Record<string, unknown>) {
+    if (name === 'create_product_packaging') {
+      return {
+        data: {
+          id: args.p_id,
+          shop_id: args.p_shop_id,
+          product_id: args.p_product_id,
+          name: args.p_name,
+          units_per_package: args.p_units_per_package,
+          created_at: args.p_created_at,
+          updated_at: SERVER_TIME,
+          retired_at: null,
+        },
+        error: null,
+      };
+    }
+    if (name === 'link_product_barcode') {
+      return {
+        data: {
+          id: args.p_id,
+          shop_id: args.p_shop_id,
+          product_id: args.p_product_id,
+          packaging_id: args.p_packaging_id,
+          barcode: args.p_barcode,
+          created_at: args.p_created_at,
+          updated_at: SERVER_TIME,
+          unlinked_at: null,
+          unlink_reason: null,
+        },
+        error: null,
+      };
+    }
+    return acceptAll(name, args);
+  }
+
+  async function caseDelivery() {
+    const product = await makeProduct();
+    const { packaging } = await createPackaging({ productId: product.id, name: 'Case', unitsPerPackage: 24 }, SHOP_ID);
+    const { link } = await linkBarcode(
+      { productId: product.id, packagingId: packaging!.id, barcode: '16001087361257' },
+      SHOP_ID
+    );
+    const { result } = await stockIn(
+      { productId: product.id, quantity: 2, packagingId: packaging!.id, barcodeId: link!.id, idempotencyKey: 'case-1' },
+      SHOP_ID
+    );
+    return { product, packaging: packaging!, link: link!, batch: result!.batch };
+  }
+
+  beforeEach(async () => {
+    await resetLocalDatabase();
+    await saveShopSettings(SHOP_ID, { role: 'owner' });
+  });
+
+  it('pushes the packaging, the link and the package delivery in order', async () => {
+    const { product, packaging, link, batch } = await caseDelivery();
+    const fake = createFakeSupabase({ rpc: linkRpcs });
+
+    expect(await pushOutbox(fake.client, SHOP_ID)).toEqual({ pushed: 4, failed: 0, retryAt: null });
+    expect(fake.rpc.mock.calls.map(([name]) => name)).toEqual([
+      'upsert_product',
+      'create_product_packaging',
+      'link_product_barcode',
+      'record_stock_in',
+    ]);
+    expect(fake.rpc.mock.calls[2][1]).toMatchObject({
+      p_id: link.id,
+      p_product_id: product.id,
+      p_packaging_id: packaging.id,
+      p_barcode: '16001087361257',
+    });
+    expect(fake.rpc.mock.calls[3][1]).toMatchObject({
+      p_batch_id: batch.id,
+      p_quantity: 48,
+      p_packaging_id: packaging.id,
+      p_package_quantity: 2,
+      p_barcode_id: link.id,
+      p_idempotency_key: 'case-1',
+    });
+    expect(await db.barcodes.get(link.id)).toMatchObject({ updatedAt: SERVER_TIME });
+  });
+
+  it('leaves the packaging parameters out of an ordinary delivery', async () => {
+    const product = await makeProduct();
+    await db.outbox.clear();
+    await stockIn({ productId: product.id, quantity: 3 }, SHOP_ID);
+    await updateProduct(product.id, { barcode: product.barcode, name: 'Simba', category: 'snacks' }, SHOP_ID);
+    const fake = createFakeSupabase({ rpc: acceptAll });
+    await pushOutbox(fake.client, SHOP_ID);
+
+    const stockArgs = fake.rpc.mock.calls.find(([name]) => name === 'record_stock_in')![1];
+    expect(Object.keys(stockArgs).filter((k) => /packag|barcode_id/.test(k))).toEqual([]);
+    const editArgs = fake.rpc.mock.calls.find(([name]) => name === 'update_product')![1];
+    expect(editArgs).not.toHaveProperty('p_brand');
+  });
+
+  it('remaps queued packagings and links when the product is remapped', async () => {
+    const { product, packaging, link } = await caseDelivery();
+    const canonicalId = '33333333-3333-4333-8333-333333333333';
+    const fake = createFakeSupabase({
+      rpc: (name, args) =>
+        name === 'upsert_product'
+          ? { data: productRow(product, { id: canonicalId }), error: null }
+          : linkRpcs(name, args),
+    });
+
+    expect((await pushOutbox(fake.client, SHOP_ID)).pushed).toBe(4);
+    for (const call of fake.rpc.mock.calls.slice(1)) {
+      expect(call[1]).toMatchObject({ p_product_id: canonicalId });
+    }
+    expect((await db.packagings.get(packaging.id))?.productId).toBe(canonicalId);
+    expect((await db.barcodes.get(link.id))?.productId).toBe(canonicalId);
+    expect((await resolveBarcode('16001087361257', SHOP_ID))?.product.id).toBe(canonicalId);
+  });
+
+  it('sends a retried delivery with the same ids, so stock is added once', async () => {
+    const { batch } = await caseDelivery();
+    let failStockIn = true;
+    const fake = createFakeSupabase({
+      rpc: (name, args) => {
+        if (name === 'record_stock_in' && failStockIn) {
+          failStockIn = false;
+          throw new TypeError('Failed to fetch');
+        }
+        return linkRpcs(name, args);
+      },
+    });
+
+    await pushOutbox(fake.client, SHOP_ID, 0);
+    await pushOutbox(fake.client, SHOP_ID, 60_000);
+    const stockCalls = fake.rpc.mock.calls.filter(([name]) => name === 'record_stock_in').map(([, args]) => args);
+    expect(stockCalls).toHaveLength(2);
+    expect(stockCalls[1]).toEqual(stockCalls[0]);
+    expect(stockCalls[0]).toMatchObject({ p_batch_id: batch.id, p_idempotency_key: 'case-1' });
+    expect(await db.outbox.count()).toBe(0);
+    expect(await getProductTotalStock(batch.productId, SHOP_ID)).toBe(48);
+  });
+
+  it('drops only the link when the server refuses it, and keeps the delivery', async () => {
+    const { product, link, batch } = await caseDelivery();
+    const fake = createFakeSupabase({
+      rpc: (name, args) =>
+        name === 'link_product_barcode'
+          ? { data: null, error: { code: '23505', message: 'Barcode 16001087361257 is already used by Coke.' } }
+          : linkRpcs(name, args),
+    });
+
+    const result = await pushOutbox(fake.client, SHOP_ID);
+    expect(result).toMatchObject({ pushed: 3, failed: 1 });
+    expect(await db.barcodes.get(link.id)).toBeUndefined();
+    expect(await resolveBarcode('16001087361257', SHOP_ID)).toBeNull();
+    expect((await db.batches.get(batch.id))?.receivedBarcodeId).toBeNull();
+    const stockArgs = fake.rpc.mock.calls.find(([name]) => name === 'record_stock_in')![1];
+    expect(stockArgs).not.toHaveProperty('p_barcode_id');
+    expect(stockArgs).toMatchObject({ p_quantity: 48 });
+    expect(await getProductTotalStock(product.id, SHOP_ID)).toBe(48);
+  });
+
+  it('keeps the units when the packaging never reached the server', async () => {
+    const { product, batch } = await caseDelivery();
+    const fake = createFakeSupabase({
+      rpc: (name, args) => {
+        if (name === 'create_product_packaging') return { data: null, error: { code: '42501', message: 'denied' } };
+        if (name === 'record_stock_in' && args.p_packaging_id) {
+          return { data: null, error: { code: 'P0002', message: 'Packaging not found for this product.' } };
+        }
+        return linkRpcs(name, args);
+      },
+    });
+
+    await pushOutbox(fake.client, SHOP_ID);
+    const stockCalls = fake.rpc.mock.calls.filter(([name]) => name === 'record_stock_in').map(([, args]) => args);
+    expect(stockCalls.at(-1)).toMatchObject({ p_batch_id: batch.id, p_quantity: 48 });
+    expect(stockCalls.at(-1)).not.toHaveProperty('p_packaging_id');
+    expect(await db.batches.get(batch.id)).toMatchObject({ quantity: 48, packagingId: null });
+    expect(await getProductTotalStock(product.id, SHOP_ID)).toBe(48);
+  });
+
+  it('applies what the server reversed when a link is undone', async () => {
+    const { link, batch } = await caseDelivery();
+    await pushOutbox(createFakeSupabase({ rpc: linkRpcs }).client, SHOP_ID);
+    await unlinkBarcode({ barcodeId: link.id, reason: 'Wrong product', reverseUnsold: true }, SHOP_ID);
+    expect((await db.batches.get(batch.id))?.quantity).toBe(0);
+
+    // Another phone sold 2 from the delivery first, so the server kept it.
+    const fake = createFakeSupabase({
+      rpc: (name) =>
+        name === 'unlink_product_barcode'
+          ? {
+              data: {
+                barcode: {
+                  ...linkRpcs('link_product_barcode', {
+                    p_id: link.id,
+                    p_shop_id: SHOP_ID,
+                    p_product_id: link.productId,
+                    p_packaging_id: link.packagingId,
+                    p_barcode: link.barcode,
+                    p_created_at: link.createdAt,
+                  }).data,
+                  unlinked_at: SERVER_TIME,
+                  unlink_reason: 'Wrong product',
+                },
+                reversed: [],
+                kept: [{ batch_id: batch.id, quantity: 46, initial_quantity: 48 }],
+              },
+              error: null,
+            }
+          : { data: {}, error: null },
+    });
+    await pushOutbox(fake.client, SHOP_ID);
+    expect(fake.rpc.mock.calls[0]).toEqual([
+      'unlink_product_barcode',
+      {
+        p_shop_id: SHOP_ID,
+        p_barcode_id: link.id,
+        p_reason: 'Wrong product',
+        p_reverse_unsold: true,
+        p_occurred_at: expect.any(String),
+      },
+    ]);
+    expect((await db.batches.get(batch.id))?.quantity).toBe(46);
+    expect(await db.barcodes.get(link.id)).toMatchObject({ unlinkedAt: SERVER_TIME, unlinkReason: 'Wrong product' });
+  });
+
+  it('pulls packagings and links made on other phones', async () => {
+    const product = await makeProduct();
+    await db.outbox.clear();
+    const fake = createFakeSupabase({
+      rows: {
+        product_packagings: [
+          {
+            id: 'p-case',
+            shop_id: SHOP_ID,
+            product_id: product.id,
+            name: 'Case',
+            units_per_package: 24,
+            created_at: SERVER_TIME,
+            updated_at: SERVER_TIME,
+            retired_at: null,
+          },
+        ],
+        product_barcodes: [
+          {
+            id: 'b-case',
+            shop_id: SHOP_ID,
+            product_id: product.id,
+            packaging_id: 'p-case',
+            barcode: '16001087361257',
+            created_at: SERVER_TIME,
+            updated_at: SERVER_TIME,
+            unlinked_at: null,
+            unlink_reason: null,
+          },
+        ],
+      },
+    });
+
+    expect(await pullChanges(fake.client, SHOP_ID)).toBe(2);
+    const resolved = await resolveBarcode('16001087361257', SHOP_ID);
+    expect(resolved).toMatchObject({ product: { id: product.id }, packaging: { unitsPerPackage: 24 }, barcodeId: 'b-case' });
   });
 });

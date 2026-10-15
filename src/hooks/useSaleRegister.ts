@@ -105,11 +105,18 @@ export function useSaleRegister(shopId: string, onUnknownBarcode: (barcode: stri
           ]);
           announce(
             'success',
-            t('rapid.soldNotice', {
-              count: result.sale.quantity,
-              name: result.product.name,
-              left: result.remainingTotalStock,
-            })
+            outcome.packaging
+              ? t('rapid.soldPackageNotice', {
+                  package: outcome.packaging.name,
+                  count: result.sale.quantity,
+                  name: result.product.name,
+                  left: result.remainingTotalStock,
+                })
+              : t('rapid.soldNotice', {
+                  count: result.sale.quantity,
+                  name: result.product.name,
+                  left: result.remainingTotalStock,
+                })
           );
           void refreshSyncStates();
           return true;

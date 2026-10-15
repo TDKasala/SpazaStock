@@ -32,9 +32,13 @@ function sumQuantity(batches: StockBatch[]): number {
   return batches.reduce((sum, b) => sum + b.quantity, 0);
 }
 
+/** The most units one delivery can add, matching record_stock_in. */
+export const MAX_STOCK_IN_UNITS = 1_000_000;
+
 /**
  * Records a delivery as its own batch (so its expiry date is preserved) and queues it for sync.
- * Stock only ever increases additively; prior batches are never overwritten.
+ * Stock only ever increases additively; prior batches are never overwritten. With a packaging,
+ * `quantity` counts packages and is converted to units; the batch keeps the conversion used.
  */
 export async function stockIn(
   input: StockInInput,
@@ -43,13 +47,10 @@ export async function stockIn(
   const productId = input.productId?.trim();
   if (!productId) return { error: 'Product ID is required.' };
 
-  if (
-    typeof input.quantity !== 'number' ||
-    !Number.isInteger(input.quantity) ||
-    input.quantity <= 0
-  ) {
+  if (typeof input.quantity !== 'number' || !Number.isInteger(input.quantity) || input.quantity <= 0) {
     return { error: 'Quantity must be a positive whole integer greater than zero.' };
   }
+  const packagingId = input.packagingId || null;
 
   let expiryDate: string | null = null;
   if (input.expiryDate && input.expiryDate.trim()) {
@@ -66,36 +67,56 @@ export async function stockIn(
   const idempotencyKey = input.idempotencyKey?.trim() || undefined;
 
   const outcome = await withWriteLock(() =>
-    db.transaction('rw', db.products, db.batches, db.movements, db.outbox, async () => {
+    db.transaction('rw', [db.products, db.packagings, db.barcodes, db.batches, db.movements, db.outbox], async () => {
       const product = await db.products.get(productId);
       if (!product || product.shopId !== shopId) {
         return { error: 'Product not found in active shop catalog.' };
       }
 
+      // A retired packaging is still accepted, like the server: the delivery may predate it.
+      let unitsPerPackage: number | null = null;
+      if (packagingId) {
+        const packaging = await db.packagings.get(packagingId);
+        if (!packaging || packaging.shopId !== shopId || packaging.productId !== productId) {
+          return { error: 'Packaging not found for this product.' };
+        }
+        unitsPerPackage = packaging.unitsPerPackage;
+      }
+      const quantity = input.quantity * (unitsPerPackage ?? 1);
+      if (quantity > MAX_STOCK_IN_UNITS) {
+        return { error: 'A delivery can add at most 1,000,000 units.' };
+      }
+
+      const link = input.barcodeId ? await db.barcodes.get(input.barcodeId) : undefined;
+      const receivedBarcodeId = link && link.shopId === shopId && link.productId === productId ? link.id : null;
+
       if (idempotencyKey) {
-        const seen = await db.movements
-          .where('[shopId+idempotencyKey]')
-          .equals([shopId, idempotencyKey])
-          .first();
+        const seen = await db.movements.where('[shopId+idempotencyKey]').equals([shopId, idempotencyKey]).first();
         if (seen) {
-          return { error: 'Duplicate submission rejected: This stock delivery was already processed.' };
+          return {
+            error: 'Duplicate submission rejected: This stock delivery was already processed.',
+          };
         }
       }
 
       const existing = await db.batches.where('[shopId+productId]').equals([shopId, productId]).toArray();
       const previousTotalQuantity = sumQuantity(existing);
-      const resultingTotalQuantity = previousTotalQuantity + input.quantity;
+      const resultingTotalQuantity = previousTotalQuantity + quantity;
       const now = new Date().toISOString();
 
       const batch: StockBatch = {
         id: newId(),
         shopId,
         productId,
-        quantity: input.quantity,
-        initialQuantity: input.quantity,
+        quantity,
+        initialQuantity: quantity,
         expiryDate,
         costPricePerUnit: input.costPricePerUnit ?? product.buyingPrice ?? null,
         receivedAt: now,
+        packagingId,
+        packageQuantity: packagingId ? input.quantity : null,
+        unitsPerPackage,
+        receivedBarcodeId,
       };
 
       const movement: StockMovement = {
@@ -104,7 +125,7 @@ export async function stockIn(
         productId,
         batchId: batch.id,
         type: 'stock_in',
-        quantityDelta: input.quantity,
+        quantityDelta: quantity,
         resultingTotalQuantity,
         idempotencyKey,
         createdAt: now,
@@ -128,9 +149,7 @@ export async function stockIn(
 /** Batches of a product that still have units, newest delivery first. */
 export async function getProductBatches(productId: string, shopId: string): Promise<StockBatch[]> {
   const batches = await db.batches.where('[shopId+productId]').equals([shopId, productId]).toArray();
-  return batches
-    .filter((b) => b.quantity > 0)
-    .sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
+  return batches.filter((b) => b.quantity > 0).sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
 }
 
 export interface BatchExpiryChange {
@@ -382,7 +401,14 @@ export async function resolveExpiredBatch(
 
         await enqueue(shopId, {
           type: 'expiry_resolve',
-          payload: { batchId: batch.id, action: input.action, newExpiryDate, note, idempotencyKey, occurredAt: now },
+          payload: {
+            batchId: batch.id,
+            action: input.action,
+            newExpiryDate,
+            note,
+            idempotencyKey,
+            occurredAt: now,
+          },
         });
 
         return { result: { batch: updated, removed } };

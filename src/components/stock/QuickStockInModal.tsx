@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, CheckCircle2, Plus, Minus, Barcode, ArrowRight } from 'lucide-react';
-import type { Product, StockInResult } from '../../types';
+import type { Product, ProductPackaging, StockInResult } from '../../types';
 import { useLanguage } from '../../context/LanguageContext';
 import { useShopId } from '../../context/ShopContext';
 import { Dialog } from '../ui/Dialog';
@@ -8,12 +8,18 @@ import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { ErrorMessage } from '../ui/ErrorMessage';
 import { stockIn, getProductTotalStock, isValidDateFormat } from '../../services/stockService';
+import { getPackagings } from '../../services/barcodeLinkService';
 import { addDaysLocal } from '../../lib/dates';
 import { newId } from '../../lib/ids';
+import { packagingLabel } from './packagingLabel';
 
 export interface QuickStockInModalProps {
   isOpen: boolean;
   product: Product | null;
+  /** Preselects the pack or case whose barcode was scanned. */
+  packagingId?: string | null;
+  /** The alias that was scanned, recorded on the delivery. */
+  barcodeId?: string | null;
   onClose: () => void;
   onStockInSuccess?: (result: StockInResult) => void;
   onStockInAnother?: () => void;
@@ -21,9 +27,13 @@ export interface QuickStockInModalProps {
 
 const getPresetDate = (daysAhead: number): string => addDaysLocal(daysAhead);
 
+const toCents = (value: number): number => Math.round(value * 100) / 100;
+
 export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
   isOpen,
   product,
+  packagingId = null,
+  barcodeId = null,
   onClose,
   onStockInSuccess,
   onStockInAnother,
@@ -40,6 +50,8 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [successResult, setSuccessResult] = useState<StockInResult | null>(null);
   const [idempotencyKey, setIdempotencyKey] = useState<string>('');
+  const [packagings, setPackagings] = useState<ProductPackaging[]>([]);
+  const [selectedPackagingId, setSelectedPackagingId] = useState<string | null>(null);
 
   // Reset modal state when product or openness changes
   useEffect(() => {
@@ -49,6 +61,8 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
       setQuantityInput('1');
       setIsSubmitting(false);
       setIdempotencyKey(newId());
+      setPackagings([]);
+      setSelectedPackagingId(null);
 
       // Perishables default to expiry enabled with a sensible preset
       const isPerishable = ['bakery', 'dairy', 'groceries', 'beverages', 'snacks'].includes(
@@ -68,10 +82,35 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
       setCostPrice(product.buyingPrice != null ? String(product.buyingPrice) : '');
 
       void getProductTotalStock(product.id, shopId).then(setCurrentStock);
+      void getPackagings(product.id, shopId).then((found) => {
+        setPackagings(found);
+        const scanned = found.find((p) => p.id === packagingId);
+        if (scanned) {
+          setSelectedPackagingId(scanned.id);
+          if (product.buyingPrice != null) {
+            setCostPrice(String(toCents(Number(product.buyingPrice) * scanned.unitsPerPackage)));
+          }
+        }
+      });
     }
-  }, [isOpen, product, shopId]);
+  }, [isOpen, product, packagingId, shopId]);
 
   if (!isOpen || !product) return null;
+
+  const selectedPackaging = packagings.find((p) => p.id === selectedPackagingId) ?? null;
+  const unitsPerPackage = selectedPackaging?.unitsPerPackage ?? 1;
+  const enteredQuantity = Number(quantityInput);
+  const unitsToAdd = Number.isInteger(enteredQuantity) && enteredQuantity > 0 ? enteredQuantity * unitsPerPackage : 0;
+
+  /** Switching between units and packages keeps the typed cost by converting it. */
+  const selectPackaging = (next: ProductPackaging | null) => {
+    const nextUnits = next?.unitsPerPackage ?? 1;
+    const cost = parseFloat(costPrice);
+    if (costPrice.trim() && !isNaN(cost)) setCostPrice(String(toCents((cost / unitsPerPackage) * nextUnits)));
+    setSelectedPackagingId(next?.id ?? null);
+    setQuantityInput('1');
+    setErrorMsg(null);
+  };
 
   // Handle Quick Quantity Presets
   const handleQuickAdd = (delta: number) => {
@@ -130,8 +169,11 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
           productId: product.id,
           quantity: qty,
           expiryDate: finalExpiry,
-          costPricePerUnit: parsedCost,
+          // Cost is typed per package when receiving packages; it is stored per unit.
+          costPricePerUnit: parsedCost == null ? null : toCents(parsedCost / unitsPerPackage),
           idempotencyKey,
+          packagingId: selectedPackaging?.id ?? null,
+          barcodeId,
         },
         shopId
       );
@@ -277,6 +319,22 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
               </div>
             </div>
 
+            {successResult.batch.packageQuantity && successResult.batch.unitsPerPackage && (
+              <p className="text-xs text-emerald-200/90 text-center" data-testid="stock-in-packages">
+                {t('stockIn.addedPackages', {
+                  count: successResult.batch.packageQuantity,
+                  pack: packagingLabel(
+                    {
+                      name: selectedPackaging?.name ?? '',
+                      unitsPerPackage: successResult.batch.unitsPerPackage,
+                    },
+                    t
+                  ),
+                  units: successResult.batch.quantity,
+                })}
+              </p>
+            )}
+
             {successResult.batch.expiryDate && (
               <div className="flex items-center gap-2 text-xs text-zinc-300 bg-zinc-900/60 p-2.5 rounded-xl border border-zinc-800">
                 <Calendar className="w-4 h-4 text-amber-400 shrink-0" />
@@ -298,10 +356,40 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
               />
             )}
 
+            {packagings.length > 0 && (
+              <div className="space-y-2">
+                <span className="text-xs font-semibold text-zinc-300 block">{t('stockIn.receivingAs')}</span>
+                <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={t('stockIn.receivingAs')}>
+                  {[null, ...packagings].map((p) => {
+                    const active = (p?.id ?? null) === selectedPackagingId;
+                    return (
+                      <button
+                        key={p?.id ?? 'single'}
+                        type="button"
+                        role="radio"
+                        aria-checked={active}
+                        onClick={() => selectPackaging(p)}
+                        className={`px-3 py-2 rounded-xl text-xs font-semibold border transition-colors ${
+                          active
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50'
+                            : 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:bg-zinc-800'
+                        }`}
+                      >
+                        {p ? packagingLabel(p, t) : t('stockIn.singleUnits')}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Quantity Input with Mobile Quick Steppers */}
             <div className="space-y-2">
               <label className="text-xs font-semibold text-zinc-300 block">
-                {t('stockIn.quantityLabel')} <span className="text-emerald-400">*</span>
+                {selectedPackaging
+                  ? t('stockIn.packagesLabel', { pack: packagingLabel(selectedPackaging, t) })
+                  : t('stockIn.quantityLabel')}{' '}
+                <span className="text-emerald-400">*</span>
               </label>
 
               <div className="flex items-center gap-2">
@@ -339,9 +427,15 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
                 </button>
               </div>
 
+              {selectedPackaging && (
+                <p className="text-xs font-semibold text-emerald-300" data-testid="units-preview">
+                  {t('stockIn.equalsUnits', { count: unitsToAdd })}
+                </p>
+              )}
+
               {/* Fast spaza presets (+5, +10, +24 crate) */}
               <div className="grid grid-cols-4 gap-2 pt-1">
-                {[5, 10, 12, 24].map((amount) => (
+                {(selectedPackaging ? [1, 2, 5, 10] : [5, 10, 12, 24]).map((amount) => (
                   <button
                     key={amount}
                     type="button"
@@ -419,7 +513,11 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
 
             {/* Optional Unit Cost Override */}
             <Input
-              label={t('stockIn.costPricePerUnit')}
+              label={
+                selectedPackaging
+                  ? t('stockIn.costPerPackage', { pack: packagingLabel(selectedPackaging, t) })
+                  : t('stockIn.costPricePerUnit')
+              }
               placeholder="0.00"
               type="number"
               step="0.01"
@@ -428,7 +526,13 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
               value={costPrice}
               onChange={(e) => setCostPrice(e.target.value)}
               leftIcon={<span className="text-xs font-bold text-zinc-400">R</span>}
-              helperText={t('stockIn.costHelp')}
+              helperText={
+                selectedPackaging && costPrice.trim() && !isNaN(parseFloat(costPrice))
+                  ? t('stockIn.costPerUnitPreview', {
+                      amount: toCents(parseFloat(costPrice) / unitsPerPackage).toFixed(2),
+                    })
+                  : t('stockIn.costHelp')
+              }
             />
           </form>
         )}

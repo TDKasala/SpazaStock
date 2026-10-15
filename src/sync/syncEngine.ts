@@ -5,7 +5,9 @@ import type {
   ExpiryAlertKind,
   ExpiryAlertResolution,
   Product,
+  ProductBarcode,
   ProductCategory,
+  ProductPackaging,
   Sale,
   StockBatch,
   StockDiscrepancy,
@@ -18,7 +20,13 @@ const PULL_PAGE_SIZE = 500;
 const PULL_OVERLAP_MS = 2 * 60 * 1000;
 const SALES_HISTORY_DAYS = 7;
 const PRODUCT_COLUMNS =
-  'id, shop_id, barcode, name, category, buying_price, selling_price, created_at, updated_at, archived_at';
+  'id, shop_id, barcode, name, category, buying_price, selling_price, created_at, updated_at, archived_at, brand, size';
+const BATCH_COLUMNS =
+  'id, shop_id, product_id, quantity, initial_quantity, expiry_date, cost_price_per_unit, received_at, updated_at, ' +
+  'packaging_id, package_quantity, units_per_package, received_barcode_id';
+const PACKAGING_COLUMNS = 'id, shop_id, product_id, name, units_per_package, created_at, updated_at, retired_at';
+const BARCODE_COLUMNS =
+  'id, shop_id, product_id, packaging_id, barcode, created_at, updated_at, unlinked_at, unlink_reason';
 
 // Error classification ---------------------------------------------------------
 
@@ -85,6 +93,8 @@ export function mapProductRow(row: Row): Product {
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
     archivedAt: row.archived_at ? toIso(row.archived_at) : null,
+    brand: (row.brand as string | null) ?? null,
+    size: (row.size as string | null) ?? null,
   };
 }
 
@@ -98,6 +108,37 @@ export function mapBatchRow(row: Row): StockBatch {
     expiryDate: (row.expiry_date as string | null) ?? null,
     costPricePerUnit: toNumberOrNull(row.cost_price_per_unit),
     receivedAt: toIso(row.received_at),
+    packagingId: (row.packaging_id as string | null) ?? null,
+    packageQuantity: toNumberOrNull(row.package_quantity),
+    unitsPerPackage: toNumberOrNull(row.units_per_package),
+    receivedBarcodeId: (row.received_barcode_id as string | null) ?? null,
+  };
+}
+
+export function mapPackagingRow(row: Row): ProductPackaging {
+  return {
+    id: String(row.id),
+    shopId: String(row.shop_id),
+    productId: String(row.product_id),
+    name: String(row.name),
+    unitsPerPackage: Number(row.units_per_package),
+    createdAt: toIso(row.created_at),
+    updatedAt: toIso(row.updated_at),
+    retiredAt: row.retired_at ? toIso(row.retired_at) : null,
+  };
+}
+
+export function mapBarcodeRow(row: Row): ProductBarcode {
+  return {
+    id: String(row.id),
+    shopId: String(row.shop_id),
+    productId: String(row.product_id),
+    packagingId: (row.packaging_id as string | null) ?? null,
+    barcode: String(row.barcode),
+    createdAt: toIso(row.created_at),
+    updatedAt: toIso(row.updated_at),
+    unlinkedAt: row.unlinked_at ? toIso(row.unlinked_at) : null,
+    unlinkReason: (row.unlink_reason as string | null) ?? null,
   };
 }
 
@@ -181,6 +222,8 @@ async function remapProduct(shopId: string, oldId: string, canonical: Product): 
   await db.sales.where('productId').equals(oldId).modify({ productId: canonical.id });
   await db.discrepancies.where('productId').equals(oldId).modify({ productId: canonical.id });
   await db.expiryAlerts.where('productId').equals(oldId).modify({ productId: canonical.id });
+  await db.packagings.where('productId').equals(oldId).modify({ productId: canonical.id });
+  await db.barcodes.where('productId').equals(oldId).modify({ productId: canonical.id });
   await db.outbox
     .where('shopId')
     .equals(shopId)
@@ -194,8 +237,40 @@ async function remapProduct(shopId: string, oldId: string, canonical: Product): 
         item.payload.productId === oldId
       ) {
         item.payload.productId = canonical.id;
+      } else if (item.type === 'packaging_create' && item.payload.packaging.productId === oldId) {
+        item.payload.packaging.productId = canonical.id;
+      } else if (item.type === 'barcode_link' && item.payload.link.productId === oldId) {
+        item.payload.link.productId = canonical.id;
       }
     });
+}
+
+/**
+ * Moves references from a local barcode link to `replacement` (the same link made first on
+ * another phone), or clears them when the server refused the link (null). Deliveries stay: they
+ * were recorded against the product the owner confirmed, not against the barcode.
+ */
+async function replaceBarcodeLink(shopId: string, oldId: string, replacement: ProductBarcode | null): Promise<void> {
+  await db.barcodes.delete(oldId);
+  if (replacement) await db.barcodes.put(replacement);
+  const newId = replacement?.id ?? null;
+  await db.batches.where('shopId').equals(shopId).filter((b) => b.receivedBarcodeId === oldId).modify({
+    receivedBarcodeId: newId,
+  });
+  const queued = await db.outbox.where('shopId').equals(shopId).toArray();
+  for (const other of queued) {
+    if (other.type === 'stock_in' && other.payload.batch.receivedBarcodeId === oldId) {
+      other.payload.batch.receivedBarcodeId = newId;
+      await db.outbox.put(other);
+    } else if (other.type === 'barcode_unlink' && other.payload.barcodeId === oldId) {
+      if (newId) {
+        other.payload.barcodeId = newId;
+        await db.outbox.put(other);
+      } else {
+        await db.outbox.delete(other.seq!);
+      }
+    }
+  }
 }
 
 /**
@@ -280,6 +355,8 @@ async function sendItem(client: SupabaseClient, item: OutboxItem): Promise<SendO
         p_buying_price: p.buyingPrice ?? null,
         p_selling_price: p.sellingPrice ?? null,
         p_created_at: p.createdAt,
+        ...(p.brand ? { p_brand: p.brand } : {}),
+        ...(p.size ? { p_size: p.size } : {}),
       });
       if (error) return outcomeFromError(error);
       const canonical = mapProductRow(data as Row);
@@ -306,6 +383,10 @@ async function sendItem(client: SupabaseClient, item: OutboxItem): Promise<SendO
           p_category: changes.category,
           p_buying_price: changes.buyingPrice ?? null,
           p_selling_price: changes.sellingPrice ?? null,
+          // Left out (edits queued before brand and size existed): the server keeps the values.
+          // Null: the user cleared the field, sent as '' because the server treats null as "keep".
+          ...(changes.brand !== undefined ? { p_brand: changes.brand ?? '' } : {}),
+          ...(changes.size !== undefined ? { p_size: changes.size ?? '' } : {}),
         })
       );
     }
@@ -326,7 +407,7 @@ async function sendItem(client: SupabaseClient, item: OutboxItem): Promise<SendO
 
     case 'stock_in': {
       const { batch, idempotencyKey } = item.payload;
-      const { error } = await client.rpc('record_stock_in', {
+      const base = {
         p_batch_id: batch.id,
         p_shop_id: item.shopId,
         p_product_id: batch.productId,
@@ -335,8 +416,34 @@ async function sendItem(client: SupabaseClient, item: OutboxItem): Promise<SendO
         p_cost_price_per_unit: batch.costPricePerUnit ?? null,
         p_received_at: batch.receivedAt,
         p_idempotency_key: idempotencyKey ?? batch.id,
+      };
+      const { error } = await client.rpc('record_stock_in', {
+        ...base,
+        ...(batch.packagingId
+          ? { p_packaging_id: batch.packagingId, p_package_quantity: batch.packageQuantity ?? null }
+          : {}),
+        ...(batch.receivedBarcodeId ? { p_barcode_id: batch.receivedBarcodeId } : {}),
       });
-      return error ? outcomeFromError(error) : { kind: 'ok' };
+      if (!error) return { kind: 'ok' };
+      // The packaging never reached the server (its creation was refused): keep the units anyway.
+      if (error.code === 'P0002' && batch.packagingId) {
+        const retry = await client.rpc('record_stock_in', base);
+        if (!retry.error) {
+          return {
+            kind: 'ok',
+            apply: async () => {
+              await db.batches.update(batch.id, {
+                packagingId: null,
+                packageQuantity: null,
+                unitsPerPackage: null,
+                receivedBarcodeId: null,
+              });
+            },
+          };
+        }
+        return outcomeFromError(retry.error);
+      }
+      return outcomeFromError(error);
     }
 
     case 'sale': {
@@ -406,6 +513,89 @@ async function sendItem(client: SupabaseClient, item: OutboxItem): Promise<SendO
         kind: 'ok',
         apply: async () => {
           if (batch) await db.batches.put(mapBatchRow(batch));
+        },
+      };
+    }
+
+    case 'packaging_create': {
+      const p = item.payload.packaging;
+      const { data, error } = await client.rpc('create_product_packaging', {
+        p_id: p.id,
+        p_shop_id: item.shopId,
+        p_product_id: p.productId,
+        p_name: p.name,
+        p_units_per_package: p.unitsPerPackage,
+        p_created_at: p.createdAt,
+      });
+      if (error) return outcomeFromError(error);
+      const packaging = mapPackagingRow(data as Row);
+      return { kind: 'ok', apply: () => db.packagings.put(packaging).then(() => undefined) };
+    }
+
+    case 'packaging_retire': {
+      const { data, error } = await client.rpc('retire_product_packaging', {
+        p_shop_id: item.shopId,
+        p_packaging_id: item.payload.packagingId,
+      });
+      if (error) return outcomeFromError(error);
+      const packaging = mapPackagingRow(data as Row);
+      return { kind: 'ok', apply: () => db.packagings.put(packaging).then(() => undefined) };
+    }
+
+    case 'barcode_link': {
+      const { link } = item.payload;
+      const { data, error } = await client.rpc('link_product_barcode', {
+        p_id: link.id,
+        p_shop_id: item.shopId,
+        p_product_id: link.productId,
+        p_packaging_id: link.packagingId,
+        p_barcode: link.barcode,
+        p_created_at: link.createdAt,
+      });
+      if (error) {
+        const outcome = outcomeFromError(error);
+        // Refused (e.g. another phone linked the barcode to something else first): the link
+        // does not exist on the server, so drop it here too.
+        if (outcome.kind !== 'fail') return outcome;
+        return { ...outcome, apply: () => replaceBarcodeLink(item.shopId, link.id, null) };
+      }
+      const server = mapBarcodeRow(data as Row);
+      return {
+        kind: 'ok',
+        apply: async () => {
+          if (server.id !== link.id) await replaceBarcodeLink(item.shopId, link.id, server);
+          else await db.barcodes.put(server);
+        },
+      };
+    }
+
+    case 'barcode_unlink': {
+      const { barcodeId, reason, reverseUnsold, occurredAt } = item.payload;
+      const { data, error } = await client.rpc('unlink_product_barcode', {
+        p_shop_id: item.shopId,
+        p_barcode_id: barcodeId,
+        p_reason: reason,
+        p_reverse_unsold: reverseUnsold,
+        p_occurred_at: occurredAt,
+      });
+      if (error) return outcomeFromError(error);
+      const result = data as {
+        barcode?: Row;
+        reversed?: Array<{ batch_id: string }>;
+        kept?: Array<{ batch_id: string; quantity: number }>;
+      } | null;
+      return {
+        kind: 'ok',
+        apply: async () => {
+          if (result?.barcode) await db.barcodes.put(mapBarcodeRow(result.barcode));
+          // The server decides what was reversed: another phone may have sold from a delivery
+          // this phone thought was untouched.
+          for (const reversed of result?.reversed ?? []) {
+            await db.batches.update(reversed.batch_id, { quantity: 0 });
+          }
+          for (const kept of result?.kept ?? []) {
+            await db.batches.update(kept.batch_id, { quantity: Number(kept.quantity) });
+          }
         },
       };
     }
@@ -550,9 +740,24 @@ const PULL_SPECS: PullSpec[] = [
     },
   },
   {
+    table: 'product_packagings',
+    columns: PACKAGING_COLUMNS,
+    initialCursor: () => new Date(0).toISOString(),
+    apply: async (rows) => {
+      await db.packagings.bulkPut(rows.map(mapPackagingRow));
+    },
+  },
+  {
+    table: 'product_barcodes',
+    columns: BARCODE_COLUMNS,
+    initialCursor: () => new Date(0).toISOString(),
+    apply: async (rows) => {
+      await db.barcodes.bulkPut(rows.map(mapBarcodeRow));
+    },
+  },
+  {
     table: 'stock_batches',
-    columns:
-      'id, shop_id, product_id, quantity, initial_quantity, expiry_date, cost_price_per_unit, received_at, updated_at',
+    columns: BATCH_COLUMNS,
     initialCursor: () => new Date(0).toISOString(),
     apply: async (rows) => {
       await db.batches.bulkPut(rows.map(mapBatchRow));

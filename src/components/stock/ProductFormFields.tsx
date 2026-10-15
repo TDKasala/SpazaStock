@@ -3,6 +3,7 @@ import { Barcode, PackagePlus } from 'lucide-react';
 import type { Product, ProductCategory, ProductRegistrationInput } from '../../types';
 import { useLanguage } from '../../context/LanguageContext';
 import { Input } from '../ui/Input';
+import { MAX_BRAND_LENGTH, MAX_SIZE_LENGTH } from '../../services/productService';
 
 export const PRODUCT_CATEGORIES: ProductCategory[] = [
   'groceries',
@@ -23,12 +24,16 @@ export interface ProductFormValues {
   category: ProductCategory;
   buyingPrice: string;
   sellingPrice: string;
+  brand: string;
+  size: string;
 }
 
-export type ProductFormErrors = Partial<Record<'barcode' | 'name' | 'buyingPrice' | 'sellingPrice', string>>;
+export type ProductFormErrors = Partial<
+  Record<'barcode' | 'name' | 'buyingPrice' | 'sellingPrice' | 'brand' | 'size', string>
+>;
 
 export function emptyProductForm(barcode = ''): ProductFormValues {
-  return { barcode, name: '', category: 'groceries', buyingPrice: '', sellingPrice: '' };
+  return { barcode, name: '', category: 'groceries', buyingPrice: '', sellingPrice: '', brand: '', size: '' };
 }
 
 export function productFormFromProduct(product: Product): ProductFormValues {
@@ -39,6 +44,8 @@ export function productFormFromProduct(product: Product): ProductFormValues {
     category: product.category,
     buyingPrice: price(product.buyingPrice),
     sellingPrice: price(product.sellingPrice),
+    brand: product.brand ?? '',
+    size: product.size ?? '',
   };
 }
 
@@ -62,11 +69,26 @@ export function parseProductForm(
   const sellingPrice = parsePrice(values.sellingPrice);
   if (buyingPrice === 'invalid') errors.buyingPrice = t('errors.invalidNumber');
   if (sellingPrice === 'invalid') errors.sellingPrice = t('errors.invalidNumber');
+  const brand = values.brand.trim();
+  const size = values.size.trim();
+  if (brand.length > MAX_BRAND_LENGTH) errors.brand = t('product.brandTooLong');
+  if (size.length > MAX_SIZE_LENGTH) errors.size = t('product.sizeTooLong');
 
   if (Object.keys(errors).length > 0 || buyingPrice === 'invalid' || sellingPrice === 'invalid') {
     return { errors };
   }
-  return { input: { barcode, name, category: values.category, buyingPrice, sellingPrice }, errors };
+  return {
+    input: {
+      barcode,
+      name,
+      category: values.category,
+      buyingPrice,
+      sellingPrice,
+      brand: brand || null,
+      size: size || null,
+    },
+    errors,
+  };
 }
 
 export interface ProductFormFieldsProps {
@@ -102,6 +124,25 @@ export const ProductFormFields: React.FC<ProductFormFieldsProps> = ({ values, er
         autoFocus={autoFocusName}
         required
       />
+
+      <div className="grid grid-cols-2 gap-3">
+        <Input
+          label={t('product.brandOptional')}
+          placeholder={t('product.brandPlaceholder')}
+          value={values.brand}
+          onChange={(e) => set('brand', e.target.value)}
+          error={errors.brand}
+          maxLength={MAX_BRAND_LENGTH}
+        />
+        <Input
+          label={t('product.sizeOptional')}
+          placeholder={t('product.sizePlaceholder')}
+          value={values.size}
+          onChange={(e) => set('size', e.target.value)}
+          error={errors.size}
+          maxLength={MAX_SIZE_LENGTH}
+        />
+      </div>
 
       <div className="flex flex-col gap-1.5 text-left">
         <label className="text-xs font-medium text-zinc-300">{t('product.category')}</label>
