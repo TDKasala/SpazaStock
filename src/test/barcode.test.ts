@@ -71,29 +71,34 @@ describe('barcode validation', () => {
 });
 
 describe('read confirmation', () => {
-  it('needs two agreeing reads within the window', () => {
-    const confirmer = createReadConfirmer(500, 2);
-    expect(confirmer.push('A', 0)).toBe(false);
-    expect(confirmer.push('A', 33)).toBe(true);
+  it('needs two agreeing reads in a row', () => {
+    const confirmer = createReadConfirmer();
+    expect(confirmer.push('A')).toBe(false);
+    expect(confirmer.push('A')).toBe(true);
   });
 
-  it('starts again when a different code or a stale read arrives', () => {
-    const confirmer = createReadConfirmer(500, 2);
-    expect(confirmer.push('A', 0)).toBe(false);
-    expect(confirmer.push('B', 30)).toBe(false);
-    expect(confirmer.push('A', 60)).toBe(false);
-    expect(confirmer.push('A', 700)).toBe(false);
-    expect(confirmer.push('A', 800)).toBe(true);
+  it('starts again when a different code arrives, even after a long pause', () => {
+    const confirmer = createReadConfirmer();
+    expect(confirmer.push('A')).toBe(false);
+    expect(confirmer.push('B')).toBe(false);
+    expect(confirmer.push('A')).toBe(false);
+    expect(confirmer.push('A')).toBe(true);
   });
 
   it('needs a fresh pair after each confirmation and forgets on reset', () => {
-    const confirmer = createReadConfirmer(500, 2);
-    confirmer.push('A', 0);
-    expect(confirmer.push('A', 30)).toBe(true);
-    expect(confirmer.push('A', 60)).toBe(false);
+    const confirmer = createReadConfirmer();
+    confirmer.push('A');
+    expect(confirmer.push('A')).toBe(true);
+    expect(confirmer.push('A')).toBe(false);
     confirmer.reset();
-    expect(confirmer.push('A', 90)).toBe(false);
-    expect(confirmer.push('A', 120)).toBe(true);
+    expect(confirmer.push('A')).toBe(false);
+    expect(confirmer.push('A')).toBe(true);
+  });
+
+  it('confirms after slow decode passes with a gap between agreeing reads', () => {
+    const confirmer = createReadConfirmer();
+    expect(confirmer.push('5449000000996')).toBe(false);
+    expect(confirmer.push('5449000000996')).toBe(true);
   });
 });
 

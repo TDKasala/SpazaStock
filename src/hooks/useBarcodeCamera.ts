@@ -82,13 +82,13 @@ export function useBarcodeCamera({ active, onCode }: UseBarcodeCameraOptions) {
 
     const decodeFrame = async () => {
       if (!decoder || !canvas || !ctx || document.hidden || video.readyState < 2) return;
-      const { videoWidth, videoHeight } = video;
-      if (!videoWidth || !videoHeight) return;
+      const { videoWidth, videoHeight, clientWidth, clientHeight } = video;
+      if (!videoWidth || !videoHeight || !clientWidth || !clientHeight) return;
       const crop = scanCrop(
         videoWidth,
         videoHeight,
-        video.clientWidth,
-        video.clientHeight,
+        clientWidth,
+        clientHeight,
         decoder.kind === 'wasm' ? WASM_MAX_DECODE_WIDTH : undefined
       );
       if (canvas.width !== crop.width) canvas.width = crop.width;

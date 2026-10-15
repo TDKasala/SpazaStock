@@ -269,6 +269,8 @@ describe('barcode scanner input', () => {
       readyState: { value: 4 },
       videoWidth: { value: 1920 },
       videoHeight: { value: 1080 },
+      clientWidth: { value: 390 },
+      clientHeight: { value: 330 },
     });
 
     // Many frames of the same item in view.
