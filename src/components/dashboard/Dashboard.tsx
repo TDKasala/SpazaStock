@@ -6,8 +6,6 @@ import { ExpiryAlertsCard } from '../expiry/ExpiryAlertsCard';
 import type { Product, ScanMode, StockActionType } from '../../types';
 import type { ExpiryAlertItem } from '../../services/stockService';
 import type { AppTab } from '../../App';
-import { useAuth } from '../../context/AuthContext';
-import { AppInviteShareSection } from '../pwa/AppInviteShareSection';
 
 export interface DashboardProps {
   onOpenScanner: (mode: ScanMode) => void;
@@ -25,8 +23,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onSelectProduct,
 }) => {
   const { t, dict } = useLanguage();
-  const { user } = useAuth();
-  const inviterName = user?.email?.split('@')[0] || undefined;
 
   const handleActionClick = (action: StockActionType) => {
     switch (action) {
@@ -107,11 +103,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
         <span className="text-emerald-400 font-bold text-sm hidden sm:inline">&rarr;</span>
       </button>
-
-      <section className="p-4 rounded-2xl border border-[#25D366]/30 bg-[#25D366]/5">
-        <h3 className="text-sm font-bold text-zinc-100 mb-1">{t('dashboard.shareAppTitle')}</h3>
-        <AppInviteShareSection inviterName={inviterName} />
-      </section>
     </div>
   );
 };

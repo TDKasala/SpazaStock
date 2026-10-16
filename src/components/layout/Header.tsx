@@ -6,12 +6,13 @@ import { useAuth } from '../../context/AuthContext';
 import { useShop } from '../../context/ShopContext';
 import { useSyncStatus } from '../../hooks/useSyncStatus';
 import { PWAInstallButton } from '../pwa/PWAInstallButton';
+import { AppWhatsAppInvite } from '../pwa/AppWhatsAppInvite';
 import { ShopMenu } from './ShopMenu';
 import { AccountDialog } from '../account/AccountDialog';
 
 export const Header: React.FC<{ onOpenTeam: () => void }> = ({ onOpenTeam }) => {
   const { t } = useLanguage();
-  const { mode, signOut } = useAuth();
+  const { mode, signOut, user } = useAuth();
   const { shop } = useShop();
   const { status, syncNow } = useSyncStatus();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -99,6 +100,8 @@ export const Header: React.FC<{ onOpenTeam: () => void }> = ({ onOpenTeam }) => 
                 <span className="hidden sm:inline">{pill.label}</span>
               </button>
             )}
+
+            <AppWhatsAppInvite compact inviterName={user?.email?.split('@')[0] || undefined} />
 
             <LanguagePicker compact />
 
