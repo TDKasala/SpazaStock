@@ -293,6 +293,7 @@ export const bn: Translations = {
   dashboard: {
     glanceHeading: 'এক নজরে আপনার দোকান',
     subtitle: 'স্পাজা মাল ও লেনদেন পরিচালনার দ্রুত কাজ বেছে নিন।',
+    shareAppTitle: 'আরেক দোকানদারকে আমন্ত্রণ',
     lookupTitle: 'পণ্য খুঁজুন',
     lookupDescription: 'দাম দেখতে বা নতুন পণ্য নিবন্ধন করতে বারকোড স্ক্যান বা টাইপ করুন।',
     actions: {

@@ -6,6 +6,7 @@ import { LanguagePicker } from '../ui/LanguagePicker';
 import { ErrorMessage } from '../ui/ErrorMessage';
 import { SignInPanel, type PanelFrame, type SignInView } from './SignInScreen';
 import { PWAInstallBanner } from '../pwa/PWAInstallBanner';
+import { AppInviteShareSection } from '../pwa/AppInviteShareSection';
 import { usePWAInstall } from '../../hooks/usePWAInstall';
 
 interface LandingPageProps {
@@ -85,16 +86,21 @@ export const LandingPage: React.FC<LandingPageProps> = ({ notConfigured = false 
               message={t('landing.notConfiguredBody')}
             />
           ) : (
-            !authPanelOpen && (
-              <div className="flex flex-col sm:flex-row gap-3">
-                <Button size="lg" onClick={() => openAuthPanel('register')}>
-                  {t('landing.createAccount')}
-                </Button>
-                <Button size="lg" variant="outline" onClick={() => openAuthPanel('password')}>
-                  {t('landing.haveAccount')}
-                </Button>
+            <>
+              {!authPanelOpen && (
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <Button size="lg" onClick={() => openAuthPanel('register')}>
+                    {t('landing.createAccount')}
+                  </Button>
+                  <Button size="lg" variant="outline" onClick={() => openAuthPanel('password')}>
+                    {t('landing.haveAccount')}
+                  </Button>
+                </div>
+              )}
+              <div className="p-4 rounded-2xl border border-[#25D366]/30 bg-[#25D366]/5">
+                <AppInviteShareSection />
               </div>
-            )
+            </>
           )}
 
           <ul className="grid gap-3 sm:grid-cols-2">

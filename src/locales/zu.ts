@@ -295,6 +295,7 @@ export const zu: Translations = {
   dashboard: {
     glanceHeading: 'Isitolo sakho ngokushesha',
     subtitle: 'Khetha isenzo esisheshayo ukuphatha impahla nesitolo sakho.',
+    shareAppTitle: 'Mema omunye umnikazi wesitolo',
     lookupTitle: 'Bheka umkhiqizo',
     lookupDescription: 'Skena noma uthayiphe ibhakhodi ukuze ubone intengo noma ubhalise umkhiqizo omusha.',
     actions: {

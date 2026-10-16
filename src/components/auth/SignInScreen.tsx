@@ -10,6 +10,7 @@ import { AuthLayout, LinkButton } from './AuthLayout';
 import { CodeForm } from './CodeForm';
 import { PasswordInput } from './PasswordInput';
 import { RegisterForm } from './RegisterScreen';
+import { AppInviteShareSection } from '../pwa/AppInviteShareSection';
 import { ResetPasswordForm } from './ResetPasswordScreen';
 
 export type SignInView = 'password' | 'confirm' | 'codeEmail' | 'code' | 'register' | 'reset';
@@ -196,6 +197,9 @@ export const SignInPanel: React.FC<SignInPanelProps> = ({
           <Button type="button" variant="secondary" fullWidth onClick={() => go('register')}>
             {t('auth.noAccount')}
           </Button>
+        </div>
+        <div className="pt-4 border-t border-zinc-800">
+          <AppInviteShareSection />
         </div>
       </>
     ),

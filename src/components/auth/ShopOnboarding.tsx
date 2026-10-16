@@ -7,7 +7,7 @@ import { Button } from '../ui/Button';
 import { ErrorMessage } from '../ui/ErrorMessage';
 import { RevokedNotice } from '../layout/RevokedNotice';
 import { ShopFormFields } from '../shop/ShopFormFields';
-import { AppWhatsAppInvite } from '../pwa/AppWhatsAppInvite';
+import { AppInviteShareSection } from '../pwa/AppInviteShareSection';
 import { emptyShopForm, parseShopForm, type ShopFormErrors, type ShopFormValues } from '../../lib/shopDetails';
 
 export const ShopOnboarding: React.FC = () => {
@@ -70,12 +70,7 @@ export const ShopOnboarding: React.FC = () => {
 
         <p className="text-xs text-zinc-500 text-center leading-relaxed">{t('onboarding.hasInvite')}</p>
 
-        <div className="space-y-2">
-          <p className="text-[11px] text-zinc-500 text-center leading-relaxed">{t('auth.appInviteHint')}</p>
-          <AppWhatsAppInvite
-            inviterName={user?.email?.split('@')[0] || undefined}
-          />
-        </div>
+        <AppInviteShareSection inviterName={user?.email?.split('@')[0] || undefined} />
 
         <button
           onClick={signOut}

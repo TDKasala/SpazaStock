@@ -292,6 +292,7 @@ export const am: Translations = {
   dashboard: {
     glanceHeading: 'ሱቅዎ በአጭሩ',
     subtitle: 'የስፓዛ ዕቃዎንና ግብይቶችዎን ለማስተዳደር ፈጣን ተግባር ይምረጡ።',
+    shareAppTitle: 'ሌላ የሱቅ ባለቤት ይጋብዙ',
     lookupTitle: 'ዕቃ ፈልግ',
     lookupDescription: 'ዋጋውን ለማየት ወይም አዲስ ዕቃ ለመመዝገብ ባርኮድ ስካን ያድርጉ ወይም ይጻፉ።',
     actions: {

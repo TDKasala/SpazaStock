@@ -290,6 +290,7 @@ export const en = {
   dashboard: {
     glanceHeading: 'Your shop at a glance',
     subtitle: 'Select a quick action to manage your spaza stock and transactions.',
+    shareAppTitle: 'Invite another spaza owner',
     lookupTitle: 'Look up a product',
     lookupDescription: 'Scan or type a barcode to check the price or register a new product.',
     actions: {

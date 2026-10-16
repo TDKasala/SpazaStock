@@ -292,6 +292,7 @@ export const so: Translations = {
   dashboard: {
     glanceHeading: 'Dukaankaaga oo kooban',
     subtitle: 'Dooro fal degdeg ah si aad u maareyso alaabta iyo iibka dukaankaaga.',
+    shareAppTitle: 'Ku martiqaad milkiile kale',
     lookupTitle: 'Raadi alaab',
     lookupDescription: 'Iskaan samee ama qor barcode si aad u hubiso qiimaha ama u diiwaangeliso alaab cusub.',
     actions: {
