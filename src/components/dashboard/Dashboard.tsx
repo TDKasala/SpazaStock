@@ -3,8 +3,10 @@ import { PackagePlus, ScanLine, CalendarClock, PackageSearch, ScanBarcode } from
 import { useLanguage } from '../../context/LanguageContext';
 import { ActionTile } from '../ui/ActionTile';
 import { ExpiryAlertsCard } from '../expiry/ExpiryAlertsCard';
-import type { Product, ScanMode, StockActionType } from '../../types';
+import { StockIntelligenceCard } from './StockIntelligenceCard';
+import type { Product, Sale, ScanMode, StockActionType, StockBatch } from '../../types';
 import type { ExpiryAlertItem } from '../../services/stockService';
+import type { LowStockItem } from '../../lib/lowStock';
 import type { AppTab } from '../../App';
 import { useAuth } from '../../context/AuthContext';
 import { AppInviteShareSection } from '../pwa/AppInviteShareSection';
@@ -15,6 +17,12 @@ export interface DashboardProps {
   expiryAlerts: ExpiryAlertItem[];
   isLoadingAlerts: boolean;
   onSelectProduct: (product: Product) => void;
+  lowStock: LowStockItem[];
+  products: Product[];
+  sales: Sale[];
+  batches: StockBatch[];
+  timezone: string;
+  isLoadingIntelligence: boolean;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({
@@ -23,6 +31,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
   expiryAlerts,
   isLoadingAlerts,
   onSelectProduct,
+  lowStock,
+  products,
+  sales,
+  batches,
+  timezone,
+  isLoadingIntelligence,
 }) => {
   const { t, dict } = useLanguage();
   const { user } = useAuth();
@@ -84,6 +98,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
           />
         </div>
       </section>
+
+      <StockIntelligenceCard
+        lowStock={lowStock}
+        products={products}
+        sales={sales}
+        batches={batches}
+        timezone={timezone}
+        isLoading={isLoadingIntelligence}
+        onOpenAlerts={() => onNavigateTab('alerts')}
+      />
 
       <ExpiryAlertsCard
         alerts={expiryAlerts}

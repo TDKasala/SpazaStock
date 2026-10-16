@@ -30,6 +30,7 @@ import { LoadingState } from './components/ui/LoadingState';
 import { RapidSellPanel, RapidSellSummary } from './components/sales/RapidSellPanel';
 import { useSaleRegister } from './hooks/useSaleRegister';
 import { useExpiryAlerts } from './hooks/useExpiryAlerts';
+import { useStockIntelligence } from './hooks/useStockIntelligence';
 import { isArchived, resolveBarcode } from './services/productService';
 import { cacheShopProductLocally, lookupProductByBarcode } from './services/productLookupService';
 import { onDataChanged } from './lib/events';
@@ -85,6 +86,7 @@ export function AppContent() {
   const [currentTab, setCurrentTab] = useState<AppTab>(initialTab);
   const [refreshCounter, setRefreshCounter] = useState(0);
   const expiry = useExpiryAlerts(shopId, refreshCounter);
+  const intelligence = useStockIntelligence(shopId, refreshCounter);
   const { needsInstallPrompt } = usePWAInstall();
 
   useEffect(() => {
@@ -225,6 +227,12 @@ export function AppContent() {
             expiryAlerts={expiry.alerts}
             isLoadingAlerts={expiry.isLoading}
             onSelectProduct={setInspectedProduct}
+            lowStock={intelligence.lowStock}
+            products={intelligence.products}
+            sales={intelligence.sales}
+            batches={intelligence.batches}
+            timezone={intelligence.timezone}
+            isLoadingIntelligence={intelligence.isLoading}
           />
         )}
         {currentTab === 'stock' && (
@@ -250,6 +258,8 @@ export function AppContent() {
             onSelectProduct={setInspectedProduct}
             onQuickStockIn={openStockIn}
             refreshTrigger={refreshCounter}
+            lowStock={intelligence.lowStock}
+            products={intelligence.products}
           />
         )}
       </main>

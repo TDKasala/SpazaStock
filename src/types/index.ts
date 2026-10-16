@@ -82,6 +82,22 @@ export interface Product {
   size?: string | null;
   /** Path of the product picture in the product-images bucket (`<shopId>/<hash>.webp`). */
   imagePath?: string | null;
+  /**
+   * Sellable base units at or below which the product is low. Null or omitted means it is not watched.
+   */
+  minStockUnits?: number | null;
+}
+
+/** Quiets a low-stock alert on every phone until sellable stock rises above the minimum. */
+export interface LowStockDismissal {
+  id: string;
+  shopId: string;
+  productId: string;
+  dismissedAt: string;
+  dismissedBy: string | null;
+  /** Set once stock has recovered, so the next drop can alert again. */
+  clearedAt: string | null;
+  updatedAt: string;
 }
 
 export interface ProductRegistrationInput {

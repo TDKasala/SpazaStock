@@ -2,6 +2,7 @@ import Dexie, { type EntityTable, type Table } from 'dexie';
 import type {
   ExpiryAlert,
   ExpiryResolutionAction,
+  LowStockDismissal,
   Product,
   ProductBarcode,
   ProductEditInput,
@@ -44,7 +45,10 @@ export type OutboxOperation =
       type: 'barcode_unlink';
       payload: { barcodeId: string; reason: string; reverseUnsold: boolean; occurredAt: string };
     }
-  | { type: 'product_image'; payload: { productId: string; imagePath: string | null } };
+  | { type: 'product_image'; payload: { productId: string; imagePath: string | null } }
+  | { type: 'product_min_stock'; payload: { productId: string; minStockUnits: number | null } }
+  | { type: 'low_stock_dismiss'; payload: { productId: string } }
+  | { type: 'low_stock_clear'; payload: { productId: string } };
 
 export type OutboxItem = OutboxOperation & {
   seq?: number;
@@ -92,6 +96,7 @@ export type SpazaDatabase = Dexie & {
   packagings: EntityTable<ProductPackaging, 'id'>;
   barcodes: EntityTable<ProductBarcode, 'id'>;
   productImages: EntityTable<ProductImage, 'path'>;
+  lowStockDismissals: EntityTable<LowStockDismissal, 'id'>;
   outbox: EntityTable<OutboxItem, 'seq'>;
   meta: EntityTable<MetaRow, 'key'>;
 };
@@ -121,6 +126,10 @@ db.version(4).stores({
   productImages: 'path, shopId',
 });
 
+db.version(5).stores({
+  lowStockDismissals: 'id, shopId, productId, [shopId+productId]',
+});
+
 /** Every table the write path touches, for `db.transaction('rw', WRITE_TABLES, ...)`. */
 export const WRITE_TABLES = [
   db.products,
@@ -132,6 +141,7 @@ export const WRITE_TABLES = [
   db.packagings,
   db.barcodes,
   db.productImages,
+  db.lowStockDismissals,
   db.outbox,
 ];
 

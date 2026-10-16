@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Calendar, Save } from 'lucide-react';
-import type { Product, ProductEditInput, StockBatch } from '../../types';
+import type { Product, ProductEditInput, ProductPackaging, StockBatch } from '../../types';
 import { useLanguage } from '../../context/LanguageContext';
 import { useShopId } from '../../context/ShopContext';
 import { Dialog } from '../ui/Dialog';
@@ -9,7 +9,8 @@ import { Input } from '../ui/Input';
 import { ErrorMessage } from '../ui/ErrorMessage';
 import { batchCode } from '../../lib/expiry';
 import { newId } from '../../lib/ids';
-import { normalizeBarcode, updateProduct } from '../../services/productService';
+import { normalizeBarcode, setProductMinStock, updateProduct } from '../../services/productService';
+import { getPackagings } from '../../services/barcodeLinkService';
 import { removeProductImage, saveProductImage } from '../../services/productImageService';
 import { ProductImagePicker, UNCHANGED_IMAGE, type ImageDraft } from './ProductImagePicker';
 import { batchExpiryChanges, getProductBatches, resolveExpiredBatch } from '../../services/stockService';
@@ -26,6 +27,14 @@ export interface ProductEditDialogProps {
   product: Product;
   onClose: () => void;
   onSaved: (product: Product) => void;
+}
+
+function parseMinStock(text: string): number | null | 'invalid' {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  if (!/^\d+$/.test(trimmed)) return 'invalid';
+  const value = Number(trimmed);
+  return Number.isInteger(value) && value >= 0 ? value : 'invalid';
 }
 
 function sameDetails(product: Product, input: ProductEditInput): boolean {
@@ -53,6 +62,9 @@ export const ProductEditDialog: React.FC<ProductEditDialogProps> = ({ isOpen, pr
   // One key per batch while the dialog is open, so a double tap records each correction once.
   const [expiryKeys, setExpiryKeys] = useState<Record<string, string>>({});
   const [image, setImage] = useState<ImageDraft>(UNCHANGED_IMAGE);
+  const [minStock, setMinStock] = useState(product.minStockUnits == null ? '' : String(product.minStockUnits));
+  const [minStockError, setMinStockError] = useState<string | null>(null);
+  const [packagings, setPackagings] = useState<ProductPackaging[]>([]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -61,12 +73,17 @@ export const ProductEditDialog: React.FC<ProductEditDialogProps> = ({ isOpen, pr
     setServerError(null);
     setSaved(product);
     setImage(UNCHANGED_IMAGE);
+    setMinStock(product.minStockUnits == null ? '' : String(product.minStockUnits));
+    setMinStockError(null);
     setExpiryDrafts({});
     setExpiryErrors({});
     setExpiryKeys({});
     let cancelled = false;
     void getProductBatches(product.id, shopId).then((items) => {
       if (!cancelled) setBatches(items);
+    });
+    void getPackagings(product.id, shopId).then((items) => {
+      if (!cancelled) setPackagings(items);
     });
     return () => {
       cancelled = true;
@@ -80,7 +97,10 @@ export const ProductEditDialog: React.FC<ProductEditDialogProps> = ({ isOpen, pr
     setErrors(formErrors);
     const { changes, invalid } = batchExpiryChanges(batches, expiryDrafts);
     setExpiryErrors(Object.fromEntries(invalid.map((id) => [id, t('product.expiryDateRequired')])));
-    if (!input || invalid.length > 0) return;
+    const parsedMin = parseMinStock(minStock);
+    if (parsedMin === 'invalid') setMinStockError(t('intelligence.minStockInvalid'));
+    else setMinStockError(null);
+    if (!input || invalid.length > 0 || parsedMin === 'invalid') return;
 
     setIsSubmitting(true);
     setServerError(null);
@@ -99,6 +119,16 @@ export const ProductEditDialog: React.FC<ProductEditDialogProps> = ({ isOpen, pr
           return;
         }
         current = result.product;
+        setSaved(current);
+      }
+
+      if ((current.minStockUnits ?? null) !== parsedMin) {
+        const minResult = await setProductMinStock(product.id, parsedMin, shopId);
+        if (!minResult.product) {
+          setServerError(minResult.errorCode === 'forbidden' ? t('product.editForbidden') : minResult.error ?? t('errors.generic'));
+          return;
+        }
+        current = minResult.product;
         setSaved(current);
       }
 
@@ -183,6 +213,27 @@ export const ProductEditDialog: React.FC<ProductEditDialogProps> = ({ isOpen, pr
         <ProductImagePicker currentPath={saved.imagePath} draft={image} onChange={setImage} disabled={isSubmitting} />
 
         <ProductFormFields values={values} errors={errors} onChange={setValues} />
+
+        <Input
+          label={t('intelligence.minStock')}
+          helperText={t('intelligence.minStockHint')}
+          value={minStock}
+          onChange={(e) => {
+            setMinStock(e.target.value);
+            setMinStockError(null);
+          }}
+          error={minStockError ?? undefined}
+          inputMode="numeric"
+          min="0"
+          step="1"
+        />
+        {packagings.length > 0 && (
+          <p className="text-[11px] text-zinc-400 -mt-2">
+            {packagings
+              .map((pack) => t('intelligence.packHint', { name: pack.name, count: pack.unitsPerPackage }))
+              .join(' · ')}
+          </p>
+        )}
 
         {batches.length > 0 && (
           <fieldset className="space-y-3 pt-1">

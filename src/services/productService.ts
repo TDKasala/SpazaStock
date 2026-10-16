@@ -317,3 +317,32 @@ export async function setProductArchived(
   if (outcome.product) emitDataChanged('local');
   return outcome;
 }
+
+/** Sets or clears the low-stock minimum, in sellable base units. Blank (null) turns the alert off. */
+export async function setProductMinStock(
+  productId: string,
+  minStockUnits: number | null,
+  shopId: string
+): Promise<ProductEditOutcome> {
+  if (!(await canEditProducts(shopId))) return FORBIDDEN;
+  if (minStockUnits !== null && (!Number.isInteger(minStockUnits) || minStockUnits < 0)) {
+    return { error: 'Minimum stock must be a whole number.', errorCode: 'invalid' };
+  }
+
+  const outcome = await withWriteLock(() =>
+    db.transaction('rw', db.products, db.outbox, async (): Promise<ProductEditOutcome> => {
+      const product = await db.products.get(productId);
+      if (!product || product.shopId !== shopId) {
+        return { error: 'Product not found in this shop.', errorCode: 'not_found' };
+      }
+      if ((product.minStockUnits ?? null) === minStockUnits) return { product };
+      const updated: Product = { ...product, minStockUnits, updatedAt: new Date().toISOString() };
+      await db.products.put(updated);
+      await enqueue(shopId, { type: 'product_min_stock', payload: { productId, minStockUnits } });
+      return { product: updated };
+    })
+  );
+
+  if (outcome.product) emitDataChanged('local');
+  return outcome;
+}

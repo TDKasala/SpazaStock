@@ -4,6 +4,7 @@ import type {
   ExpiryAlert,
   ExpiryAlertKind,
   ExpiryAlertResolution,
+  LowStockDismissal,
   Product,
   ProductBarcode,
   ProductCategory,
@@ -19,10 +20,12 @@ export const MAX_ATTEMPTS = 10;
 const PULL_PAGE_SIZE = 500;
 /** Re-read a little before the cursor so rows committed out of order are not skipped. */
 const PULL_OVERLAP_MS = 2 * 60 * 1000;
-const SALES_HISTORY_DAYS = 7;
+const SALES_HISTORY_DAYS = 60;
 const PRODUCT_COLUMNS =
   'id, shop_id, barcode, name, category, buying_price, selling_price, created_at, updated_at, archived_at, brand, size, ' +
-  'image_path';
+  'image_path, min_stock_units';
+const LOW_STOCK_DISMISSAL_COLUMNS =
+  'id, shop_id, product_id, dismissed_at, dismissed_by, cleared_at, updated_at';
 const BATCH_COLUMNS =
   'id, shop_id, product_id, quantity, initial_quantity, expiry_date, cost_price_per_unit, received_at, updated_at, ' +
   'packaging_id, package_quantity, units_per_package, received_barcode_id';
@@ -98,6 +101,19 @@ export function mapProductRow(row: Row): Product {
     brand: (row.brand as string | null) ?? null,
     size: (row.size as string | null) ?? null,
     imagePath: (row.image_path as string | null) ?? null,
+    minStockUnits: row.min_stock_units == null ? null : Number(row.min_stock_units),
+  };
+}
+
+export function mapLowStockDismissalRow(row: Row): LowStockDismissal {
+  return {
+    id: String(row.id),
+    shopId: String(row.shop_id),
+    productId: String(row.product_id),
+    dismissedAt: toIso(row.dismissed_at),
+    dismissedBy: (row.dismissed_by as string | null) ?? null,
+    clearedAt: row.cleared_at ? toIso(row.cleared_at) : null,
+    updatedAt: toIso(row.updated_at),
   };
 }
 
@@ -227,6 +243,7 @@ async function remapProduct(shopId: string, oldId: string, canonical: Product): 
   await db.expiryAlerts.where('productId').equals(oldId).modify({ productId: canonical.id });
   await db.packagings.where('productId').equals(oldId).modify({ productId: canonical.id });
   await db.barcodes.where('productId').equals(oldId).modify({ productId: canonical.id });
+  await db.lowStockDismissals.where('productId').equals(oldId).modify({ productId: canonical.id });
   await db.outbox
     .where('shopId')
     .equals(shopId)
@@ -236,7 +253,12 @@ async function remapProduct(shopId: string, oldId: string, canonical: Product): 
       } else if (item.type === 'sale' && item.payload.sale.productId === oldId) {
         item.payload.sale.productId = canonical.id;
       } else if (
-        (item.type === 'product_update' || item.type === 'product_archive' || item.type === 'product_image') &&
+        (item.type === 'product_update' ||
+          item.type === 'product_archive' ||
+          item.type === 'product_image' ||
+          item.type === 'product_min_stock' ||
+          item.type === 'low_stock_dismiss' ||
+          item.type === 'low_stock_clear') &&
         item.payload.productId === oldId
       ) {
         item.payload.productId = canonical.id;
@@ -306,7 +328,10 @@ async function hasLaterProductChange(item: OutboxItem, productId: string): Promi
     .filter(
       (other) =>
         other.seq! > item.seq! &&
-        (other.type === 'product_update' || other.type === 'product_archive' || other.type === 'product_image') &&
+        (other.type === 'product_update' ||
+          other.type === 'product_archive' ||
+          other.type === 'product_image' ||
+          other.type === 'product_min_stock') &&
         other.payload.productId === productId
     )
     .count();
@@ -648,6 +673,36 @@ async function sendItem(client: SupabaseClient, item: OutboxItem): Promise<SendO
     case 'product_image':
       return sendProductImage(client, item);
 
+    case 'product_min_stock': {
+      const { productId, minStockUnits } = item.payload;
+      return sendProductChange(
+        client,
+        item,
+        productId,
+        client.rpc('set_product_min_stock', {
+          p_shop_id: item.shopId,
+          p_product_id: productId,
+          p_min_stock: minStockUnits,
+        })
+      );
+    }
+
+    case 'low_stock_dismiss':
+    case 'low_stock_clear': {
+      const { productId } = item.payload;
+      const fn = item.type === 'low_stock_dismiss' ? 'dismiss_low_stock' : 'clear_low_stock_dismissal';
+      const { data, error } = await client.rpc(fn, { p_shop_id: item.shopId, p_product_id: productId });
+      if (error) return outcomeFromError(error);
+      const row = data && (data as Row).id ? mapLowStockDismissalRow(data as Row) : null;
+      return {
+        kind: 'ok',
+        apply: async () => {
+          await db.lowStockDismissals.where('[shopId+productId]').equals([item.shopId, productId]).delete();
+          if (row) await db.lowStockDismissals.put(row);
+        },
+      };
+    }
+
     case 'barcode_unlink': {
       const { barcodeId, reason, reverseUnsold, occurredAt } = item.payload;
       const { data, error } = await client.rpc('unlink_product_barcode', {
@@ -805,6 +860,8 @@ export async function reportSyncFailures(client: SupabaseClient, shopId: string)
 interface PullSpec {
   table: string;
   columns: string;
+  /** Defaults to the table name. Changed when older rows must be fetched again. */
+  cursor?: string;
   initialCursor: () => string;
   apply: (rows: Row[]) => Promise<void>;
 }
@@ -844,6 +901,7 @@ const PULL_SPECS: PullSpec[] = [
   },
   {
     table: 'sale_items',
+    cursor: 'sale_items_60d',
     columns:
       'id, shop_id, product_id, quantity, unit_price, line_total, allocations, voided_quantity, updated_at, sales(sold_at, idempotency_key)',
     initialCursor: () => new Date(Date.now() - SALES_HISTORY_DAYS * 86_400_000).toISOString(),
@@ -868,6 +926,14 @@ const PULL_SPECS: PullSpec[] = [
       await db.expiryAlerts.bulkPut(rows.map(mapExpiryAlertRow));
     },
   },
+  {
+    table: 'low_stock_dismissals',
+    columns: LOW_STOCK_DISMISSAL_COLUMNS,
+    initialCursor: () => new Date(0).toISOString(),
+    apply: async (rows) => {
+      await db.lowStockDismissals.bulkPut(rows.map(mapLowStockDismissalRow));
+    },
+  },
 ];
 
 class PendingLocalChanges extends Error {}
@@ -888,7 +954,7 @@ export async function pullChanges(client: SupabaseClient, shopId: string): Promi
 
   try {
     for (const spec of PULL_SPECS) {
-      const cursorKey = `pull:${shopId}:${spec.table}`;
+      const cursorKey = `pull:${shopId}:${spec.cursor ?? spec.table}`;
       const cursor = (await getMeta(cursorKey)) ?? spec.initialCursor();
       const since = new Date(Date.parse(cursor) - PULL_OVERLAP_MS).toISOString();
       let newestSeen = cursor;

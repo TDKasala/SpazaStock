@@ -15,6 +15,9 @@ import { ExpiryAlertRow } from '../expiry/ExpiryAlertRow';
 import { PushAlertsToggle } from '../expiry/PushAlertsToggle';
 import { ReminderSettings } from '../expiry/ReminderSettings';
 import { ResolveExpiryDialog } from '../expiry/ResolveExpiryDialog';
+import { LowStockSection } from '../stock/LowStockSection';
+import { dismissLowStock } from '../../services/lowStockService';
+import type { LowStockItem } from '../../lib/lowStock';
 
 const PAGE_SIZE = 15;
 
@@ -25,6 +28,8 @@ export interface AlertsViewProps {
   onSelectProduct: (product: Product) => void;
   onQuickStockIn: (product: Product) => void;
   refreshTrigger?: number;
+  lowStock: LowStockItem[];
+  products: Product[];
 }
 
 export const AlertsView: React.FC<AlertsViewProps> = ({
@@ -34,6 +39,8 @@ export const AlertsView: React.FC<AlertsViewProps> = ({
   onSelectProduct,
   onQuickStockIn,
   refreshTrigger,
+  lowStock,
+  products,
 }) => {
   const { t } = useLanguage();
   const shopId = useShopId();
@@ -155,6 +162,16 @@ export const AlertsView: React.FC<AlertsViewProps> = ({
       <PushAlertsToggle />
       <ReminderSettings />
 
+      {!isLoading && (
+        <LowStockSection
+          items={lowStock}
+          products={products}
+          onSelectProduct={onSelectProduct}
+          onRestock={onQuickStockIn}
+          onDismiss={(productId) => void dismissLowStock(productId, shopId)}
+        />
+      )}
+
       {isLoading ? (
         <div className="space-y-3">
           {[1, 2].map((i) => (
@@ -264,7 +281,7 @@ export const AlertsView: React.FC<AlertsViewProps> = ({
             </nav>
           )}
         </div>
-      ) : (
+      ) : lowStock.length === 0 ? (
         <div className="bg-zinc-900/40 border border-dashed border-zinc-800 rounded-2xl p-8 text-center flex flex-col items-center justify-center">
           <div className="w-12 h-12 rounded-2xl bg-zinc-800/80 flex items-center justify-center text-emerald-400 mb-3 border border-zinc-700/50">
             <ShieldCheck className="w-6 h-6" />
@@ -272,7 +289,7 @@ export const AlertsView: React.FC<AlertsViewProps> = ({
           <h3 className="text-sm font-semibold text-zinc-200">{t('expiry.noAlertsTitle')}</h3>
           <p className="text-xs text-zinc-400 max-w-xs mt-1.5 leading-relaxed">{t('expiry.noAlertsMessage')}</p>
         </div>
-      )}
+      ) : null}
 
       <ResolveExpiryDialog item={resolveItem} onClose={() => setResolveItem(null)} />
     </div>
