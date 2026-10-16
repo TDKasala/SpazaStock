@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Package, Search, Barcode, Archive, ArchiveRestore } from 'lucide-react';
+import { Package, Search, Barcode, Archive, ArchiveRestore, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { useShop, useShopId } from '../../context/ShopContext';
 import { Button } from '../ui/Button';
@@ -9,6 +9,8 @@ import { getAllProductsStockSummary } from '../../services/stockService';
 import { getArchivedProducts, setProductArchived } from '../../services/productService';
 import { can } from '../../lib/permissions';
 import { StockProductCard } from '../stock/StockProductCard';
+
+const PAGE_SIZE = 15;
 
 export interface StockViewProps {
   onOpenScanner: () => void;
@@ -32,6 +34,7 @@ export const StockView: React.FC<StockViewProps> = ({
   const [archived, setArchived] = useState<Product[]>([]);
   const [showArchived, setShowArchived] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [page, setPage] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -61,6 +64,12 @@ export const StockView: React.FC<StockViewProps> = ({
   const filteredSummaries = summaries.filter(({ product }) => matches(product));
   const filteredArchived = archived.filter(matches);
 
+  const pageCount = Math.max(1, Math.ceil(filteredSummaries.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount - 1);
+  const pageStart = currentPage * PAGE_SIZE;
+  const pageEnd = Math.min(pageStart + PAGE_SIZE, filteredSummaries.length);
+  const pageSummaries = filteredSummaries.slice(pageStart, pageEnd);
+
   return (
     <div className="space-y-5 pb-24">
       <div className="flex items-center justify-between gap-3">
@@ -77,7 +86,10 @@ export const StockView: React.FC<StockViewProps> = ({
         <Input
           placeholder={t('stock.searchPlaceholder')}
           value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
+          onChange={(e) => {
+            setSearchTerm(e.target.value);
+            setPage(0);
+          }}
           leftIcon={<Search className="w-4 h-4" />}
         />
       </div>
@@ -90,7 +102,7 @@ export const StockView: React.FC<StockViewProps> = ({
         </div>
       ) : filteredSummaries.length > 0 ? (
         <div className="space-y-3">
-          {filteredSummaries.map((summary) => (
+          {pageSummaries.map((summary) => (
             <StockProductCard
               key={summary.product.id}
               summary={summary}
@@ -98,6 +110,33 @@ export const StockView: React.FC<StockViewProps> = ({
               onStockIn={() => onQuickStockIn(summary.product)}
             />
           ))}
+          {filteredSummaries.length > PAGE_SIZE && (
+            <nav className="flex items-center justify-between gap-3 pt-1" aria-label={t('stock.paginationLabel')}>
+              <p className="text-xs text-zinc-400" aria-live="polite">
+                {t('stock.pageRange', { from: pageStart + 1, to: pageEnd, total: filteredSummaries.length })}
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage(currentPage - 1)}
+                  disabled={currentPage === 0}
+                  leftIcon={<ChevronLeft className="w-4 h-4" />}
+                >
+                  {t('stock.previousPage')}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage(currentPage + 1)}
+                  disabled={currentPage >= pageCount - 1}
+                  rightIcon={<ChevronRight className="w-4 h-4" />}
+                >
+                  {t('stock.nextPage')}
+                </Button>
+              </div>
+            </nav>
+          )}
         </div>
       ) : (
         <div className="bg-zinc-900/40 border border-dashed border-zinc-800 rounded-2xl p-8 text-center flex flex-col items-center justify-center">
