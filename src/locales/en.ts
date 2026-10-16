@@ -34,6 +34,12 @@ export const en = {
     registerSubtitle:
       'Shop owners: register, then set up your shop. Workers: open the invite link from your shop owner first.',
     register: 'Create account',
+    appInviteHint: 'Know another spaza owner? Invite them on WhatsApp.',
+    shareAppWhatsApp: 'Share SpazaStock on WhatsApp',
+    appInviteText:
+      'Try SpazaStock for your spaza — scan barcodes, track stock and sell offline. Create your free account: {{link}}',
+    appInviteTextNamed:
+      '{{inviter}} uses SpazaStock for their spaza shop. Join free — scan barcodes, track stock and sell offline: {{link}}',
     changeDetails: 'Change my details',
     confirmTitle: 'Confirm your email',
     confirmSent: 'We emailed a 6-digit code to {{email}}. Enter it to finish creating your account.',

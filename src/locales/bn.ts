@@ -37,6 +37,12 @@ export const bn: Translations = {
     registerSubtitle:
       'দোকান মালিক: নিবন্ধন করুন, তারপর দোকান সেটআপ করুন। কর্মী: আগে মালিকের পাঠানো আমন্ত্রণ লিংক খুলুন।',
     register: 'অ্যাকাউন্ট তৈরি',
+    appInviteHint: 'আরেক দোকানদারকে জানেন? WhatsApp-এ আমন্ত্রণ করুন।',
+    shareAppWhatsApp: 'WhatsApp-এ SpazaStock শেয়ার',
+    appInviteText:
+      'আপনার দোকানের জন্য SpazaStock চেষ্টা করুন — বারকোড স্ক্যান, স্টক ট্র্যাক, অফলাইনে বিক্রি। ফ্রি অ্যাকাউন্ট: {{link}}',
+    appInviteTextNamed:
+      '{{inviter}} তাদের দোকানে SpazaStock ব্যবহার করে। ফ্রিতে যোগ দিন — বারকোড, স্টক, অফলাইন বিক্রি: {{link}}',
     changeDetails: 'আমার তথ্য পরিবর্তন',
     confirmTitle: 'ইমেইল নিশ্চিত করুন',
     confirmSent: '{{email}}-এ ৬ অঙ্কের কোড পাঠিয়েছি। অ্যাকাউন্ট তৈরি শেষ করতে কোড লিখুন।',

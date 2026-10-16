@@ -36,6 +36,12 @@ export const zu: Translations = {
     registerSubtitle:
       'Abanikazi bezitolo: bhalisa, bese usetha isitolo sakho. Abasebenzi: qala ngokuvula isixhumanisi sesimemo esivela kumnikazi wesitolo.',
     register: 'Vula i-akhawunti',
+    appInviteHint: 'Uyayazi enye ispaza? Bayameme ku-WhatsApp.',
+    shareAppWhatsApp: 'Yabelana nge-SpazaStock ku-WhatsApp',
+    appInviteText:
+      'Zama i-SpazaStock yesitolo sakho — skena amabhakhodi, landelela impahla, uthengise ngaphandle kwe-inthanethi. Vula i-akhawunti yamahhala: {{link}}',
+    appInviteTextNamed:
+      '{{inviter}} usebenzisa i-SpazaStock esitolo sakhe. Joyina mahhala — skena amabhakhodi, landelela impahla, uthengise offline: {{link}}',
     changeDetails: 'Shintsha imininingwane yami',
     confirmTitle: 'Qinisekisa i-imeyili yakho',
     confirmSent: 'Sithumele ikhodi yezinombolo eziyi-6 ku-{{email}}. Yifake ukuze uqedele ukuvula i-akhawunti yakho.',

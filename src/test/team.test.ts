@@ -14,6 +14,7 @@ import { authErrorKey } from '../lib/authErrors';
 import { can, ROLE_PERMISSIONS } from '../lib/permissions';
 import { canManageExpiry } from '../lib/shopSettings';
 import {
+  buildAppLink,
   buildInviteLink,
   captureInviteFromUrl,
   clearPendingInvite,
@@ -174,6 +175,7 @@ describe('invite links', () => {
     expect(isInviteToken(TOKEN)).toBe(true);
     expect(isInviteToken(`${TOKEN}0`)).toBe(false);
     expect(whatsappShareUrl('Join & sell')).toBe('https://wa.me/?text=Join%20%26%20sell');
+    expect(buildAppLink('https://spazastock.example')).toBe('https://spazastock.example/');
   });
 
   it('moves the token from the address bar into session storage', () => {

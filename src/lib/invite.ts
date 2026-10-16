@@ -18,6 +18,14 @@ export function buildInviteLink(origin: string, token: string): string {
   return url.toString();
 }
 
+/** Public app URL for inviting new shop owners (no team invite token). */
+export function buildAppLink(origin?: string): string {
+  const base =
+    origin ?? (typeof window !== 'undefined' ? window.location.origin : '');
+  if (!base) return '/';
+  return new URL('/', base).href;
+}
+
 export function whatsappShareUrl(text: string): string {
   return `https://wa.me/?text=${encodeURIComponent(text)}`;
 }

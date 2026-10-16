@@ -14,6 +14,7 @@ import {
 import { LinkButton } from './AuthLayout';
 import { CodeForm } from './CodeForm';
 import { PasswordInput } from './PasswordInput';
+import { AppWhatsAppInvite } from '../pwa/AppWhatsAppInvite';
 
 interface RegisterFormProps {
   lockedEmail?: string;
@@ -106,6 +107,10 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ lockedEmail, initial
         </Button>
       </form>
       <LinkButton onClick={onSignIn}>{t('auth.haveAccount')}</LinkButton>
+      <div className="pt-4 mt-2 border-t border-zinc-800 space-y-2">
+        <p className="text-[11px] text-zinc-500 text-center leading-relaxed">{t('auth.appInviteHint')}</p>
+        <AppWhatsAppInvite inviterName={name.trim() || undefined} />
+      </div>
     </>
   );
 };

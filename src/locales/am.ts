@@ -36,6 +36,12 @@ export const am: Translations = {
     registerSubtitle:
       'የሱቅ ባለቤቶች፦ ይመዝገቡ፣ ከዚያ ሱቅዎን ያዘጋጁ። ሠራተኞች፦ መጀመሪያ ከሱቁ ባለቤት የተላከውን የግብዣ ሊንክ ይክፈቱ።',
     register: 'መለያ ክፈት',
+    appInviteHint: 'ሌላ ሱቅ ባለቤት ያውቃሉ? በWhatsApp ይጋብዙ።',
+    shareAppWhatsApp: 'SpazaStock በWhatsApp አጋራ',
+    appInviteText:
+      'ለሱቅዎ SpazaStock ይሞክሩ — ባርኮድ ይስካኑ፣ ክምችት ይከታተሉ፣ ከመስመር ውጭ ይሽጡ። ነጻ መለያ ይክፈቱ፦ {{link}}',
+    appInviteTextNamed:
+      '{{inviter}} ለሱቁ SpazaStock ይጠቀማል። ነጻ ይቀላቀሉ — ባርኮድ፣ ክምችት፣ ከመስመር ውጭ ሽያጭ፦ {{link}}',
     changeDetails: 'መረጃዬን ቀይር',
     confirmTitle: 'ኢሜይልዎን ያረጋግጡ',
     confirmSent: 'ወደ {{email}} ባለ 6 አሃዝ ኮድ ልከናል። መለያዎን ለመክፈት ያስገቡት።',
