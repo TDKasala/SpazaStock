@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { TrendingDown, TrendingUp, Minus } from 'lucide-react';
+import { BarChart3, TrendingDown, TrendingUp, Minus } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { rankSales, type InsightMeasure, type InsightPeriod, type InsightTrend } from '../../lib/salesInsights';
 import type { LowStockItem } from '../../lib/lowStock';
@@ -12,7 +12,6 @@ export interface StockIntelligenceCardProps {
   batches: StockBatch[];
   timezone: string;
   isLoading: boolean;
-  onOpenAlerts: () => void;
 }
 
 const PERIODS: InsightPeriod[] = ['day', 'week', 'month'];
@@ -29,7 +28,6 @@ export const StockIntelligenceCard: React.FC<StockIntelligenceCardProps> = ({
   batches,
   timezone,
   isLoading,
-  onOpenAlerts,
 }) => {
   const { t } = useLanguage();
   const [period, setPeriod] = useState<InsightPeriod>('week');
@@ -53,21 +51,16 @@ export const StockIntelligenceCard: React.FC<StockIntelligenceCardProps> = ({
   };
 
   return (
-    <section className="p-4 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-3">
-      <h3 className="text-sm font-bold text-zinc-100">{t('intelligence.title')}</h3>
+    <details className="rounded-2xl border border-zinc-800 bg-zinc-950 p-3.5 group">
+      <summary className="text-xs font-semibold text-zinc-200 flex items-center gap-1.5 cursor-pointer list-none">
+        <BarChart3 className="w-3.5 h-3.5 text-zinc-400" />
+        {t('intelligence.title')}
+        <span className="text-zinc-500 font-normal">
+          ({isLoading ? t('common.loading') : t('intelligence.lowStockCount', { count: lowStock.length })})
+        </span>
+      </summary>
 
-      <button
-        type="button"
-        onClick={onOpenAlerts}
-        className="w-full text-left rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 active:scale-[0.99]"
-      >
-        <p className="text-sm font-semibold text-amber-100">
-          {isLoading ? t('common.loading') : t('intelligence.lowStockCount', { count: lowStock.length })}
-        </p>
-        <p className="text-[11px] text-zinc-400 mt-0.5">{t('intelligence.lowStockHint')}</p>
-      </button>
-
-      <div className="space-y-2">
+      <div className="mt-3 space-y-2">
         <div className="flex items-center justify-between gap-2">
           <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-400">{t('intelligence.topSellers')}</h4>
         </div>
@@ -133,7 +126,7 @@ export const StockIntelligenceCard: React.FC<StockIntelligenceCardProps> = ({
           </ul>
         )}
       </div>
-    </section>
+    </details>
   );
 };
 

@@ -227,12 +227,6 @@ export function AppContent() {
             expiryAlerts={expiry.alerts}
             isLoadingAlerts={expiry.isLoading}
             onSelectProduct={setInspectedProduct}
-            lowStock={intelligence.lowStock}
-            products={intelligence.products}
-            sales={intelligence.sales}
-            batches={intelligence.batches}
-            timezone={intelligence.timezone}
-            isLoadingIntelligence={intelligence.isLoading}
           />
         )}
         {currentTab === 'stock' && (
@@ -260,6 +254,10 @@ export function AppContent() {
             refreshTrigger={refreshCounter}
             lowStock={intelligence.lowStock}
             products={intelligence.products}
+            sales={intelligence.sales}
+            batches={intelligence.batches}
+            timezone={intelligence.timezone}
+            isLoadingIntelligence={intelligence.isLoading}
           />
         )}
       </main>
