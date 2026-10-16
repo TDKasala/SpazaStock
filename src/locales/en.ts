@@ -681,7 +681,10 @@ export const en = {
     paginationLabel: 'Transaction pages',
   },
   rapid: {
-    keepScanning: 'Keep scanning. Each scan sells 1 unit.',
+    keepScanning: 'Scan a barcode, choose how many to sell, then tap Sell. Tap Done when finished.',
+    stagedNotice: 'Ready to sell: {{name}}. Set quantity and tap Sell.',
+    confirmSale: 'Sell {{count}} unit(s)',
+    quantityQuickPick: 'Quick quantity',
     soldNotice: 'Sold {{count}} × {{name}}. {{left}} left.',
     soldPackageNotice: 'Sold 1 {{package}}: {{count}} × {{name}}. {{left}} left.',
     undoneNotice: 'Undid {{count}} × {{name}}. {{left}} left.',

@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, CheckCircle2, CloudOff, Info, Layers, Minus, Plus, Undo2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, CloudOff, Info, Layers, Minus, Plus, ShoppingCart, Undo2 } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { Button } from '../ui/Button';
 import { canUndoLine, type SaleRegister, type ScanLine } from '../../hooks/useSaleRegister';
@@ -48,7 +48,20 @@ export interface RapidSellPanelProps {
 /** Live feedback and corrections shown under the camera while rapid selling. */
 export const RapidSellPanel: React.FC<RapidSellPanelProps> = ({ register }) => {
   const { t } = useLanguage();
-  const { lines, lastLine, notice, syncStates, increaseLast, decreaseLast, undo } = register;
+  const {
+    lines,
+    lastLine,
+    notice,
+    syncStates,
+    pendingScan,
+    adjustPendingQuantity,
+    setPendingQuantity,
+    commitPendingSale,
+    increaseLast,
+    decreaseLast,
+    undo,
+    isProcessing,
+  } = register;
 
   const productLines = lastLine ? lines.filter((l) => l.product.id === lastLine.product.id) : [];
   const productNet = productLines.reduce((sum, l) => sum + saleNetQuantity(l), 0);
@@ -73,11 +86,76 @@ export const RapidSellPanel: React.FC<RapidSellPanelProps> = ({ register }) => {
           <NoticeIcon className="w-4 h-4 shrink-0" />
           <span>{notice.message}</span>
         </div>
-      ) : (
+      ) : !pendingScan ? (
         <p className="text-xs text-zinc-400 text-center">{t('rapid.keepScanning')}</p>
+      ) : null}
+
+      {pendingScan && (
+        <div className="p-3.5 bg-emerald-950/30 border border-emerald-600/50 rounded-2xl space-y-3">
+          <div className="min-w-0">
+            <span className="text-xs text-zinc-400 font-mono">{pendingScan.product.barcode}</span>
+            <h4 className="text-base font-bold text-zinc-100 truncate">{pendingScan.product.name}</h4>
+            {pendingScan.packaging && (
+              <span className="text-[11px] text-emerald-300 block mt-0.5">{pendingScan.packaging.name}</span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => adjustPendingQuantity(-1)}
+              disabled={pendingScan.quantity <= 1}
+              aria-label={t('rapid.lessOne')}
+              className="w-12 h-12 bg-zinc-950 rounded-xl border border-zinc-800 flex items-center justify-center text-zinc-200 disabled:opacity-40"
+            >
+              <Minus className="w-5 h-5" />
+            </button>
+            <div className="flex-1 h-12 bg-zinc-950 border border-zinc-800 rounded-xl flex items-center justify-center font-bold text-xl text-zinc-100">
+              {pendingScan.quantity}
+            </div>
+            <button
+              type="button"
+              onClick={() => adjustPendingQuantity(1)}
+              aria-label={t('rapid.moreOne')}
+              className="w-12 h-12 bg-emerald-700 rounded-xl border border-emerald-600 flex items-center justify-center text-white"
+            >
+              <Plus className="w-5 h-5" />
+            </button>
+          </div>
+
+          <div className="space-y-1.5">
+            <span className="text-[11px] text-zinc-400">{t('rapid.quantityQuickPick')}</span>
+            <div className="grid grid-cols-4 gap-2">
+              {QUICK_PICKS.map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setPendingQuantity(n)}
+                  className={`py-1.5 text-xs font-semibold rounded-lg border ${
+                    pendingScan.quantity === n
+                      ? 'bg-emerald-600 text-white border-emerald-500'
+                      : 'bg-zinc-950 hover:bg-zinc-800 text-zinc-300 border-zinc-800'
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <Button
+            onClick={() => void commitPendingSale()}
+            variant="primary"
+            fullWidth
+            disabled={isProcessing}
+            leftIcon={<ShoppingCart className="w-4 h-4" />}
+          >
+            {t('rapid.confirmSale', { count: pendingScan.quantity })}
+          </Button>
+        </div>
       )}
 
-      {lastLine && (
+      {lastLine && !pendingScan && (
         <div className="p-3.5 bg-zinc-900/80 border border-zinc-800 rounded-2xl space-y-3">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">

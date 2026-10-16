@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Product, SaleResult } from '../types';
+import type { Product, ProductPackaging, SaleResult } from '../types';
+import { isArchived, resolveBarcode } from '../services/productService';
 import { getPendingSaleIds, saleNetQuantity, type SaleSyncState } from '../services/salesService';
 import { createScanSeller, UNDO_WINDOW_MS, type ScanSellOutcome } from '../services/scanSell';
 import { newId } from '../lib/ids';
@@ -18,6 +19,13 @@ export interface ScanLine {
   remainingStock: number;
   expiryDate: string | null;
   soldAt: number;
+}
+
+/** Product read from the camera, waiting for the cashier to confirm quantity. */
+export interface PendingScan {
+  product: Product;
+  packaging: ProductPackaging | null;
+  quantity: number;
 }
 
 export interface RegisterNotice {
@@ -44,6 +52,7 @@ export function useSaleRegister(shopId: string, onUnknownBarcode: (barcode: stri
   const [notice, setNotice] = useState<RegisterNotice | null>(null);
   const [inFlight, setInFlight] = useState(0);
   const [lines, setLines] = useState<ScanLine[]>([]);
+  const [pendingScan, setPendingScan] = useState<PendingScan | null>(null);
   const [syncStates, setSyncStates] = useState<Map<string, SaleSyncState>>(() => new Map());
   const linesRef = useRef(lines);
   linesRef.current = lines;
@@ -190,6 +199,58 @@ export function useSaleRegister(shopId: string, onUnknownBarcode: (barcode: stri
     [runSale, seller]
   );
 
+  /**
+   * Camera rapid sell: resolve the barcode and let the cashier set quantity before recording
+   * the sale. Scanning the same code again bumps the staged quantity by one.
+   */
+  const stageBarcode = useCallback(
+    async (barcode: string): Promise<boolean> => {
+      const clean = barcode.trim();
+      if (!clean) return false;
+      const resolved = await resolveBarcode(clean, shopId);
+      if (!resolved) {
+        return handleSaleOutcome({ kind: 'unknown_barcode', barcode: clean });
+      }
+      const { product, packaging } = resolved;
+      if (isArchived(product)) {
+        return handleSaleOutcome({ kind: 'archived', product });
+      }
+      const defaultQty = packaging?.unitsPerPackage ?? 1;
+      setPendingScan((current) => {
+        if (current && current.product.id === product.id) {
+          return { ...current, quantity: current.quantity + 1 };
+        }
+        return { product, packaging, quantity: defaultQty };
+      });
+      setError(null);
+      announce('info', t('rapid.stagedNotice', { name: product.name }));
+      return true;
+    },
+    [announce, handleSaleOutcome, shopId, t]
+  );
+
+  const setPendingQuantity = useCallback((quantity: number) => {
+    if (!Number.isInteger(quantity) || quantity <= 0) return;
+    setPendingScan((current) => (current ? { ...current, quantity } : null));
+  }, []);
+
+  const adjustPendingQuantity = useCallback((delta: number) => {
+    setPendingScan((current) => {
+      if (!current) return null;
+      const next = Math.max(1, current.quantity + delta);
+      return { ...current, quantity: next };
+    });
+  }, []);
+
+  const clearPendingScan = useCallback(() => setPendingScan(null), []);
+
+  const commitPendingSale = useCallback(() => {
+    const staged = pendingScan;
+    if (!staged) return Promise.resolve(false);
+    setPendingScan(null);
+    return sellProduct(staged.product, staged.quantity);
+  }, [pendingScan, sellProduct]);
+
   /** Undoes `quantity` units of a session line (all remaining units by default). */
   const undo = useCallback(
     async (saleId: string, quantity?: number): Promise<boolean> => {
@@ -264,6 +325,7 @@ export function useSaleRegister(shopId: string, onUnknownBarcode: (barcode: stri
 
   const resetSession = useCallback(() => {
     setLines([]);
+    setPendingScan(null);
     setNotice(null);
     setError(null);
   }, []);
@@ -278,6 +340,12 @@ export function useSaleRegister(shopId: string, onUnknownBarcode: (barcode: stri
     syncStates,
     sellProduct,
     sellBarcode,
+    pendingScan,
+    stageBarcode,
+    setPendingQuantity,
+    adjustPendingQuantity,
+    clearPendingScan,
+    commitPendingSale,
     increaseLast,
     decreaseLast,
     undo,

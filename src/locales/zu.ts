@@ -694,7 +694,10 @@ export const zu: Translations = {
     paginationLabel: 'Amakhasi okudayisa',
   },
   rapid: {
-    keepScanning: 'Qhubeka uskena. Ukuskena ngakunye kuthengisa ucezu olu-1.',
+    keepScanning: 'Skena ibhakhodi, khetha inani ozolithengisa, bese ucindezela Thenisa. Cindezela Qedile uma usuqedile.',
+    stagedNotice: 'Ukuthengisa: {{name}}. Setha inani bese ucindezela Thenisa.',
+    confirmSale: 'Thengisa iyunithi ezi-{{count}}',
+    quantityQuickPick: 'Inani elisheshayo',
     soldNotice: 'Kudayiswe {{count}} × {{name}}. Kusele {{left}}.',
     soldPackageNotice: 'Kudayiswe 1 {{package}}: {{count}} × {{name}}. Kusele {{left}}.',
     undoneNotice: 'Kuhoxiswe {{count}} × {{name}}. Kusele {{left}}.',

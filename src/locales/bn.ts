@@ -684,7 +684,10 @@ export const bn: Translations = {
     paginationLabel: 'লেনদেনের পাতা',
   },
   rapid: {
-    keepScanning: 'স্ক্যান চালিয়ে যান। প্রতি স্ক্যানে ১ ইউনিট বিক্রি।',
+    keepScanning: 'বারকোড স্ক্যান করুন, কতটি বিক্রি করবেন বেছে নিন, তারপর Sell চাপুন। শেষে Done চাপুন।',
+    stagedNotice: 'বিক্রির জন্য প্রস্তুত: {{name}}। পরিমাণ সেট করে Sell চাপুন।',
+    confirmSale: '{{count}} ইউনিট বিক্রি',
+    quantityQuickPick: 'দ্রুত পরিমাণ',
     soldNotice: 'বিক্রি {{count}} × {{name}}। {{left}} বাকি।',
     soldPackageNotice: '১ {{package}} বিক্রি: {{count}} × {{name}}। {{left}} বাকি।',
     undoneNotice: 'বাতিল {{count}} × {{name}}। {{left}} বাকি।',

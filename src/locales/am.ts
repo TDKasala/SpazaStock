@@ -682,7 +682,10 @@ export const am: Translations = {
     paginationLabel: 'የግብይት ገጾች',
   },
   rapid: {
-    keepScanning: 'ስካን ማድረግዎን ይቀጥሉ። እያንዳንዱ ስካን 1 ይሸጣል።',
+    keepScanning: 'ባርኮድ ይስካኑ፣ ምን ያህል ለመሸጥ ይምረጡ፣ ከዚያ Sell ይጫኑ። ሲጨርሱ Done ይጫኑ።',
+    stagedNotice: 'ለመሸጥ ዝግጁ፦ {{name}}። ብዛት ያስቀምጡና Sell ይጫኑ።',
+    confirmSale: '{{count}} ክፍል ሽድ',
+    quantityQuickPick: 'ፈጣን ብዛት',
     soldNotice: '{{count}} × {{name}} ተሽጧል። {{left}} ቀርቷል።',
     soldPackageNotice: '1 {{package}} ተሽጧል፦ {{count}} × {{name}}። {{left}} ቀርቷል።',
     undoneNotice: '{{count}} × {{name}} ተመልሷል። {{left}} ቀርቷል።',

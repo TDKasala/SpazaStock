@@ -685,7 +685,10 @@ export const so: Translations = {
     paginationLabel: 'Bogagga iibka',
   },
   rapid: {
-    keepScanning: 'Sii wad iskaanka. Iskaan kasta wuxuu iibiyaa 1 xabbo.',
+    keepScanning: 'Iskaan barcode, dooro inta aad iibinayso, ka dib taabo Sell. Markaad dhammayso taabo Done.',
+    stagedNotice: 'Diyaar u ah iibka: {{name}}. Deji tirada ka dib taabo Sell.',
+    confirmSale: 'Iibi {{count}} xabbo',
+    quantityQuickPick: 'Tiro degdeg ah',
     soldNotice: 'La iibiyay {{count}} × {{name}}. {{left}} ayaa haray.',
     soldPackageNotice: 'La iibiyay 1 {{package}}: {{count}} × {{name}}. {{left}} ayaa haray.',
     undoneNotice: 'La celiyay {{count}} × {{name}}. {{left}} ayaa haray.',

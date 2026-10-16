@@ -174,8 +174,7 @@ export function AppContent() {
 
     if (mode === 'sell') {
       setCurrentTab('sales');
-      const sold = await saleRegister.sellBarcode(barcode);
-      if (sold) setScanMode(null);
+      await saleRegister.stageBarcode(barcode);
       return;
     }
 
