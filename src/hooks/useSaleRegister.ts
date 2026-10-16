@@ -56,6 +56,15 @@ export function useSaleRegister(shopId: string, onUnknownBarcode: (barcode: stri
   const [syncStates, setSyncStates] = useState<Map<string, SaleSyncState>>(() => new Map());
   const linesRef = useRef(lines);
   linesRef.current = lines;
+  /** Latest staged sale, updated immediately so a queued scan does not read a stale render. */
+  const pendingRef = useRef<PendingScan | null>(null);
+  /** Scans and confirms run one at a time, in the order they arrived. */
+  const stageChainRef = useRef(Promise.resolve());
+
+  const writePending = (next: PendingScan | null) => {
+    pendingRef.current = next;
+    setPendingScan(next);
+  };
 
   const refreshSyncStates = useCallback(async () => {
     setSyncStates(await getPendingSaleIds(shopId));
@@ -200,56 +209,76 @@ export function useSaleRegister(shopId: string, onUnknownBarcode: (barcode: stri
   );
 
   /**
+   * Records the staged sale. Nothing staged counts as success so Done can close.
+   * The staged row stays until the sale succeeds, so a failure can be retried.
+   */
+  const commitStaged = useCallback(async (): Promise<boolean> => {
+    const staged = pendingRef.current;
+    if (!staged) return true;
+    const ok = await sellProduct(staged.product, staged.quantity, newId(), staged.packaging);
+    if (ok && pendingRef.current?.product.id === staged.product.id) writePending(null);
+    return ok;
+  }, [sellProduct]);
+
+  const enqueueScan = useCallback((task: () => Promise<boolean>) => {
+    const run = stageChainRef.current.then(task, task);
+    stageChainRef.current = run.then(
+      () => undefined,
+      () => undefined
+    );
+    return run;
+  }, []);
+
+  /**
    * Camera rapid sell: resolve the barcode and let the cashier set quantity before recording
-   * the sale. Scanning the same code again bumps the staged quantity by one.
+   * the sale. Scanning the same product again bumps the staged quantity by one. A different
+   * product commits the staged sale first, and is only staged when that sale succeeds.
    */
   const stageBarcode = useCallback(
-    async (barcode: string): Promise<boolean> => {
-      const clean = barcode.trim();
-      if (!clean) return false;
-      const resolved = await resolveBarcode(clean, shopId);
-      if (!resolved) {
-        return handleSaleOutcome({ kind: 'unknown_barcode', barcode: clean });
-      }
-      const { product, packaging } = resolved;
-      if (isArchived(product)) {
-        return handleSaleOutcome({ kind: 'archived', product });
-      }
-      const defaultQty = packaging?.unitsPerPackage ?? 1;
-      setPendingScan((current) => {
-        if (current && current.product.id === product.id) {
-          return { ...current, quantity: current.quantity + 1 };
+    (barcode: string) =>
+      enqueueScan(async () => {
+        const clean = barcode.trim();
+        if (!clean) return false;
+        const resolved = await resolveBarcode(clean, shopId);
+        if (!resolved) {
+          return handleSaleOutcome({ kind: 'unknown_barcode', barcode: clean });
         }
-        return { product, packaging, quantity: defaultQty };
-      });
-      setError(null);
-      announce('info', t('rapid.stagedNotice', { name: product.name }));
-      return true;
-    },
-    [announce, handleSaleOutcome, shopId, t]
+        const { product, packaging } = resolved;
+        if (isArchived(product)) {
+          return handleSaleOutcome({ kind: 'archived', product });
+        }
+        const current = pendingRef.current;
+        if (current && current.product.id !== product.id) {
+          const committed = await commitStaged();
+          if (!committed) return false;
+        }
+        const latest = pendingRef.current;
+        if (latest && latest.product.id === product.id) {
+          writePending({ ...latest, quantity: latest.quantity + 1 });
+        } else {
+          writePending({ product, packaging, quantity: packaging?.unitsPerPackage ?? 1 });
+        }
+        setError(null);
+        announce('info', t('rapid.stagedNotice', { name: product.name }));
+        return true;
+      }),
+    [announce, commitStaged, enqueueScan, handleSaleOutcome, shopId, t]
   );
 
   const setPendingQuantity = useCallback((quantity: number) => {
-    if (!Number.isInteger(quantity) || quantity <= 0) return;
-    setPendingScan((current) => (current ? { ...current, quantity } : null));
+    if (!Number.isInteger(quantity) || quantity <= 0 || !pendingRef.current) return;
+    writePending({ ...pendingRef.current, quantity });
   }, []);
 
   const adjustPendingQuantity = useCallback((delta: number) => {
-    setPendingScan((current) => {
-      if (!current) return null;
-      const next = Math.max(1, current.quantity + delta);
-      return { ...current, quantity: next };
-    });
+    if (!pendingRef.current) return;
+    writePending({ ...pendingRef.current, quantity: Math.max(1, pendingRef.current.quantity + delta) });
   }, []);
 
-  const clearPendingScan = useCallback(() => setPendingScan(null), []);
+  const clearPendingScan = useCallback(() => writePending(null), []);
 
-  const commitPendingSale = useCallback(() => {
-    const staged = pendingScan;
-    if (!staged) return Promise.resolve(false);
-    setPendingScan(null);
-    return sellProduct(staged.product, staged.quantity, newId(), staged.packaging);
-  }, [pendingScan, sellProduct]);
+  /** Queued behind any scan already in flight, so a confirm cannot race a replacement. */
+  const commitPendingSale = useCallback(() => enqueueScan(commitStaged), [commitStaged, enqueueScan]);
 
   /** Undoes `quantity` units of a session line (all remaining units by default). */
   const undo = useCallback(
@@ -324,8 +353,8 @@ export function useSaleRegister(shopId: string, onUnknownBarcode: (barcode: stri
   }, [undo]);
 
   const resetSession = useCallback(() => {
+    writePending(null);
     setLines([]);
-    setPendingScan(null);
     setNotice(null);
     setError(null);
   }, []);

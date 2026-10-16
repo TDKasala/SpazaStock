@@ -275,7 +275,16 @@ export function AppContent() {
             onBarcodeScanned={handleBarcodeScanned}
             continuous={scanMode === 'sell'}
             footer={
-              scanMode === 'sell' && <RapidSellSummary register={saleRegister} onDone={() => setScanMode(null)} />
+              scanMode === 'sell' && (
+                <RapidSellSummary
+                  register={saleRegister}
+                  onDone={() => {
+                    void saleRegister.commitPendingSale().then((ok) => {
+                      if (ok) setScanMode(null);
+                    });
+                  }}
+                />
+              )
             }
           >
             {scanMode === 'sell' && <RapidSellPanel register={saleRegister} />}
