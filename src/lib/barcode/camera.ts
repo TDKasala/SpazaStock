@@ -7,8 +7,17 @@ export type CameraError = 'permission_denied' | 'not_supported' | 'device_not_fo
  */
 export const SCAN_BAND = { width: 0.9, height: 0.5 } as const;
 
+/** Wider band used on occasional frames so small or off-centre codes are not missed. */
+export const SCAN_BAND_WIDE = { width: 0.95, height: 0.65 } as const;
+
+/** Every Nth decode pass uses {@link SCAN_BAND_WIDE}. */
+export const WIDE_SCAN_EVERY_N_FRAMES = 8;
+
 /** The WASM decoder slows down sharply on large images; EAN bars stay readable at this width. */
-export const WASM_MAX_DECODE_WIDTH = 1280;
+export const WASM_MAX_DECODE_WIDTH = 1440;
+
+/** Native BarcodeDetector (ML Kit on Android) can use more pixels without the same WASM cost. */
+export const NATIVE_MAX_DECODE_WIDTH = 1920;
 
 /**
  * 1080p gives thin EAN bars enough pixels; 30 fps keeps the preview smooth. Values are `ideal`
@@ -24,6 +33,33 @@ export const CAMERA_CONSTRAINTS: MediaStreamConstraints = {
   },
 };
 
+/** Tries the highest practical resolution first, then steps down when the device cannot satisfy it. */
+export const CAMERA_OPEN_ATTEMPTS: MediaStreamConstraints[] = [
+  {
+    audio: false,
+    video: {
+      facingMode: { ideal: 'environment' },
+      width: { ideal: 3840 },
+      height: { ideal: 2160 },
+      frameRate: { ideal: 30 },
+    },
+  },
+  CAMERA_CONSTRAINTS,
+  {
+    audio: false,
+    video: {
+      facingMode: { ideal: 'environment' },
+      width: { ideal: 1280 },
+      height: { ideal: 720 },
+      frameRate: { ideal: 30 },
+    },
+  },
+  {
+    audio: false,
+    video: { facingMode: { ideal: 'environment' } },
+  },
+];
+
 export interface ScanCrop {
   /** Source rectangle in video pixels. */
   sx: number;
@@ -31,6 +67,11 @@ export interface ScanCrop {
   sw: number;
   sh: number;
   /** Size of the image handed to the decoder. */
+  width: number;
+  height: number;
+}
+
+export interface ScanBand {
   width: number;
   height: number;
 }
@@ -44,7 +85,8 @@ export function scanCrop(
   videoHeight: number,
   viewWidth: number,
   viewHeight: number,
-  maxOutputWidth: number = Number.POSITIVE_INFINITY
+  maxOutputWidth: number = Number.POSITIVE_INFINITY,
+  band: ScanBand = SCAN_BAND
 ): ScanCrop {
   let visibleWidth = videoWidth;
   let visibleHeight = videoHeight;
@@ -53,8 +95,8 @@ export function scanCrop(
     if (videoWidth / videoHeight > viewAspect) visibleWidth = videoHeight * viewAspect;
     else visibleHeight = videoWidth / viewAspect;
   }
-  const sw = Math.max(1, Math.round(visibleWidth * SCAN_BAND.width));
-  const sh = Math.max(1, Math.round(visibleHeight * SCAN_BAND.height));
+  const sw = Math.max(1, Math.round(visibleWidth * band.width));
+  const sh = Math.max(1, Math.round(visibleHeight * band.height));
   const scale = Math.min(1, maxOutputWidth / sw);
   return {
     sx: Math.round((videoWidth - sw) / 2),
@@ -114,4 +156,86 @@ export function mapCameraError(err: unknown): CameraError {
   }
   if (name === 'NotSupportedError') return 'not_supported';
   return 'general';
+}
+
+export interface ExtendedTrackCapabilities extends MediaTrackCapabilities {
+  torch?: boolean;
+  focusMode?: string[];
+  exposureMode?: string[];
+  zoom?: { min: number; max: number; step?: number };
+}
+
+export interface ZoomCapabilities {
+  supported: boolean;
+  min: number;
+  max: number;
+  step: number;
+}
+
+export function readZoomCapabilities(track: MediaStreamTrack | null): ZoomCapabilities {
+  const caps = (track?.getCapabilities?.() ?? {}) as ExtendedTrackCapabilities;
+  const zoom = caps.zoom;
+  if (zoom && typeof zoom.min === 'number' && typeof zoom.max === 'number') {
+    return { supported: true, min: zoom.min, max: zoom.max, step: zoom.step ?? 0.1 };
+  }
+  return { supported: false, min: 1, max: 1, step: 0.1 };
+}
+
+export function readZoomSetting(track: MediaStreamTrack | null): number {
+  const zoom = (track?.getSettings?.() as { zoom?: number } | undefined)?.zoom;
+  return typeof zoom === 'number' && Number.isFinite(zoom) ? zoom : 1;
+}
+
+/** Preset zoom factors clamped to what the device reports. */
+export function zoomPresetValues(caps: ZoomCapabilities): number[] {
+  if (!caps.supported) return [];
+  const candidates = [1, 1.5, 2, 2.5, 3];
+  return candidates.filter((value) => value >= caps.min - 0.05 && value <= caps.max + 0.05);
+}
+
+export function clampZoom(caps: ZoomCapabilities, zoom: number): number {
+  if (!caps.supported) return 1;
+  const stepped =
+    caps.step > 0 ? Math.round(zoom / caps.step) * caps.step : zoom;
+  return Math.min(caps.max, Math.max(caps.min, stepped));
+}
+
+export async function applyTrackEnhancements(track: MediaStreamTrack): Promise<void> {
+  const caps = (track.getCapabilities?.() ?? {}) as ExtendedTrackCapabilities;
+  const advanced: MediaTrackConstraintSet[] = [];
+  if (caps.focusMode?.includes('continuous')) {
+    advanced.push({ focusMode: 'continuous' } as MediaTrackConstraintSet);
+  }
+  if (caps.exposureMode?.includes('continuous')) {
+    advanced.push({ exposureMode: 'continuous' } as MediaTrackConstraintSet);
+  }
+  if (advanced.length) {
+    await track.applyConstraints({ advanced }).catch(() => undefined);
+  }
+}
+
+export async function applyZoomLevel(track: MediaStreamTrack, zoom: number): Promise<void> {
+  const caps = readZoomCapabilities(track);
+  if (!caps.supported) return;
+  const clamped = clampZoom(caps, zoom);
+  await track.applyConstraints({ advanced: [{ zoom: clamped } as MediaTrackConstraintSet] });
+}
+
+/**
+ * Opens the rear camera at the highest resolution the device will grant, without failing when
+ * 4K or 1080p is unavailable.
+ */
+export async function openCameraStream(
+  getUserMedia: (constraints: MediaStreamConstraints) => Promise<MediaStream>
+): Promise<MediaStream> {
+  let lastError: unknown;
+  for (const constraints of CAMERA_OPEN_ATTEMPTS) {
+    try {
+      return await getUserMedia(constraints);
+    } catch (err) {
+      lastError = err;
+      if (mapCameraError(err) === 'permission_denied') throw err;
+    }
+  }
+  throw lastError ?? new Error('Could not open camera');
 }

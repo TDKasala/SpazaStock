@@ -10,6 +10,7 @@ import {
   Sparkles,
   Search,
 } from 'lucide-react';
+import type { ScanHint } from '../../hooks/useBarcodeCamera';
 import { useLanguage } from '../../context/LanguageContext';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
@@ -39,6 +40,21 @@ const DUPLICATE_SCAN_WINDOW_MS = 1500;
 
 /** Lets the keyboard finish opening before the focused field is scrolled into view. */
 const KEYBOARD_SETTLE_MS = 300;
+
+function scanHintMessage(hint: ScanHint, t: (key: string) => string): string | null {
+  switch (hint) {
+    case 'holdSteady':
+      return t('scanner.hintHoldSteady');
+    case 'moveCloser':
+      return t('scanner.hintMoveCloser');
+    case 'lighting':
+      return t('scanner.hintLighting');
+    case 'zoom':
+      return t('scanner.hintZoom');
+    default:
+      return null;
+  }
+}
 
 const SAMPLE_BARCODES = [
   { code: '6001007300123', label: 'Albany White Bread' },
@@ -121,6 +137,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     onCode: handleCameraCode,
   });
   const cameraError = camera.error;
+  const scanHintText = scanHintMessage(camera.scanHint, t);
 
   useEffect(() => {
     if (cameraError === 'not_supported') setViewMode('manual');
@@ -263,6 +280,53 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                       <Flashlight className="w-5 h-5 text-zinc-300" />
                     )}
                   </button>
+                )}
+
+                {camera.zoomSupported && !cameraError && camera.zoomPresets.length > 0 && (
+                  <div
+                    role="group"
+                    aria-label={t('scanner.zoomLabel')}
+                    className="absolute bottom-3 left-3 right-3 flex flex-wrap items-center gap-1.5 justify-center pointer-events-auto"
+                  >
+                    {camera.zoomPresets.map((preset) => {
+                      const activeZoom = Math.abs(camera.zoomLevel - preset) < 0.12;
+                      const label = preset === 1 ? t('scanner.zoom1x') : t('scanner.zoomPreset', { level: preset });
+                      return (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => void camera.setZoom(preset)}
+                          aria-pressed={activeZoom}
+                          className={`min-h-[40px] min-w-[44px] px-2.5 text-xs font-bold rounded-xl border shadow-lg transition-colors ${
+                            activeZoom
+                              ? 'bg-emerald-600 text-white border-emerald-500'
+                              : 'bg-zinc-900/85 text-zinc-100 border-zinc-700/70 hover:bg-zinc-800'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      onClick={() => void camera.resetZoom()}
+                      className="min-h-[40px] px-2.5 text-xs font-semibold rounded-xl bg-zinc-900/85 text-zinc-200 border border-zinc-700/70 hover:bg-zinc-800 shadow-lg inline-flex items-center gap-1"
+                      aria-label={t('scanner.zoomReset')}
+                    >
+                      <RotateCcw className="w-3.5 h-3.5 opacity-80" aria-hidden />
+                      {t('scanner.zoomReset')}
+                    </button>
+                  </div>
+                )}
+
+                {scanHintText && !cameraError && camera.status === 'scanning' && (
+                  <p
+                    className="pointer-events-none absolute bottom-14 left-3 right-3 text-center text-[11px] font-medium text-zinc-100/95 bg-zinc-950/70 border border-zinc-700/50 rounded-xl px-3 py-2 backdrop-blur-sm"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    {scanHintText}
+                  </p>
                 )}
 
                 {camera.status === 'starting' && !cameraError && (

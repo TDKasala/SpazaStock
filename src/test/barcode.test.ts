@@ -1,7 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { expandUpcE, hasValidGtinCheckDigit, validateBarcode } from '../lib/barcode/validate';
 import { createReadConfirmer } from '../lib/barcode/confirm';
-import { SCAN_BAND, mapCameraError, orderByCentre, scanCrop } from '../lib/barcode/camera';
+import {
+  SCAN_BAND,
+  SCAN_BAND_WIDE,
+  mapCameraError,
+  openCameraStream,
+  orderByCentre,
+  readZoomCapabilities,
+  scanCrop,
+  zoomPresetValues,
+} from '../lib/barcode/camera';
 import { RETAIL_FORMATS, createNativeDecoder } from '../lib/barcode/detector';
 
 const ponyfill = vi.hoisted(() => ({
@@ -148,6 +157,13 @@ describe('scan crop', () => {
     expect(crop.width).toBe(1280);
     expect(crop.height).toBe(Math.round(crop.sh * (1280 / 3456)));
   });
+
+  it('can decode a wider occasional band without changing the default reticle band', () => {
+    const narrow = scanCrop(1080, 1920, 390, 330);
+    const wide = scanCrop(1080, 1920, 390, 330, Number.POSITIVE_INFINITY, SCAN_BAND_WIDE);
+    expect(wide.sh).toBeGreaterThan(narrow.sh);
+    expect(wide.sw).toBeGreaterThanOrEqual(narrow.sw);
+  });
 });
 
 describe('read order', () => {
@@ -166,6 +182,42 @@ describe('read order', () => {
     const reads = [{ rawValue: 'a' }, { rawValue: 'b', boundingBox: box(700, 250) }, { rawValue: 'c' }];
     expect(orderByCentre(reads, 800, 300).map((r) => r.rawValue)).toEqual(['b', 'a', 'c']);
     expect(orderByCentre([], 800, 300)).toEqual([]);
+  });
+});
+
+describe('camera open fallback', () => {
+  it('steps down through resolution attempts until one succeeds', async () => {
+    const attempts: MediaStreamConstraints[] = [];
+    const stream = Object.assign(new MediaStream(), { getTracks: () => [], getVideoTracks: () => [] });
+    const getUserMedia = vi.fn(async (constraints: MediaStreamConstraints) => {
+      attempts.push(constraints);
+      if (attempts.length < 3) throw Object.assign(new Error('over'), { name: 'OverconstrainedError' });
+      return stream;
+    });
+    await expect(openCameraStream(getUserMedia)).resolves.toBe(stream);
+    expect(attempts).toHaveLength(3);
+  });
+
+  it('does not retry after permission is denied', async () => {
+    const getUserMedia = vi.fn(async () => {
+      throw Object.assign(new Error('nope'), { name: 'NotAllowedError' });
+    });
+    await expect(openCameraStream(getUserMedia)).rejects.toMatchObject({ name: 'NotAllowedError' });
+    expect(getUserMedia).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('zoom capabilities', () => {
+  it('lists presets that fit the device range', () => {
+    expect(zoomPresetValues({ supported: true, min: 1, max: 4, step: 0.1 })).toEqual([1, 1.5, 2, 2.5, 3]);
+    expect(zoomPresetValues({ supported: false, min: 1, max: 1, step: 0.1 })).toEqual([]);
+  });
+
+  it('reads zoom from track capabilities', () => {
+    const track = {
+      getCapabilities: () => ({ zoom: { min: 1, max: 8, step: 0.5 } }),
+    } as unknown as MediaStreamTrack;
+    expect(readZoomCapabilities(track).supported).toBe(true);
   });
 });
 

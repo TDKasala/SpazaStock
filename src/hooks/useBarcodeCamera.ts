@@ -3,25 +3,34 @@ import { createReadConfirmer } from '../lib/barcode/confirm';
 import { getBarcodeDecoder, type BarcodeDecoder } from '../lib/barcode/detector';
 import { validateBarcode } from '../lib/barcode/validate';
 import {
-  CAMERA_CONSTRAINTS,
+  NATIVE_MAX_DECODE_WIDTH,
+  SCAN_BAND,
+  SCAN_BAND_WIDE,
   WASM_MAX_DECODE_WIDTH,
+  WIDE_SCAN_EVERY_N_FRAMES,
+  applyTrackEnhancements,
+  applyZoomLevel,
   mapCameraError,
+  openCameraStream,
   orderByCentre,
+  readZoomCapabilities,
+  readZoomSetting,
   scanCrop,
+  zoomPresetValues,
   type CameraError,
 } from '../lib/barcode/camera';
 
 export type CameraStatus = 'idle' | 'starting' | 'scanning' | 'error';
 
-interface ExtendedCapabilities extends MediaTrackCapabilities {
-  torch?: boolean;
-  focusMode?: string[];
-}
+export type ScanHint = 'none' | 'holdSteady' | 'moveCloser' | 'lighting' | 'zoom';
 
 type FrameVideo = HTMLVideoElement & {
   requestVideoFrameCallback?: (callback: () => void) => number;
   cancelVideoFrameCallback?: (handle: number) => void;
 };
+
+const SCAN_HINT_DELAY_MS = 2500;
+const SCAN_HINT_ROTATE_MS = 3200;
 
 export interface UseBarcodeCameraOptions {
   /** The camera runs only while this is true and stops completely when it turns false. */
@@ -45,11 +54,16 @@ export function useBarcodeCamera({ active, onCode }: UseBarcodeCameraOptions) {
   const [hasTorch, setHasTorch] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [zoomSupported, setZoomSupported] = useState(false);
+  const [zoomPresets, setZoomPresets] = useState<number[]>([]);
+  const [scanHint, setScanHint] = useState<ScanHint>('none');
 
   useEffect(() => {
     const video = videoRef.current as FrameVideo | null;
     if (!active || !video) {
       setStatus('idle');
+      setScanHint('none');
       return;
     }
 
@@ -60,12 +74,22 @@ export function useBarcodeCamera({ active, onCode }: UseBarcodeCameraOptions) {
     let canvas: HTMLCanvasElement | null = null;
     let ctx: CanvasRenderingContext2D | null = null;
     let decoder: BarcodeDecoder | null = null;
+    let frameIndex = 0;
+    let lastHintAt = 0;
+    let scanningStartedAt = Date.now();
+    let hasTorchCapability = false;
     const confirmer = createReadConfirmer();
 
     setStatus('starting');
     setError(null);
     setHasTorch(false);
     setTorchOn(false);
+    setZoomLevel(1);
+    setZoomSupported(false);
+    setZoomPresets([]);
+    setScanHint('none');
+    scanningStartedAt = Date.now();
+    lastHintAt = scanningStartedAt;
 
     const stopStream = () => {
       stream?.getTracks().forEach((track) => track.stop());
@@ -78,23 +102,38 @@ export function useBarcodeCamera({ active, onCode }: UseBarcodeCameraOptions) {
       stopStream();
       setError(reason);
       setStatus('error');
+      setScanHint('none');
+    };
+
+    const updateScanHint = (hasTorchCapability: boolean) => {
+      const now = Date.now();
+      const idleFor = now - lastHintAt;
+      if (idleFor < SCAN_HINT_DELAY_MS) {
+        setScanHint('none');
+        return;
+      }
+      const rotation = Math.floor((idleFor - SCAN_HINT_DELAY_MS) / SCAN_HINT_ROTATE_MS);
+      const sequence: ScanHint[] = ['holdSteady', 'moveCloser', 'lighting'];
+      if (zoomSupported) sequence.push('zoom');
+      else if (!hasTorchCapability) sequence.push('zoom');
+      setScanHint(sequence[rotation % sequence.length] ?? 'holdSteady');
     };
 
     const decodeFrame = async () => {
       if (!decoder || !canvas || !ctx || document.hidden || video.readyState < 2) return;
       const { videoWidth, videoHeight, clientWidth, clientHeight } = video;
       if (!videoWidth || !videoHeight || !clientWidth || !clientHeight) return;
-      const crop = scanCrop(
-        videoWidth,
-        videoHeight,
-        clientWidth,
-        clientHeight,
-        decoder.kind === 'wasm' ? WASM_MAX_DECODE_WIDTH : undefined
-      );
+
+      frameIndex += 1;
+      const useWideBand = frameIndex % WIDE_SCAN_EVERY_N_FRAMES === 0;
+      const band = useWideBand ? SCAN_BAND_WIDE : SCAN_BAND;
+      const maxWidth = decoder.kind === 'wasm' ? WASM_MAX_DECODE_WIDTH : NATIVE_MAX_DECODE_WIDTH;
+      const crop = scanCrop(videoWidth, videoHeight, clientWidth, clientHeight, maxWidth, band);
       if (canvas.width !== crop.width) canvas.width = crop.width;
       if (canvas.height !== crop.height) canvas.height = crop.height;
       ctx.drawImage(video, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, crop.width, crop.height);
 
+      const decodeStarted = performance.now();
       let reads;
       try {
         reads = await decoder.detect(canvas);
@@ -102,12 +141,30 @@ export function useBarcodeCamera({ active, onCode }: UseBarcodeCameraOptions) {
         return;
       }
       if (cancelled) return;
+
       for (const read of orderByCentre(reads, canvas.width, canvas.height)) {
         const code = validateBarcode(read.rawValue, read.format);
         if (!code) continue;
-        if (confirmer.push(code)) onCodeRef.current(code);
+        if (confirmer.push(code)) {
+          if (import.meta.env.DEV) {
+            performance.mark?.('barcode-scan-confirmed');
+            console.debug(
+              '[scanner] confirmed',
+              code,
+              `${Math.round(performance.now() - decodeStarted)}ms frame`,
+              `${Math.round(performance.now() - scanningStartedAt)}ms since open`
+            );
+          }
+          lastHintAt = Date.now();
+          setScanHint('none');
+          onCodeRef.current(code);
+        } else {
+          lastHintAt = Date.now();
+        }
         return;
       }
+
+      updateScanHint(hasTorchCapability);
     };
 
     const scheduleFrame = () => {
@@ -135,24 +192,26 @@ export function useBarcodeCamera({ active, onCode }: UseBarcodeCameraOptions) {
         fail('not_supported');
         return;
       }
-      // Load the decoder while the user answers the camera permission prompt.
       const decoderReady = getBarcodeDecoder();
       decoderReady.catch(() => undefined);
       try {
-        stream = await navigator.mediaDevices.getUserMedia(CAMERA_CONSTRAINTS);
+        stream = await openCameraStream((constraints) => navigator.mediaDevices.getUserMedia(constraints));
         if (cancelled) {
           stopStream();
           return;
         }
         const track = stream.getVideoTracks()[0] ?? null;
         trackRef.current = track;
-        const capabilities = (track?.getCapabilities?.() ?? {}) as ExtendedCapabilities;
-        if (capabilities.focusMode?.includes('continuous')) {
-          await track
-            ?.applyConstraints({ advanced: [{ focusMode: 'continuous' } as MediaTrackConstraintSet] })
-            .catch(() => undefined);
+        if (track) {
+          await applyTrackEnhancements(track);
+          const zoomCaps = readZoomCapabilities(track);
+          setZoomSupported(zoomCaps.supported);
+          setZoomPresets(zoomPresetValues(zoomCaps));
+          setZoomLevel(readZoomSetting(track));
         }
-        setHasTorch(capabilities.torch === true);
+        const capabilities = track?.getCapabilities?.() ?? {};
+        hasTorchCapability = (capabilities as { torch?: boolean }).torch === true;
+        setHasTorch(hasTorchCapability);
 
         video.srcObject = stream;
         await video.play();
@@ -161,6 +220,8 @@ export function useBarcodeCamera({ active, onCode }: UseBarcodeCameraOptions) {
 
         canvas = document.createElement('canvas');
         ctx = canvas.getContext('2d', { willReadFrequently: decoder.kind === 'wasm', alpha: false });
+        scanningStartedAt = Date.now();
+        lastHintAt = scanningStartedAt;
         setStatus('scanning');
         scheduleFrame();
       } catch (err) {
@@ -194,7 +255,44 @@ export function useBarcodeCamera({ active, onCode }: UseBarcodeCameraOptions) {
     }
   }, [hasTorch, torchOn]);
 
+  const setZoom = useCallback(async (zoom: number) => {
+    const track = trackRef.current;
+    if (!track || !zoomSupported) return;
+    try {
+      await applyZoomLevel(track, zoom);
+      setZoomLevel(readZoomSetting(track));
+    } catch (err) {
+      console.warn('Zoom change failed:', err);
+    }
+  }, [zoomSupported]);
+
+  const resetZoom = useCallback(async () => {
+    const track = trackRef.current;
+    if (!track || !zoomSupported) return;
+    const caps = readZoomCapabilities(track);
+    try {
+      await applyZoomLevel(track, caps.min);
+      setZoomLevel(readZoomSetting(track));
+    } catch (err) {
+      console.warn('Zoom reset failed:', err);
+    }
+  }, [zoomSupported]);
+
   const restart = useCallback(() => setAttempt((n) => n + 1), []);
 
-  return { videoRef, status, error, hasTorch, torchOn, toggleTorch, restart };
+  return {
+    videoRef,
+    status,
+    error,
+    hasTorch,
+    torchOn,
+    toggleTorch,
+    restart,
+    zoomLevel,
+    zoomSupported,
+    zoomPresets,
+    setZoom,
+    resetZoom,
+    scanHint,
+  };
 }
