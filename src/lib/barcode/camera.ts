@@ -33,8 +33,13 @@ export const CAMERA_CONSTRAINTS: MediaStreamConstraints = {
   },
 };
 
-/** Tries the highest practical resolution first, then steps down when the device cannot satisfy it. */
+/**
+ * Tries the highest practical resolution first, then steps down when the device cannot satisfy it.
+ * 1080p is attempted before 4K: on many Android phones a 4K capture mode uses fixed focus or
+ * slow AF in preview, while 1080p keeps continuous autofocus reliable for barcode scanning.
+ */
 export const CAMERA_OPEN_ATTEMPTS: MediaStreamConstraints[] = [
+  CAMERA_CONSTRAINTS,
   {
     audio: false,
     video: {
@@ -44,7 +49,6 @@ export const CAMERA_OPEN_ATTEMPTS: MediaStreamConstraints[] = [
       frameRate: { ideal: 30 },
     },
   },
-  CAMERA_CONSTRAINTS,
   {
     audio: false,
     video: {
@@ -200,17 +204,33 @@ export function clampZoom(caps: ZoomCapabilities, zoom: number): number {
   return Math.min(caps.max, Math.max(caps.min, stepped));
 }
 
+async function applyConstraint(
+  track: MediaStreamTrack,
+  direct: MediaTrackConstraints,
+  advanced: MediaTrackConstraintSet
+): Promise<void> {
+  await track.applyConstraints(direct).catch(() => track.applyConstraints({ advanced: [advanced] }).catch(() => undefined));
+}
+
+/**
+ * Requests continuous autofocus and exposure as separate operations. Never combine them in one
+ * `advanced` array: browsers OR those entries, so exposure can apply without focus.
+ */
 export async function applyTrackEnhancements(track: MediaStreamTrack): Promise<void> {
   const caps = (track.getCapabilities?.() ?? {}) as ExtendedTrackCapabilities;
-  const advanced: MediaTrackConstraintSet[] = [];
   if (caps.focusMode?.includes('continuous')) {
-    advanced.push({ focusMode: 'continuous' } as MediaTrackConstraintSet);
+    await applyConstraint(
+      track,
+      { focusMode: 'continuous' } as MediaTrackConstraints,
+      { focusMode: 'continuous' } as MediaTrackConstraintSet
+    );
   }
   if (caps.exposureMode?.includes('continuous')) {
-    advanced.push({ exposureMode: 'continuous' } as MediaTrackConstraintSet);
-  }
-  if (advanced.length) {
-    await track.applyConstraints({ advanced }).catch(() => undefined);
+    await applyConstraint(
+      track,
+      { exposureMode: 'continuous' } as MediaTrackConstraints,
+      { exposureMode: 'continuous' } as MediaTrackConstraintSet
+    );
   }
 }
 

@@ -18,6 +18,27 @@ export interface BarcodeDecoder {
   detect(source: HTMLCanvasElement): Promise<BarcodeRead[]>;
 }
 
+/** Native `detect` can hang on some Android builds; never block the frame loop indefinitely. */
+export const NATIVE_DECODE_TIMEOUT_MS = 2500;
+export const WASM_DECODE_TIMEOUT_MS = 4000;
+
+export function withDecodeTimeout(decoder: BarcodeDecoder, timeoutMs: number): BarcodeDecoder {
+  return {
+    kind: decoder.kind,
+    detect: (source) => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      return Promise.race([
+        decoder.detect(source),
+        new Promise<BarcodeRead[]>((_, reject) => {
+          timer = setTimeout(() => reject(new Error('decode_timeout')), timeoutMs);
+        }),
+      ]).finally(() => {
+        if (timer !== undefined) clearTimeout(timer);
+      });
+    },
+  };
+}
+
 interface NativeBarcodeDetector {
   detect(source: HTMLCanvasElement): Promise<BarcodeRead[]>;
 }

@@ -7,10 +7,12 @@ import {
   mapCameraError,
   openCameraStream,
   orderByCentre,
+  applyTrackEnhancements,
   readZoomCapabilities,
   scanCrop,
   zoomPresetValues,
 } from '../lib/barcode/camera';
+import { withDecodeTimeout } from '../lib/barcode/detector';
 import { RETAIL_FORMATS, createNativeDecoder } from '../lib/barcode/detector';
 
 const ponyfill = vi.hoisted(() => ({
@@ -204,6 +206,37 @@ describe('camera open fallback', () => {
     });
     await expect(openCameraStream(getUserMedia)).rejects.toMatchObject({ name: 'NotAllowedError' });
     expect(getUserMedia).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('track enhancements', () => {
+  it('applies focus and exposure as separate constraint calls', async () => {
+    const applyConstraints = vi.fn().mockResolvedValue(undefined);
+    const track = {
+      getCapabilities: () => ({
+        focusMode: ['continuous', 'manual'],
+        exposureMode: ['continuous', 'manual'],
+      }),
+      applyConstraints,
+    } as unknown as MediaStreamTrack;
+    await applyTrackEnhancements(track);
+    expect(applyConstraints).toHaveBeenCalledTimes(2);
+    expect(applyConstraints.mock.calls[0][0]).toEqual({ focusMode: 'continuous' });
+    expect(applyConstraints.mock.calls[1][0]).toEqual({ exposureMode: 'continuous' });
+  });
+});
+
+describe('decode timeout', () => {
+  it('rejects when detect does not finish in time', async () => {
+    const decoder = withDecodeTimeout(
+      {
+        kind: 'native',
+        detect: () => new Promise(() => undefined),
+      },
+      30
+    );
+    const canvas = document.createElement('canvas');
+    await expect(decoder.detect(canvas)).rejects.toThrow('decode_timeout');
   });
 });
 

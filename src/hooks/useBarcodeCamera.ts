@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createReadConfirmer } from '../lib/barcode/confirm';
-import { getBarcodeDecoder, type BarcodeDecoder } from '../lib/barcode/detector';
+import {
+  getBarcodeDecoder,
+  NATIVE_DECODE_TIMEOUT_MS,
+  WASM_DECODE_TIMEOUT_MS,
+  withDecodeTimeout,
+  type BarcodeDecoder,
+} from '../lib/barcode/detector';
 import { validateBarcode } from '../lib/barcode/validate';
 import {
   NATIVE_MAX_DECODE_WIDTH,
@@ -44,7 +50,7 @@ export interface UseBarcodeCameraOptions {
  * schedules the next, so a slow phone never builds a queue and the preview stays smooth.
  */
 export function useBarcodeCamera({ active, onCode }: UseBarcodeCameraOptions) {
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const trackRef = useRef<MediaStreamTrack | null>(null);
   const onCodeRef = useRef(onCode);
   onCodeRef.current = onCode;
@@ -78,7 +84,15 @@ export function useBarcodeCamera({ active, onCode }: UseBarcodeCameraOptions) {
     let lastHintAt = 0;
     let scanningStartedAt = Date.now();
     let hasTorchCapability = false;
+    let deviceHasZoom = false;
+    let lastPublishedHint: ScanHint = 'none';
     const confirmer = createReadConfirmer();
+
+    const publishHint = (hint: ScanHint) => {
+      if (hint === lastPublishedHint) return;
+      lastPublishedHint = hint;
+      setScanHint(hint);
+    };
 
     setStatus('starting');
     setError(null);
@@ -87,7 +101,7 @@ export function useBarcodeCamera({ active, onCode }: UseBarcodeCameraOptions) {
     setZoomLevel(1);
     setZoomSupported(false);
     setZoomPresets([]);
-    setScanHint('none');
+    publishHint('none');
     scanningStartedAt = Date.now();
     lastHintAt = scanningStartedAt;
 
@@ -102,21 +116,21 @@ export function useBarcodeCamera({ active, onCode }: UseBarcodeCameraOptions) {
       stopStream();
       setError(reason);
       setStatus('error');
-      setScanHint('none');
+      publishHint('none');
     };
 
-    const updateScanHint = (hasTorchCapability: boolean) => {
+    const updateScanHint = () => {
       const now = Date.now();
       const idleFor = now - lastHintAt;
       if (idleFor < SCAN_HINT_DELAY_MS) {
-        setScanHint('none');
+        publishHint('none');
         return;
       }
       const rotation = Math.floor((idleFor - SCAN_HINT_DELAY_MS) / SCAN_HINT_ROTATE_MS);
       const sequence: ScanHint[] = ['holdSteady', 'moveCloser', 'lighting'];
-      if (zoomSupported) sequence.push('zoom');
+      if (deviceHasZoom) sequence.push('zoom');
       else if (!hasTorchCapability) sequence.push('zoom');
-      setScanHint(sequence[rotation % sequence.length] ?? 'holdSteady');
+      publishHint(sequence[rotation % sequence.length] ?? 'holdSteady');
     };
 
     const decodeFrame = async () => {
@@ -137,7 +151,10 @@ export function useBarcodeCamera({ active, onCode }: UseBarcodeCameraOptions) {
       let reads;
       try {
         reads = await decoder.detect(canvas);
-      } catch {
+      } catch (err) {
+        if (import.meta.env.DEV && String((err as Error)?.message) === 'decode_timeout') {
+          console.warn('[scanner] decode timed out; continuing frame loop');
+        }
         return;
       }
       if (cancelled) return;
@@ -156,7 +173,7 @@ export function useBarcodeCamera({ active, onCode }: UseBarcodeCameraOptions) {
             );
           }
           lastHintAt = Date.now();
-          setScanHint('none');
+          publishHint('none');
           onCodeRef.current(code);
         } else {
           lastHintAt = Date.now();
@@ -164,7 +181,7 @@ export function useBarcodeCamera({ active, onCode }: UseBarcodeCameraOptions) {
         return;
       }
 
-      updateScanHint(hasTorchCapability);
+      updateScanHint();
     };
 
     const scheduleFrame = () => {
@@ -205,6 +222,7 @@ export function useBarcodeCamera({ active, onCode }: UseBarcodeCameraOptions) {
         if (track) {
           await applyTrackEnhancements(track);
           const zoomCaps = readZoomCapabilities(track);
+          deviceHasZoom = zoomCaps.supported;
           setZoomSupported(zoomCaps.supported);
           setZoomPresets(zoomPresetValues(zoomCaps));
           setZoomLevel(readZoomSetting(track));
@@ -215,8 +233,11 @@ export function useBarcodeCamera({ active, onCode }: UseBarcodeCameraOptions) {
 
         video.srcObject = stream;
         await video.play();
-        decoder = await decoderReady;
+        const baseDecoder = await decoderReady;
         if (cancelled) return;
+        const timeout =
+          baseDecoder.kind === 'wasm' ? WASM_DECODE_TIMEOUT_MS : NATIVE_DECODE_TIMEOUT_MS;
+        decoder = withDecodeTimeout(baseDecoder, timeout);
 
         canvas = document.createElement('canvas');
         ctx = canvas.getContext('2d', { willReadFrequently: decoder.kind === 'wasm', alpha: false });
@@ -243,6 +264,12 @@ export function useBarcodeCamera({ active, onCode }: UseBarcodeCameraOptions) {
     };
   }, [active, attempt]);
 
+  const reapplyFocus = useCallback(async () => {
+    const track = trackRef.current;
+    if (!track) return;
+    await applyTrackEnhancements(track);
+  }, []);
+
   const toggleTorch = useCallback(async () => {
     const track = trackRef.current;
     if (!track || !hasTorch) return;
@@ -250,21 +277,26 @@ export function useBarcodeCamera({ active, onCode }: UseBarcodeCameraOptions) {
     try {
       await track.applyConstraints({ advanced: [{ torch: next } as MediaTrackConstraintSet] });
       setTorchOn(next);
+      await reapplyFocus();
     } catch (err) {
       console.warn('Torch toggle failed:', err);
     }
-  }, [hasTorch, torchOn]);
+  }, [hasTorch, torchOn, reapplyFocus]);
 
-  const setZoom = useCallback(async (zoom: number) => {
-    const track = trackRef.current;
-    if (!track || !zoomSupported) return;
-    try {
-      await applyZoomLevel(track, zoom);
-      setZoomLevel(readZoomSetting(track));
-    } catch (err) {
-      console.warn('Zoom change failed:', err);
-    }
-  }, [zoomSupported]);
+  const setZoom = useCallback(
+    async (zoom: number) => {
+      const track = trackRef.current;
+      if (!track || !zoomSupported) return;
+      try {
+        await applyZoomLevel(track, zoom);
+        setZoomLevel(readZoomSetting(track));
+        await reapplyFocus();
+      } catch (err) {
+        console.warn('Zoom change failed:', err);
+      }
+    },
+    [zoomSupported, reapplyFocus]
+  );
 
   const resetZoom = useCallback(async () => {
     const track = trackRef.current;
@@ -273,10 +305,11 @@ export function useBarcodeCamera({ active, onCode }: UseBarcodeCameraOptions) {
     try {
       await applyZoomLevel(track, caps.min);
       setZoomLevel(readZoomSetting(track));
+      await reapplyFocus();
     } catch (err) {
       console.warn('Zoom reset failed:', err);
     }
-  }, [zoomSupported]);
+  }, [zoomSupported, reapplyFocus]);
 
   const restart = useCallback(() => setAttempt((n) => n + 1), []);
 

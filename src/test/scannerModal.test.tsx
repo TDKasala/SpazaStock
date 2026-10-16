@@ -11,9 +11,13 @@ const decoder = vi.hoisted(() => ({
   detect: vi.fn(),
 }));
 
-vi.mock('../lib/barcode/detector', () => ({
-  getBarcodeDecoder: () => Promise.resolve(decoder),
-}));
+vi.mock('../lib/barcode/detector', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/barcode/detector')>();
+  return {
+    ...actual,
+    getBarcodeDecoder: () => Promise.resolve(decoder),
+  };
+});
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
