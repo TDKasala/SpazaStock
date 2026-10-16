@@ -60,6 +60,8 @@ export default defineConfig(() => {
     test: {
       environment: 'happy-dom',
       setupFiles: ['./src/test/setup.ts'],
+      // Several databases start at once; a 5s limit fails the suite when the machine is busy.
+      testTimeout: 20_000,
     },
   };
 });

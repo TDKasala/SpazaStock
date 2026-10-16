@@ -28,8 +28,9 @@ const LOW_STOCK_DISMISSAL_COLUMNS =
   'id, shop_id, product_id, dismissed_at, dismissed_by, cleared_at, updated_at';
 const BATCH_COLUMNS =
   'id, shop_id, product_id, quantity, initial_quantity, expiry_date, cost_price_per_unit, received_at, updated_at, ' +
-  'packaging_id, package_quantity, units_per_package, received_barcode_id';
-const PACKAGING_COLUMNS = 'id, shop_id, product_id, name, units_per_package, created_at, updated_at, retired_at';
+  'packaging_id, package_quantity, units_per_package, received_barcode_id, lot_number, supplier_name';
+const PACKAGING_COLUMNS =
+  'id, shop_id, product_id, name, units_per_package, selling_price, created_at, updated_at, retired_at';
 const BARCODE_COLUMNS =
   'id, shop_id, product_id, packaging_id, barcode, created_at, updated_at, unlinked_at, unlink_reason';
 
@@ -131,6 +132,8 @@ export function mapBatchRow(row: Row): StockBatch {
     packageQuantity: toNumberOrNull(row.package_quantity),
     unitsPerPackage: toNumberOrNull(row.units_per_package),
     receivedBarcodeId: (row.received_barcode_id as string | null) ?? null,
+    lotNumber: (row.lot_number as string | null) ?? null,
+    supplierName: (row.supplier_name as string | null) ?? null,
   };
 }
 
@@ -141,6 +144,7 @@ export function mapPackagingRow(row: Row): ProductPackaging {
     productId: String(row.product_id),
     name: String(row.name),
     unitsPerPackage: Number(row.units_per_package),
+    sellingPrice: toNumberOrNull(row.selling_price),
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
     retiredAt: row.retired_at ? toIso(row.retired_at) : null,
@@ -524,6 +528,8 @@ async function sendItem(client: SupabaseClient, item: OutboxItem): Promise<SendO
           ? { p_packaging_id: batch.packagingId, p_package_quantity: batch.packageQuantity ?? null }
           : {}),
         ...(batch.receivedBarcodeId ? { p_barcode_id: batch.receivedBarcodeId } : {}),
+        ...(batch.lotNumber ? { p_lot_number: batch.lotNumber } : {}),
+        ...(batch.supplierName ? { p_supplier_name: batch.supplierName } : {}),
       });
       if (!error) return { kind: 'ok' };
       // The packaging never reached the server (its creation was refused): keep the units anyway.
@@ -627,6 +633,18 @@ async function sendItem(client: SupabaseClient, item: OutboxItem): Promise<SendO
         p_name: p.name,
         p_units_per_package: p.unitsPerPackage,
         p_created_at: p.createdAt,
+        ...(p.sellingPrice != null ? { p_selling_price: p.sellingPrice } : {}),
+      });
+      if (error) return outcomeFromError(error);
+      const packaging = mapPackagingRow(data as Row);
+      return { kind: 'ok', apply: () => db.packagings.put(packaging).then(() => undefined) };
+    }
+
+    case 'packaging_price': {
+      const { data, error } = await client.rpc('set_packaging_price', {
+        p_shop_id: item.shopId,
+        p_packaging_id: item.payload.packagingId,
+        p_selling_price: item.payload.sellingPrice,
       });
       if (error) return outcomeFromError(error);
       const packaging = mapPackagingRow(data as Row);

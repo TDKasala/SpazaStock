@@ -230,6 +230,19 @@ export const ProductStockDetailDialog: React.FC<ProductStockDetailDialogProps> =
                           })}
                         </span>
                       ) : null}
+                      {batch.lotNumber ? (
+                        <span className="text-[10px] text-zinc-400 block">{t('stockDetail.lot', { lot: batch.lotNumber })}</span>
+                      ) : null}
+                      {batch.supplierName ? (
+                        <span className="text-[10px] text-zinc-400 block">
+                          {t('stockDetail.supplier', { name: batch.supplierName })}
+                        </span>
+                      ) : null}
+                      {batch.costPricePerUnit != null ? (
+                        <span className="text-[10px] text-zinc-400 block">
+                          {t('stockDetail.cost', { amount: Number(batch.costPricePerUnit).toFixed(2) })}
+                        </span>
+                      ) : null}
                       {flagged && (
                         <span className="mt-0.5 inline-flex items-center gap-1 text-[10px] font-bold uppercase text-rose-300">
                           <Ban className="w-3 h-3" />

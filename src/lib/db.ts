@@ -39,6 +39,7 @@ export type OutboxOperation =
       };
     }
   | { type: 'packaging_create'; payload: { packaging: ProductPackaging } }
+  | { type: 'packaging_price'; payload: { packagingId: string; sellingPrice: number | null } }
   | { type: 'packaging_retire'; payload: { packagingId: string } }
   | { type: 'barcode_link'; payload: { link: ProductBarcode } }
   | {

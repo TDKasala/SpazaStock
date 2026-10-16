@@ -185,8 +185,8 @@ export function useSaleRegister(shopId: string, onUnknownBarcode: (barcode: stri
    * double tap can never record the sale twice.
    */
   const sellProduct = useCallback(
-    (product: Product, quantity: number, idempotencyKey: string = newId()) =>
-      runSale(seller.sell(product, quantity, idempotencyKey)),
+    (product: Product, quantity: number, idempotencyKey: string = newId(), packaging?: ProductPackaging | null) =>
+      runSale(seller.sell(product, quantity, idempotencyKey, packaging)),
     [runSale, seller]
   );
 
@@ -248,7 +248,7 @@ export function useSaleRegister(shopId: string, onUnknownBarcode: (barcode: stri
     const staged = pendingScan;
     if (!staged) return Promise.resolve(false);
     setPendingScan(null);
-    return sellProduct(staged.product, staged.quantity);
+    return sellProduct(staged.product, staged.quantity, newId(), staged.packaging);
   }, [pendingScan, sellProduct]);
 
   /** Undoes `quantity` units of a session line (all remaining units by default). */

@@ -8,6 +8,7 @@ import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { ErrorMessage } from '../ui/ErrorMessage';
 import { stockIn, getProductTotalStock, isValidDateFormat } from '../../services/stockService';
+import { db } from '../../lib/db';
 import { ExpiryDateOcr } from './ExpiryDateOcr';
 import { getPackagings } from '../../services/barcodeLinkService';
 import { addDaysLocal } from '../../lib/dates';
@@ -47,6 +48,9 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
   const [hasExpiry, setHasExpiry] = useState<boolean>(true);
   const [expiryDate, setExpiryDate] = useState<string>('');
   const [costPrice, setCostPrice] = useState<string>('');
+  const [lotNumber, setLotNumber] = useState('');
+  const [supplierName, setSupplierName] = useState('');
+  const [scannedBarcode, setScannedBarcode] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [successResult, setSuccessResult] = useState<StockInResult | null>(null);
@@ -81,6 +85,14 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
       }
 
       setCostPrice(product.buyingPrice != null ? String(product.buyingPrice) : '');
+      setLotNumber('');
+      setSupplierName('');
+      setScannedBarcode(null);
+      if (barcodeId) {
+        void db.barcodes.get(barcodeId).then((link) => {
+          if (link && link.shopId === shopId) setScannedBarcode(link.barcode);
+        });
+      }
 
       void getProductTotalStock(product.id, shopId).then(setCurrentStock);
       void getPackagings(product.id, shopId).then((found) => {
@@ -94,7 +106,7 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
         }
       });
     }
-  }, [isOpen, product, packagingId, shopId]);
+  }, [isOpen, product, packagingId, barcodeId, shopId]);
 
   if (!isOpen || !product) return null;
 
@@ -175,6 +187,8 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
           idempotencyKey,
           packagingId: selectedPackaging?.id ?? null,
           barcodeId,
+          lotNumber,
+          supplierName,
         },
         shopId
       );
@@ -260,7 +274,7 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
               </span>
               <span className="text-xs text-zinc-400 font-mono flex items-center gap-1">
                 <Barcode className="w-3.5 h-3.5 text-zinc-500" />
-                {product.barcode}
+                {scannedBarcode ?? product.barcode}
               </span>
             </div>
             <h3 className="text-sm font-bold text-zinc-100 truncate mt-1">
@@ -542,6 +556,21 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
                     })
                   : t('stockIn.costHelp')
               }
+            />
+
+            <Input
+              label={t('stockIn.lotNumber')}
+              placeholder={t('stockIn.lotPlaceholder')}
+              value={lotNumber}
+              maxLength={40}
+              onChange={(e) => setLotNumber(e.target.value)}
+            />
+            <Input
+              label={t('stockIn.supplier')}
+              placeholder={t('stockIn.supplierPlaceholder')}
+              value={supplierName}
+              maxLength={80}
+              onChange={(e) => setSupplierName(e.target.value)}
             />
           </form>
         )}

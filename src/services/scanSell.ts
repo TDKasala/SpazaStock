@@ -31,15 +31,28 @@ export type ScanVoidOutcome =
 export interface ScanSeller {
   /** Sells one unit, or a whole package when the barcode is on a pack or case. */
   scan(barcode: string, idempotencyKey?: string): Promise<ScanSellOutcome>;
-  sell(product: Product, quantity: number, idempotencyKey?: string): Promise<ScanSellOutcome>;
+  sell(
+    product: Product,
+    quantity: number,
+    idempotencyKey?: string,
+    packaging?: ProductPackaging | null
+  ): Promise<ScanSellOutcome>;
   void(saleId: string, quantity: number, idempotencyKey?: string): Promise<ScanVoidOutcome>;
   /** Operations queued or running. */
   readonly pending: number;
 }
 
 export function createScanSeller(shopId: string, queue: SerialQueue = createSerialQueue()): ScanSeller {
-  const sellNow = async (product: Product, quantity: number, key: string): Promise<ScanSellOutcome> => {
-    const outcome = await recordSale({ productId: product.id, quantity, idempotencyKey: key }, shopId);
+  const sellNow = async (
+    product: Product,
+    quantity: number,
+    key: string,
+    packaging?: ProductPackaging | null
+  ): Promise<ScanSellOutcome> => {
+    const outcome = await recordSale(
+      { productId: product.id, quantity, idempotencyKey: key, packagingId: packaging?.id ?? null },
+      shopId
+    );
     if (outcome.result) return { kind: 'sold', result: outcome.result };
     switch (outcome.errorCode) {
       case 'duplicate':
@@ -66,13 +79,13 @@ export function createScanSeller(shopId: string, queue: SerialQueue = createSeri
         const { product, packaging } = resolved;
         if (isArchived(product)) return { kind: 'archived', product };
         // A pack or case barcode sells the whole package at the unit price per unit.
-        const outcome = await sellNow(product, packaging?.unitsPerPackage ?? 1, idempotencyKey);
+        const outcome = await sellNow(product, packaging?.unitsPerPackage ?? 1, idempotencyKey, packaging);
         return outcome.kind === 'sold' && packaging ? { ...outcome, packaging } : outcome;
       });
     },
 
-    sell(product, quantity, idempotencyKey = newId()) {
-      return queue.run(() => sellNow(product, quantity, idempotencyKey));
+    sell(product, quantity, idempotencyKey = newId(), packaging = null) {
+      return queue.run(() => sellNow(product, quantity, idempotencyKey, packaging));
     },
 
     void(saleId, quantity, idempotencyKey = newId()) {

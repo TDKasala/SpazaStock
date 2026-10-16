@@ -238,7 +238,17 @@ export async function stockIn(
   shopId: string,
   productId: string,
   quantity: number,
-  options: { expiry?: string | null; batchId?: string; key?: string | null } = {}
+  options: {
+    expiry?: string | null;
+    batchId?: string;
+    key?: string | null;
+    cost?: number;
+    lot?: string | null;
+    supplier?: string | null;
+    packagingId?: string | null;
+    packages?: number | null;
+    barcodeId?: string | null;
+  } = {}
 ): Promise<StockInResult> {
   return rpc(pg, caller, 'record_stock_in', {
     p_batch_id: options.batchId ?? randomUUID(),
@@ -246,9 +256,14 @@ export async function stockIn(
     p_product_id: productId,
     p_quantity: quantity,
     p_expiry_date: options.expiry ?? null,
-    p_cost_price_per_unit: 9.5,
+    p_cost_price_per_unit: options.cost ?? 9.5,
     p_received_at: new Date().toISOString(),
     p_idempotency_key: options.key ?? null,
+    p_packaging_id: options.packagingId ?? null,
+    p_package_quantity: options.packages ?? null,
+    p_barcode_id: options.barcodeId ?? null,
+    p_lot_number: options.lot ?? null,
+    p_supplier_name: options.supplier ?? null,
   });
 }
 

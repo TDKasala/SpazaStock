@@ -13,10 +13,12 @@ import {
   getPackagings,
   linkBarcode,
   validatePackagingInput,
+  validatePackPrice,
   type BarcodeLinkErrorCode,
 } from '../../services/barcodeLinkService';
 import { PRODUCT_CATEGORIES } from './ProductFormFields';
 import { brandAndSize, packagingLabel } from './packagingLabel';
+import { ProductThumbnail } from './ProductThumbnail';
 
 export interface LinkBarcodeDialogProps {
   isOpen: boolean;
@@ -47,6 +49,7 @@ export const LinkBarcodeDialog: React.FC<LinkBarcodeDialogProps> = ({ isOpen, ba
   const [choice, setChoice] = useState<PackChoice>('single');
   const [newName, setNewName] = useState('');
   const [newUnits, setNewUnits] = useState('');
+  const [packPrice, setPackPrice] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -75,6 +78,7 @@ export const LinkBarcodeDialog: React.FC<LinkBarcodeDialogProps> = ({ isOpen, ba
     setChoice('single');
     setNewName('');
     setNewUnits('24');
+    setPackPrice('');
     void getPackagings(selected.product.id, shopId).then((found) => {
       if (!cancelled) setPackagings(found);
     });
@@ -89,7 +93,11 @@ export const LinkBarcodeDialog: React.FC<LinkBarcodeDialogProps> = ({ isOpen, ba
   const chosenPackaging = packagings.find((p) => p.id === choice) ?? null;
   const pack =
     choice === 'new' ? { name: newName.trim(), unitsPerPackage: units } : chosenPackaging;
-  const newPackInvalid = choice === 'new' && validatePackagingInput({ name: newName, unitsPerPackage: units }) !== null;
+  const parsedPackPrice = packPrice.trim() === '' ? null : Number(packPrice);
+  const packPriceInvalid = choice === 'new' && validatePackPrice(parsedPackPrice) !== null;
+  const newPackInvalid =
+    choice === 'new' &&
+    (validatePackagingInput({ name: newName, unitsPerPackage: units }) !== null || packPriceInvalid);
 
   const errorText = (code: BarcodeLinkErrorCode | undefined, fallback: string | undefined, conflict?: string) => {
     if (code === 'forbidden') return t('link.forbidden');
@@ -110,7 +118,12 @@ export const LinkBarcodeDialog: React.FC<LinkBarcodeDialogProps> = ({ isOpen, ba
       let packaging: ProductPackaging | null = chosenPackaging;
       if (choice === 'new') {
         const created = await createPackaging(
-          { productId: selected.product.id, name: newName, unitsPerPackage: units },
+          {
+            productId: selected.product.id,
+            name: newName,
+            unitsPerPackage: units,
+            sellingPrice: parsedPackPrice,
+          },
           shopId
         );
         if (!created.packaging) {
@@ -193,13 +206,16 @@ export const LinkBarcodeDialog: React.FC<LinkBarcodeDialogProps> = ({ isOpen, ba
         <div className="space-y-4 py-1">
           {error && <ErrorMessage variant="error" message={error} onDismiss={() => setError(null)} />}
 
-          <div className="p-3.5 rounded-2xl bg-zinc-950 border border-zinc-800">
+          <div className="p-3.5 rounded-2xl bg-zinc-950 border border-zinc-800 flex items-center gap-3">
+            <ProductThumbnail path={product.imagePath} alt={product.name} size="md" />
+            <div className="min-w-0">
             <p className="text-sm font-bold text-zinc-100">{product.name}</p>
             {details && <p className="text-xs text-zinc-400 mt-0.5">{details}</p>}
             <p className="text-[11px] text-zinc-500 font-mono mt-1 flex items-center gap-1">
               <Barcode className="w-3 h-3" />
               {product.barcode}
             </p>
+            </div>
           </div>
 
           <div className="space-y-2" role="radiogroup" aria-label={t('link.whatIsScanned')}>
@@ -277,7 +293,23 @@ export const LinkBarcodeDialog: React.FC<LinkBarcodeDialogProps> = ({ isOpen, ba
                   step={1}
                   value={newUnits}
                   onChange={(e) => setNewUnits(e.target.value)}
-                  error={newPackInvalid ? t('link.invalidPack') : undefined}
+                  error={
+                    validatePackagingInput({ name: newName, unitsPerPackage: units })
+                      ? t('link.invalidPack')
+                      : undefined
+                  }
+                />
+                <Input
+                  label={t('link.packPrice')}
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  step="0.01"
+                  value={packPrice}
+                  onChange={(e) => setPackPrice(e.target.value)}
+                  helperText={t('link.packPriceHelp')}
+                  error={packPriceInvalid ? t('link.invalidPackPrice') : undefined}
+                  leftIcon={<span className="text-xs font-bold text-zinc-400">R</span>}
                 />
               </div>
             )}
@@ -289,6 +321,7 @@ export const LinkBarcodeDialog: React.FC<LinkBarcodeDialogProps> = ({ isOpen, ba
           >
             {summary}
           </div>
+          <p className="text-[11px] text-amber-200/90 leading-relaxed">{t('link.differentProduct')}</p>
           <p className="text-[11px] text-zinc-500 leading-relaxed">{t('link.confirmHint')}</p>
         </div>
       </Dialog>
@@ -344,7 +377,8 @@ export const LinkBarcodeDialog: React.FC<LinkBarcodeDialogProps> = ({ isOpen, ba
                     className="w-full text-left p-3 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-emerald-500/50 active:bg-zinc-800 transition-colors"
                   >
                     <span className="flex items-start justify-between gap-3">
-                      <span className="min-w-0">
+                      <ProductThumbnail path={product.imagePath} alt={product.name} size="sm" />
+                      <span className="min-w-0 flex-1">
                         <span className="block text-sm font-bold text-zinc-100 truncate">{product.name}</span>
                         {details && <span className="block text-xs text-zinc-400 truncate">{details}</span>}
                         <span className="block text-[11px] text-zinc-500 mt-0.5">

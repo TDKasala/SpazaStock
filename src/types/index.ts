@@ -120,6 +120,8 @@ export interface ProductPackaging {
   productId: string;
   name: string;
   unitsPerPackage: number;
+  /** Price for one whole pack. Null: every unit uses the product's selling price. */
+  sellingPrice?: number | null;
   createdAt: string;
   updatedAt: string;
   retiredAt: string | null;
@@ -168,6 +170,10 @@ export interface StockBatch {
   unitsPerPackage?: number | null;
   /** The alias that was scanned to receive it, so a mistaken link can be corrected. */
   receivedBarcodeId?: string | null;
+  /** Lot or batch code printed on this delivery. */
+  lotNumber?: string | null;
+  /** Who this delivery came from. */
+  supplierName?: string | null;
 }
 
 export type StockMovementType =
@@ -202,6 +208,8 @@ export interface StockInInput {
   packagingId?: string | null;
   /** The alias that was scanned, recorded on the batch. */
   barcodeId?: string | null;
+  lotNumber?: string | null;
+  supplierName?: string | null;
 }
 
 export interface StockInResult {
@@ -248,6 +256,11 @@ export interface SaleInput {
   quantity: number;
   unitPrice?: number | null;
   idempotencyKey?: string;
+  /**
+   * When set, whole packs of this packaging are charged at its pack price and leftover units
+   * at the product price. Ignored when `unitPrice` is given explicitly.
+   */
+  packagingId?: string | null;
 }
 
 export interface SaleResult {

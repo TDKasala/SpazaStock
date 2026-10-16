@@ -14,6 +14,7 @@ import { isSameLocalDay } from '../lib/dates';
 import { isBatchExpired, todayInZone } from '../lib/expiry';
 import { getShopSettings } from '../lib/shopSettings';
 import { enqueue } from '../sync/outbox';
+import { packSaleCharge } from '../lib/packPrice';
 
 /**
  * First-Expired-First-Out order: dated batches by expiry ascending, then undated batches,
@@ -77,7 +78,10 @@ export async function recordSale(input: SaleInput, shopId: string): Promise<Reco
   const today = todayInZone((await getShopSettings(shopId)).timezone);
 
   const outcome = await withWriteLock(() =>
-    db.transaction('rw', db.products, db.batches, db.movements, db.sales, db.outbox, async (): Promise<RecordSaleOutcome> => {
+    db.transaction(
+      'rw',
+      [db.products, db.packagings, db.batches, db.movements, db.sales, db.outbox],
+      async (): Promise<RecordSaleOutcome> => {
       const duplicate = await db.sales
         .where('[shopId+idempotencyKey]')
         .equals([shopId, idempotencyKey])
@@ -143,7 +147,13 @@ export async function recordSale(input: SaleInput, shopId: string): Promise<Reco
         });
       }
 
-      const unitPrice = input.unitPrice ?? product.sellingPrice ?? 0;
+      const packaging =
+        input.unitPrice == null && input.packagingId ? await db.packagings.get(input.packagingId) : undefined;
+      const charge =
+        packaging && packaging.shopId === shopId && packaging.productId === product.id
+          ? packSaleCharge(input.quantity, product.sellingPrice ?? 0, packaging)
+          : null;
+      const unitPrice = charge?.unitPrice ?? input.unitPrice ?? product.sellingPrice ?? 0;
       const remainingTotalStock = totalAvailable - input.quantity;
 
       const sale: Sale = {
@@ -152,7 +162,7 @@ export async function recordSale(input: SaleInput, shopId: string): Promise<Reco
         productId: product.id,
         quantity: input.quantity,
         unitPrice,
-        totalAmount: roundMoney(unitPrice * input.quantity),
+        totalAmount: charge?.total ?? roundMoney(unitPrice * input.quantity),
         allocations,
         idempotencyKey,
         createdAt: now,

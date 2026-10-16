@@ -65,6 +65,8 @@ export interface PackagingInput {
   productId: string;
   name: string;
   unitsPerPackage: number;
+  /** Price for one pack. Omit or null to charge the product price per unit. */
+  sellingPrice?: number | null;
 }
 
 export function validatePackagingInput(input: Pick<PackagingInput, 'name' | 'unitsPerPackage'>): string | null {
@@ -74,6 +76,13 @@ export function validatePackagingInput(input: Pick<PackagingInput, 'name' | 'uni
   if (!Number.isInteger(units) || units < MIN_UNITS_PER_PACKAGE || units > MAX_UNITS_PER_PACKAGE) {
     return 'A packaging holds 2 to 10,000 units.';
   }
+  return null;
+}
+
+/** A pack price is optional. Null clears it. */
+export function validatePackPrice(price: number | null | undefined): string | null {
+  if (price == null) return null;
+  if (!Number.isFinite(price) || price < 0 || price > 9_999_999_999.99) return 'Pack price cannot be negative.';
   return null;
 }
 
@@ -88,7 +97,10 @@ export async function createPackaging(
   if (!(await canEditProducts(shopId))) return FORBIDDEN;
   const invalid = validatePackagingInput(input);
   if (invalid) return { error: invalid, errorCode: 'invalid' };
+  const priceError = validatePackPrice(input.sellingPrice);
+  if (priceError) return { error: priceError, errorCode: 'invalid' };
   const name = input.name.trim();
+  const sellingPrice = input.sellingPrice == null ? null : Math.round(input.sellingPrice * 100) / 100;
 
   const outcome = await withWriteLock(() =>
     db.transaction(
@@ -102,7 +114,19 @@ export async function createPackaging(
         const existing = (await getPackagings(input.productId, shopId)).find(
           (p) => p.unitsPerPackage === input.unitsPerPackage && p.name.toLowerCase() === name.toLowerCase()
         );
-        if (existing) return { packaging: existing, reused: true };
+        if (existing) {
+          if (sellingPrice != null && existing.sellingPrice !== sellingPrice) {
+            const now = new Date().toISOString();
+            const updated: ProductPackaging = { ...existing, sellingPrice, updatedAt: now };
+            await db.packagings.put(updated);
+            await enqueue(shopId, {
+              type: 'packaging_price',
+              payload: { packagingId: existing.id, sellingPrice },
+            });
+            return { packaging: updated };
+          }
+          return { packaging: existing, reused: true };
+        }
 
         const now = new Date().toISOString();
         const packaging: ProductPackaging = {
@@ -111,6 +135,7 @@ export async function createPackaging(
           productId: input.productId,
           name,
           unitsPerPackage: input.unitsPerPackage,
+          sellingPrice,
           createdAt: now,
           updatedAt: now,
           retiredAt: null,
@@ -123,6 +148,39 @@ export async function createPackaging(
   );
 
   if (outcome.packaging && !outcome.reused) emitDataChanged('local');
+  return outcome;
+}
+
+/** Changes the price of one pack. Past sales keep the price they were given. Null clears it. */
+export async function setPackagingPrice(
+  packagingId: string,
+  sellingPrice: number | null,
+  shopId: string
+): Promise<{ packaging?: ProductPackaging } & Partial<BarcodeLinkError>> {
+  if (!(await canEditProducts(shopId))) return FORBIDDEN;
+  const priceError = validatePackPrice(sellingPrice);
+  if (priceError) return { error: priceError, errorCode: 'invalid' };
+  const price = sellingPrice == null ? null : Math.round(sellingPrice * 100) / 100;
+
+  const outcome = await withWriteLock(() =>
+    db.transaction(
+      'rw',
+      [db.packagings, db.outbox],
+      async (): Promise<{ packaging?: ProductPackaging; unchanged?: boolean } & Partial<BarcodeLinkError>> => {
+        const packaging = await db.packagings.get(packagingId);
+        if (!packaging || packaging.shopId !== shopId) {
+          return { error: 'Packaging not found in this shop.', errorCode: 'not_found' };
+        }
+        if ((packaging.sellingPrice ?? null) === price) return { packaging, unchanged: true };
+        const updated: ProductPackaging = { ...packaging, sellingPrice: price, updatedAt: new Date().toISOString() };
+        await db.packagings.put(updated);
+        await enqueue(shopId, { type: 'packaging_price', payload: { packagingId, sellingPrice: price } });
+        return { packaging: updated };
+      }
+    )
+  );
+
+  if (outcome.packaging && !outcome.unchanged) emitDataChanged('local');
   return outcome;
 }
 

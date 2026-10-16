@@ -11,6 +11,7 @@ import {
   getPackagings,
   getProductBarcodes,
   retirePackaging,
+  setPackagingPrice,
   unlinkBarcode,
   MAX_UNLINK_REASON_LENGTH,
 } from '../../services/barcodeLinkService';
@@ -41,6 +42,7 @@ export const ProductBarcodesSection: React.FC<ProductBarcodesSectionProps> = ({
   const [reason, setReason] = useState('');
   const [reverse, setReverse] = useState(false);
   const [retiring, setRetiring] = useState<string | null>(null);
+  const [priceDraft, setPriceDraft] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [reload, setReload] = useState(0);
@@ -94,6 +96,28 @@ export const ProductBarcodesSection: React.FC<ProductBarcodesSectionProps> = ({
           .join(' '),
       });
       setUnlinking(null);
+      setReload((n) => n + 1);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const savePackPrice = async (pack: ProductPackaging) => {
+    if (isSaving) return;
+    const raw = (priceDraft[pack.id] ?? (pack.sellingPrice == null ? '' : String(pack.sellingPrice))).trim();
+    const price = raw === '' ? null : Number(raw);
+    if (price != null && (!Number.isFinite(price) || price < 0)) {
+      setMessage({ tone: 'error', text: t('link.invalidPackPrice') });
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const outcome = await setPackagingPrice(pack.id, price, shopId);
+      setMessage(
+        outcome.packaging
+          ? { tone: 'success', text: t('barcodes.packPriceSaved') }
+          : { tone: 'error', text: outcome.error ?? t('errors.generic') }
+      );
       setReload((n) => n + 1);
     } finally {
       setIsSaving(false);
@@ -216,9 +240,33 @@ export const ProductBarcodesSection: React.FC<ProductBarcodesSectionProps> = ({
               key={pack.id}
               className="p-2.5 rounded-xl bg-zinc-900/60 border border-zinc-800/80 flex items-center justify-between gap-2"
             >
-              <span className="flex items-center gap-1.5 text-zinc-200">
-                <Boxes className="w-3.5 h-3.5 text-zinc-400" />
-                {packagingLabel(pack, t)}
+              <span className="min-w-0">
+                <span className="flex items-center gap-1.5 text-zinc-200">
+                  <Boxes className="w-3.5 h-3.5 text-zinc-400" />
+                  {packagingLabel(pack, t)}
+                </span>
+                <span className="block text-[10px] text-zinc-400 mt-0.5">
+                  {pack.sellingPrice != null
+                    ? t('barcodes.packPrice', { amount: Number(pack.sellingPrice).toFixed(2) })
+                    : t('barcodes.noPackPrice')}
+                </span>
+                {canEdit && !pack.retiredAt && (
+                  <span className="mt-1.5 flex items-center gap-1.5">
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      step="0.01"
+                      aria-label={t('link.packPrice')}
+                      value={priceDraft[pack.id] ?? (pack.sellingPrice == null ? '' : String(pack.sellingPrice))}
+                      onChange={(e) => setPriceDraft((current) => ({ ...current, [pack.id]: e.target.value }))}
+                      className="w-24 h-8 bg-zinc-950 border border-zinc-700 rounded-lg px-2 text-xs text-zinc-100"
+                    />
+                    <Button variant="secondary" size="sm" disabled={isSaving} onClick={() => void savePackPrice(pack)}>
+                      {t('barcodes.savePackPrice')}
+                    </Button>
+                  </span>
+                )}
               </span>
               {canEdit &&
                 (retiring === pack.id ? (

@@ -63,6 +63,10 @@ export async function stockIn(
   if (input.costPricePerUnit != null && (Number.isNaN(input.costPricePerUnit) || input.costPricePerUnit < 0)) {
     return { error: 'Cost price cannot be negative.' };
   }
+  const lotNumber = input.lotNumber?.trim() || null;
+  const supplierName = input.supplierName?.trim() || null;
+  if (lotNumber && lotNumber.length > 40) return { error: 'Lot number can be at most 40 characters.' };
+  if (supplierName && supplierName.length > 80) return { error: 'Supplier name can be at most 80 characters.' };
 
   const idempotencyKey = input.idempotencyKey?.trim() || undefined;
 
@@ -117,6 +121,8 @@ export async function stockIn(
         packageQuantity: packagingId ? input.quantity : null,
         unitsPerPackage,
         receivedBarcodeId,
+        lotNumber,
+        supplierName,
       };
 
       const movement: StockMovement = {
