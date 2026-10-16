@@ -1,7 +1,18 @@
 import React, { useRef, useState } from 'react';
-import { ArrowRight, BellRing, ChevronLeft, Cloud, Package, ScanBarcode, TrendingUp, User, UserPlus, Users } from 'lucide-react';
+import {
+  ArrowRight,
+  BellRing,
+  ChevronLeft,
+  Cloud,
+  Package,
+  ScanBarcode,
+  TrendingUp,
+  User,
+  UserPlus,
+  Users,
+  type LucideIcon,
+} from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
-import { Button } from '../ui/Button';
 import { LanguagePicker } from '../ui/LanguagePicker';
 import { ErrorMessage } from '../ui/ErrorMessage';
 import { SignInPanel, type PanelFrame, type SignInView } from './SignInScreen';
@@ -10,13 +21,14 @@ import { AppWhatsAppInvite } from '../pwa/AppWhatsAppInvite';
 import { usePWAInstall } from '../../hooks/usePWAInstall';
 import { takeIdleSignOutNotice } from '../../lib/idleSignOut';
 import { FeatureGlyph, HeroIllustration, LandingMark, type FeatureArtKind } from './LandingArt';
+import './styles/landing-page.css';
 
 interface LandingPageProps {
   /** The build has no Supabase settings, so nobody can sign in or register. */
   notConfigured?: boolean;
 }
 
-const FEATURES: ReadonlyArray<{ icon: React.FC<{ className?: string }>; key: FeatureArtKind }> = [
+const FEATURES: ReadonlyArray<{ icon: LucideIcon; key: FeatureArtKind }> = [
   { icon: ScanBarcode, key: 'scan' },
   { icon: BellRing, key: 'expiry' },
   { icon: Package, key: 'stock' },
@@ -35,7 +47,7 @@ function AccentHeadline({ text, accent }: { text: string; accent: string }) {
     <>
       {before}
       {before && <br />}
-      <span className="text-emerald-400">{accent}</span>
+      <span className="landing-title-highlight">{accent}</span>
       {after}
     </>
   );
@@ -78,35 +90,29 @@ export const LandingPage: React.FC<LandingPageProps> = ({ notConfigured = false 
   );
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col">
-      <header className="w-full max-w-6xl mx-auto px-5 py-4 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <LandingMark className="w-9 h-9 shrink-0" />
-          <div className="min-w-0">
-            <span className="font-bold text-lg leading-tight block">{t('common.appName')}</span>
-            <span className="text-[11px] text-zinc-400 leading-tight block truncate">{t('landing.tagline')}</span>
+    <div className="landing-page" style={needsInstallPrompt ? { paddingBottom: '11rem' } : undefined}>
+      <div className="landing-container">
+        <header className="landing-header">
+          <div className="landing-brand">
+            <div className="landing-logo">
+              <LandingMark className="w-7 h-7" />
+            </div>
+            <div>
+              <p className="landing-brand-name">{t('common.appName')}</p>
+              <p className="landing-brand-tagline">{t('landing.tagline')}</p>
+            </div>
           </div>
-        </div>
-        <LanguagePicker pill className="shrink-0" />
-      </header>
+          <LanguagePicker unstyled className="landing-language" />
+        </header>
 
-      <main className={`flex-1 w-full max-w-6xl mx-auto px-5 ${needsInstallPrompt ? 'pb-44' : 'pb-6'}`}>
-        <section className="flex flex-col gap-8 pt-2 md:pt-6 lg:grid lg:grid-cols-2 lg:items-center lg:gap-x-12 lg:gap-y-6">
-          <div className="order-1 space-y-4 lg:col-start-1 lg:row-start-1">
-            <p className="inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-300">
-              {t('landing.badge')}
-            </p>
-            <h1 className="text-4xl sm:text-5xl font-extrabold leading-[1.08] tracking-tight">
+        <section className="landing-hero">
+          <div className="landing-hero-content">
+            <p className="landing-eyebrow">{t('landing.badge')}</p>
+            <h1 className="landing-title">
               <AccentHeadline text={t('landing.headline')} accent={t('landing.headlineAccent')} />
             </h1>
-            <p className="text-sm sm:text-base text-zinc-400 leading-relaxed max-w-xl">{t('landing.intro')}</p>
-          </div>
+            <p className="landing-description">{t('landing.intro')}</p>
 
-          <div className="order-2 lg:col-start-2 lg:row-start-1 lg:row-span-2">
-            <HeroIllustration />
-          </div>
-
-          <div className="order-3 space-y-4 lg:col-start-1 lg:row-start-2">
             {idleNotice && <ErrorMessage variant="info" message={t('auth.idleSignedOut')} />}
 
             {notConfigured ? (
@@ -117,74 +123,68 @@ export const LandingPage: React.FC<LandingPageProps> = ({ notConfigured = false 
               />
             ) : (
               !authPanelOpen && (
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <Button
-                    pill
-                    size="lg"
-                    className="w-full sm:w-auto"
-                    onClick={() => openAuthPanel('register')}
-                    leftIcon={<UserPlus className="w-5 h-5" />}
-                    rightIcon={<ArrowRight className="w-5 h-5" />}
-                  >
+                <div className="landing-actions">
+                  <button type="button" className="landing-button landing-button-primary" onClick={() => openAuthPanel('register')}>
+                    <UserPlus className="w-5 h-5" aria-hidden />
                     {t('landing.createAccount')}
-                  </Button>
-                  <Button
-                    pill
-                    size="lg"
-                    variant="outline"
-                    className="w-full sm:w-auto"
-                    onClick={() => openAuthPanel('password')}
-                    leftIcon={<User className="w-5 h-5" />}
-                  >
+                    <ArrowRight className="w-5 h-5" aria-hidden />
+                  </button>
+                  <button type="button" className="landing-button landing-button-secondary" onClick={() => openAuthPanel('password')}>
+                    <User className="w-5 h-5" aria-hidden />
                     {t('landing.haveAccount')}
-                  </Button>
+                  </button>
                 </div>
               )
             )}
+          </div>
+
+          <div className="landing-hero-visual">
+            <HeroIllustration />
           </div>
         </section>
 
         {authPanelOpen && !notConfigured && (
           <div
             ref={cardRef}
-            className="scroll-mt-4 mt-8 p-5 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4 max-w-lg"
+            className="scroll-mt-4 mt-2 mb-8 p-5 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4 max-w-lg"
           >
             <SignInPanel view={view} onViewChange={setView} frame={frame} />
           </div>
         )}
 
-        <ul className="mt-12 grid gap-4 sm:grid-cols-2">
+        <ul className="landing-features">
           {FEATURES.map(({ icon: Icon, key }) => (
-            <li
-              key={key}
-              className="p-4 sm:p-5 rounded-2xl bg-zinc-900/70 border border-zinc-800/90 flex items-center gap-3"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="w-9 h-9 rounded-xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 flex items-center justify-center mb-3">
-                  <Icon className="w-4 h-4" />
+            <li key={key} className="landing-feature-card">
+              <div className="landing-feature-copy">
+                <div className="landing-feature-icon">
+                  <Icon width={20} height={20} />
                 </div>
-                <p className="text-sm font-semibold">{t(`landing.features.${key}.title`)}</p>
-                <p className="text-xs text-zinc-400 mt-1 leading-relaxed">{t(`landing.features.${key}.body`)}</p>
+                <p className="landing-feature-title">{t(`landing.features.${key}.title`)}</p>
+                <p className="landing-feature-description">{t(`landing.features.${key}.body`)}</p>
               </div>
-              <FeatureGlyph kind={key} className="w-24 h-[4.5rem] shrink-0" />
+              <div className="landing-feature-art">
+                <FeatureGlyph kind={key} />
+              </div>
             </li>
           ))}
         </ul>
 
         {!notConfigured && (
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-3 text-sm text-zinc-400">
-            <p className="text-center">{t('auth.appInviteHint')}</p>
-            <AppWhatsAppInvite compact />
+          <div className="landing-referral">
+            <p>{t('auth.appInviteHint')}</p>
+            <AppWhatsAppInvite className="landing-whatsapp-button" />
           </div>
         )}
-      </main>
+
+        <footer className="landing-footer">
+          <div className="landing-footer-logo">
+            <LandingMark className="w-5 h-5" />
+          </div>
+          <p>{t('landing.footer')}</p>
+        </footer>
+      </div>
 
       <PWAInstallBanner aboveBottomNav={false} />
-
-      <footer className="w-full max-w-6xl mx-auto px-5 py-8 flex flex-col items-center gap-2 text-center text-xs text-zinc-500">
-        <LandingMark className="w-6 h-6 opacity-80" />
-        {t('landing.footer')}
-      </footer>
     </div>
   );
 };

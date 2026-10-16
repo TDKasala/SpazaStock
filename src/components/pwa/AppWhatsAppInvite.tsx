@@ -22,6 +22,7 @@ export const AppWhatsAppInvite: React.FC<AppWhatsAppInviteProps> = ({
   const text = inviterName
     ? t('auth.appInviteTextNamed', { inviter: inviterName, link })
     : t('auth.appInviteText', { link });
+  const landing = className.split(/\s+/).includes('landing-whatsapp-button');
 
   return (
     <a
@@ -31,13 +32,15 @@ export const AppWhatsAppInvite: React.FC<AppWhatsAppInviteProps> = ({
       title={t('auth.shareAppWhatsApp')}
       aria-label={t('auth.shareAppWhatsApp')}
       className={
-        compact
-          ? `inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg border border-[#25D366]/40 bg-[#25D366]/15 hover:bg-[#25D366]/25 text-emerald-100 transition-colors ${className}`
-          : `w-full inline-flex items-center justify-center gap-2 min-h-[44px] rounded-xl text-sm font-semibold bg-[#25D366]/15 hover:bg-[#25D366]/25 text-emerald-100 border border-[#25D366]/40 transition-colors ${className}`
+        landing
+          ? className
+          : compact
+            ? `inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg border border-[#25D366]/40 bg-[#25D366]/15 hover:bg-[#25D366]/25 text-emerald-100 transition-colors ${className}`
+            : `w-full inline-flex items-center justify-center gap-2 min-h-[44px] rounded-xl text-sm font-semibold bg-[#25D366]/15 hover:bg-[#25D366]/25 text-emerald-100 border border-[#25D366]/40 transition-colors ${className}`
       }
     >
       <MessageCircle className="w-4 h-4 shrink-0" aria-hidden />
-      {!compact && t('auth.shareAppWhatsApp')}
+      {(!compact || landing) && t('auth.shareAppWhatsApp')}
     </a>
   );
 };
