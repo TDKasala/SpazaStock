@@ -172,10 +172,10 @@ export function AppContent() {
   const handleBarcodeScanned = async (barcode: string) => {
     const mode = scanMode ?? 'lookup';
 
-    // Rapid selling keeps the scanner open; each scan sells one unit.
     if (mode === 'sell') {
       setCurrentTab('sales');
-      await saleRegister.sellBarcode(barcode);
+      const sold = await saleRegister.sellBarcode(barcode);
+      if (sold) setScanMode(null);
       return;
     }
 
