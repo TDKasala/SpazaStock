@@ -1,9 +1,11 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { isAuthRetryableFetchError } from '@supabase/supabase-js';
 import { getSupabase } from '../lib/supabase';
 import { authErrorKey } from '../lib/authErrors';
 import { normalizeDisplayName, normalizeEmail } from '../lib/authValidation';
 import { clearFreshSignIn, markFreshSignIn } from '../lib/platformAdmin';
+import { onDataChanged } from '../lib/events';
+import { createIdleClock, IDLE_CHECK_MS, markIdleSignOut } from '../lib/idleSignOut';
 
 /** 'device' = Supabase not configured, data stays on this device; 'cloud' = signed-in sync. */
 export type AuthMode = 'device' | 'cloud';
@@ -269,6 +271,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsOfflineSession(false);
     setRecovering(false);
   }, [supabase, setRecovering]);
+
+  const signOutRef = useRef(signOut);
+  signOutRef.current = signOut;
+
+  useEffect(() => {
+    if (!user) return;
+    const clock = createIdleClock(Date.now());
+    let signingOut = false;
+    const mark = () => clock.mark(Date.now());
+    const check = () => {
+      if (signingOut || !clock.isIdle(Date.now())) return;
+      signingOut = true;
+      markIdleSignOut();
+      void signOutRef.current();
+    };
+    const options: AddEventListenerOptions = { capture: true, passive: true };
+    const events = ['pointerdown', 'keydown', 'scroll'] as const;
+    for (const event of events) window.addEventListener(event, mark, options);
+    const stopData = onDataChanged(mark);
+    document.addEventListener('visibilitychange', check);
+    const timer = window.setInterval(check, IDLE_CHECK_MS);
+    return () => {
+      for (const event of events) window.removeEventListener(event, mark, options);
+      stopData();
+      document.removeEventListener('visibilitychange', check);
+      window.clearInterval(timer);
+    };
+  }, [user]);
 
   const value = useMemo(
     () => ({

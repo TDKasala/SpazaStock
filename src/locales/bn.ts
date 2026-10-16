@@ -70,6 +70,7 @@ export const bn: Translations = {
     signOutAs: '{{email}} হিসেবে সাইন ইন। সাইন আউট',
     signOutPendingConfirm:
       '{{count}}টি পরিবর্তন এখনও সিঙ্ক হয়নি; সাইন আউট করলে হারিয়ে যাবে। তবু সাইন আউট করবেন?',
+    idleSignedOut: '৩ মিনিট কোনো কাজ না করায় আপনাকে সাইন আউট করা হয়েছে।',
     errors: {
       invalidEmail: 'সঠিক ইমেইল ঠিকানা লিখুন।',
       passwordRequired: 'পাসওয়ার্ড লিখুন।',

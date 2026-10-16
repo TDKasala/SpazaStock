@@ -8,6 +8,7 @@ import { SignInPanel, type PanelFrame, type SignInView } from './SignInScreen';
 import { PWAInstallBanner } from '../pwa/PWAInstallBanner';
 import { AppInviteShareSection } from '../pwa/AppInviteShareSection';
 import { usePWAInstall } from '../../hooks/usePWAInstall';
+import { takeIdleSignOutNotice } from '../../lib/idleSignOut';
 
 interface LandingPageProps {
   /** The build has no Supabase settings, so nobody can sign in or register. */
@@ -24,6 +25,7 @@ const FEATURES = [
 export const LandingPage: React.FC<LandingPageProps> = ({ notConfigured = false }) => {
   const { t } = useLanguage();
   const { needsInstallPrompt } = usePWAInstall();
+  const [idleNotice] = useState(takeIdleSignOutNotice);
   const [view, setView] = useState<SignInView>('password');
   const [authPanelOpen, setAuthPanelOpen] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -78,6 +80,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ notConfigured = false 
             <h1 className="text-3xl md:text-4xl font-extrabold leading-tight">{t('landing.headline')}</h1>
             <p className="text-sm md:text-base text-zinc-400 leading-relaxed">{t('landing.intro')}</p>
           </div>
+
+          {idleNotice && <ErrorMessage variant="info" message={t('auth.idleSignedOut')} />}
 
           {notConfigured ? (
             <ErrorMessage

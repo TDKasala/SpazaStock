@@ -69,6 +69,7 @@ export const zu: Translations = {
     signOutAs: 'Ungene njengo-{{email}}. Phuma',
     signOutPendingConfirm:
       'Izinguquko eziyi-{{count}} azikaxhunyaniswa futhi zizolahleka uma uphuma manje. Uqinisekile ukuthi ufuna ukuphuma?',
+    idleSignedOut: 'Uphume ngemva kwemizuzu emi-3 ngaphandle kokuthinta noma ukuthayipha.',
     errors: {
       invalidEmail: 'Sicela ufake ikheli le-imeyili elifanele.',
       passwordRequired: 'Sicela ufake iphasiwedi yakho.',
