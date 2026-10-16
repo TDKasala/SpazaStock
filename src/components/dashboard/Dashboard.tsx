@@ -56,26 +56,26 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <ActionTile
             id="add_stock"
             title={dict.dashboard.actions.addStock.title}
-            icon={<PackagePlus className="w-10 h-10 stroke-[1.75]" />}
+            icon={<PackagePlus className="w-7 h-7 stroke-[1.75]" />}
             onClick={() => handleActionClick('add_stock')}
           />
           <ActionTile
             id="quick_sale"
             title={dict.dashboard.actions.quickSale.title}
-            icon={<ScanLine className="w-10 h-10 stroke-[1.75]" />}
+            icon={<ScanLine className="w-7 h-7 stroke-[1.75]" />}
             onClick={() => handleActionClick('quick_sale')}
           />
           <ActionTile
             id="expiry_alerts"
             title={dict.dashboard.actions.expiryAlerts.title}
-            icon={<CalendarClock className="w-10 h-10 stroke-[1.75]" />}
+            icon={<CalendarClock className="w-7 h-7 stroke-[1.75]" />}
             accentColor="orange"
             onClick={() => handleActionClick('expiry_alerts')}
           />
           <ActionTile
             id="view_stock"
             title={dict.dashboard.actions.viewStock.title}
-            icon={<PackageSearch className="w-10 h-10 stroke-[1.75]" />}
+            icon={<PackageSearch className="w-7 h-7 stroke-[1.75]" />}
             onClick={() => handleActionClick('view_stock')}
           />
         </div>
