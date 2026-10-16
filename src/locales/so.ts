@@ -91,7 +91,10 @@ export const so: Translations = {
     },
   },
   landing: {
+    tagline: 'Alaab caqli leh oo loogu talagalay dukaankaaga spaza',
+    badge: 'Iibi · La soco · Kor',
     headline: 'Ogow alaabtaada. Si dhakhso ah u iibi. Yaree khasaaraha.',
+    headlineAccent: 'Si dhakhso ah u iibi.',
     intro:
       'SpazaStock waxay ka caawisaa dukaamada spaza iyo dukaamada yaryar inay la socdaan alaabta, diiwaangeliyaan iibka oo ay ogaadaan alaabta dhacaysa, iyagoo isticmaalaya taleefan.',
     createAccount: 'Samee akoon bilaash ah',
@@ -106,6 +109,10 @@ export const so: Translations = {
         title: 'Digniinaha dhicitaanka',
         body: 'Waa lagu xasuusinayaa ka hor inta alaabtu aysan dhicin, si aad marka hore u iibiso.',
       },
+      stock: {
+        title: 'La soco alaabtaada',
+        body: 'Arag waxa aad haysato, waxa sii dhammaanaya iyo waxa aad xigta dalbanayso.',
+      },
       offline: {
         title: 'Wuxuu shaqeeyaa internet la’aan',
         body: 'Sii iibi adigoon data haysan. Wax walba way is waafajinayaan marka aad internetka ku soo noqoto.',
@@ -113,6 +120,10 @@ export const so: Translations = {
       team: {
         title: 'Kooxdaada',
         body: 'Ku martiqaad shaqaalaha xiriir, oo dooro waxa qof kastaa samayn karo.',
+      },
+      grow: {
+        title: 'Kobci ganacsigaaga',
+        body: 'Khasaaro yar, xakameyn wanaagsan iyo faa\'iido badan.',
       },
     },
     notConfiguredTitle: 'Akoonnada weli laguma diyaarin boggan',

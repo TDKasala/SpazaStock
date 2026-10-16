@@ -1,26 +1,45 @@
 import React, { useRef, useState } from 'react';
-import { BellRing, ChevronLeft, Package, RefreshCw, ScanBarcode, Users } from 'lucide-react';
+import { ArrowRight, BellRing, ChevronLeft, Cloud, Package, ScanBarcode, TrendingUp, User, UserPlus, Users } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { Button } from '../ui/Button';
 import { LanguagePicker } from '../ui/LanguagePicker';
 import { ErrorMessage } from '../ui/ErrorMessage';
 import { SignInPanel, type PanelFrame, type SignInView } from './SignInScreen';
 import { PWAInstallBanner } from '../pwa/PWAInstallBanner';
-import { AppInviteShareSection } from '../pwa/AppInviteShareSection';
+import { AppWhatsAppInvite } from '../pwa/AppWhatsAppInvite';
 import { usePWAInstall } from '../../hooks/usePWAInstall';
 import { takeIdleSignOutNotice } from '../../lib/idleSignOut';
+import { FeatureGlyph, HeroIllustration, LandingMark, type FeatureArtKind } from './LandingArt';
 
 interface LandingPageProps {
   /** The build has no Supabase settings, so nobody can sign in or register. */
   notConfigured?: boolean;
 }
 
-const FEATURES = [
+const FEATURES: ReadonlyArray<{ icon: React.FC<{ className?: string }>; key: FeatureArtKind }> = [
   { icon: ScanBarcode, key: 'scan' },
   { icon: BellRing, key: 'expiry' },
-  { icon: RefreshCw, key: 'offline' },
+  { icon: Package, key: 'stock' },
+  { icon: Cloud, key: 'offline' },
   { icon: Users, key: 'team' },
-] as const;
+  { icon: TrendingUp, key: 'grow' },
+];
+
+/** Paints the accent phrase inside the headline green. Falls back to the whole sentence. */
+function AccentHeadline({ text, accent }: { text: string; accent: string }) {
+  const index = accent ? text.indexOf(accent) : -1;
+  if (index < 0) return <>{text}</>;
+  const before = text.slice(0, index).trimEnd();
+  const after = text.slice(index + accent.length);
+  return (
+    <>
+      {before}
+      {before && <br />}
+      <span className="text-emerald-400">{accent}</span>
+      {after}
+    </>
+  );
+}
 
 export const LandingPage: React.FC<LandingPageProps> = ({ notConfigured = false }) => {
   const { t } = useLanguage();
@@ -60,79 +79,110 @@ export const LandingPage: React.FC<LandingPageProps> = ({ notConfigured = false 
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col">
-      <header className="w-full max-w-5xl mx-auto px-5 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center shadow-lg shadow-emerald-950/50">
-            <Package className="w-5 h-5 text-white" />
+      <header className="w-full max-w-6xl mx-auto px-5 py-4 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <LandingMark className="w-9 h-9 shrink-0" />
+          <div className="min-w-0">
+            <span className="font-bold text-lg leading-tight block">{t('common.appName')}</span>
+            <span className="text-[11px] text-zinc-400 leading-tight block truncate">{t('landing.tagline')}</span>
           </div>
-          <span className="font-bold text-lg">{t('common.appName')}</span>
         </div>
-        <LanguagePicker />
+        <LanguagePicker pill className="shrink-0" />
       </header>
 
-      <main
-        className={`flex-1 w-full max-w-5xl mx-auto px-5 pt-4 md:pt-12 grid gap-10 md:items-start ${
-          authPanelOpen && !notConfigured ? 'md:grid-cols-2' : 'max-w-3xl'
-        } ${needsInstallPrompt ? 'pb-44' : 'pb-10'}`}
-      >
-        <section className="space-y-6">
-          <div className="space-y-3">
-            <h1 className="text-3xl md:text-4xl font-extrabold leading-tight">{t('landing.headline')}</h1>
-            <p className="text-sm md:text-base text-zinc-400 leading-relaxed">{t('landing.intro')}</p>
+      <main className={`flex-1 w-full max-w-6xl mx-auto px-5 ${needsInstallPrompt ? 'pb-44' : 'pb-6'}`}>
+        <section className="flex flex-col gap-8 pt-2 md:pt-6 lg:grid lg:grid-cols-2 lg:items-center lg:gap-x-12 lg:gap-y-6">
+          <div className="order-1 space-y-4 lg:col-start-1 lg:row-start-1">
+            <p className="inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-300">
+              {t('landing.badge')}
+            </p>
+            <h1 className="text-4xl sm:text-5xl font-extrabold leading-[1.08] tracking-tight">
+              <AccentHeadline text={t('landing.headline')} accent={t('landing.headlineAccent')} />
+            </h1>
+            <p className="text-sm sm:text-base text-zinc-400 leading-relaxed max-w-xl">{t('landing.intro')}</p>
           </div>
 
-          {idleNotice && <ErrorMessage variant="info" message={t('auth.idleSignedOut')} />}
+          <div className="order-2 lg:col-start-2 lg:row-start-1 lg:row-span-2">
+            <HeroIllustration />
+          </div>
 
-          {notConfigured ? (
-            <ErrorMessage
-              variant="warning"
-              title={t('landing.notConfiguredTitle')}
-              message={t('landing.notConfiguredBody')}
-            />
-          ) : (
-            <>
-              {!authPanelOpen && (
+          <div className="order-3 space-y-4 lg:col-start-1 lg:row-start-2">
+            {idleNotice && <ErrorMessage variant="info" message={t('auth.idleSignedOut')} />}
+
+            {notConfigured ? (
+              <ErrorMessage
+                variant="warning"
+                title={t('landing.notConfiguredTitle')}
+                message={t('landing.notConfiguredBody')}
+              />
+            ) : (
+              !authPanelOpen && (
                 <div className="flex flex-col sm:flex-row gap-3">
-                  <Button size="lg" onClick={() => openAuthPanel('register')}>
+                  <Button
+                    pill
+                    size="lg"
+                    className="w-full sm:w-auto"
+                    onClick={() => openAuthPanel('register')}
+                    leftIcon={<UserPlus className="w-5 h-5" />}
+                    rightIcon={<ArrowRight className="w-5 h-5" />}
+                  >
                     {t('landing.createAccount')}
                   </Button>
-                  <Button size="lg" variant="outline" onClick={() => openAuthPanel('password')}>
+                  <Button
+                    pill
+                    size="lg"
+                    variant="outline"
+                    className="w-full sm:w-auto"
+                    onClick={() => openAuthPanel('password')}
+                    leftIcon={<User className="w-5 h-5" />}
+                  >
                     {t('landing.haveAccount')}
                   </Button>
                 </div>
-              )}
-              <div className="p-4 rounded-2xl border border-[#25D366]/30 bg-[#25D366]/5">
-                <AppInviteShareSection />
-              </div>
-            </>
-          )}
-
-          <ul className="grid gap-3 sm:grid-cols-2">
-            {FEATURES.map(({ icon: Icon, key }) => (
-              <li key={key} className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800 flex gap-3">
-                <Icon className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-semibold">{t(`landing.features.${key}.title`)}</p>
-                  <p className="text-xs text-zinc-400 mt-0.5 leading-relaxed">{t(`landing.features.${key}.body`)}</p>
-                </div>
-              </li>
-            ))}
-          </ul>
+              )
+            )}
+          </div>
         </section>
 
         {authPanelOpen && !notConfigured && (
           <div
             ref={cardRef}
-            className="scroll-mt-4 p-5 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4 md:sticky md:top-6"
+            className="scroll-mt-4 mt-8 p-5 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4 max-w-lg"
           >
             <SignInPanel view={view} onViewChange={setView} frame={frame} />
+          </div>
+        )}
+
+        <ul className="mt-12 grid gap-4 sm:grid-cols-2">
+          {FEATURES.map(({ icon: Icon, key }) => (
+            <li
+              key={key}
+              className="p-4 sm:p-5 rounded-2xl bg-zinc-900/70 border border-zinc-800/90 flex items-center gap-3"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="w-9 h-9 rounded-xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 flex items-center justify-center mb-3">
+                  <Icon className="w-4 h-4" />
+                </div>
+                <p className="text-sm font-semibold">{t(`landing.features.${key}.title`)}</p>
+                <p className="text-xs text-zinc-400 mt-1 leading-relaxed">{t(`landing.features.${key}.body`)}</p>
+              </div>
+              <FeatureGlyph kind={key} className="w-24 h-[4.5rem] shrink-0" />
+            </li>
+          ))}
+        </ul>
+
+        {!notConfigured && (
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3 text-sm text-zinc-400">
+            <p className="text-center">{t('auth.appInviteHint')}</p>
+            <AppWhatsAppInvite compact />
           </div>
         )}
       </main>
 
       <PWAInstallBanner aboveBottomNav={false} />
 
-      <footer className="w-full max-w-5xl mx-auto px-5 py-6 text-center text-xs text-zinc-600">
+      <footer className="w-full max-w-6xl mx-auto px-5 py-8 flex flex-col items-center gap-2 text-center text-xs text-zinc-500">
+        <LandingMark className="w-6 h-6 opacity-80" />
         {t('landing.footer')}
       </footer>
     </div>

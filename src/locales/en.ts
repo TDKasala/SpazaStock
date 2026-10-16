@@ -89,7 +89,10 @@ export const en = {
     },
   },
   landing: {
+    tagline: 'Smart inventory for your spaza shop',
+    badge: 'Sell · Track · Grow',
     headline: 'Know your stock. Sell faster. Waste less.',
+    headlineAccent: 'Sell faster.',
     intro:
       'SpazaStock helps spaza shops and small stores track stock, record sales and catch expiring goods, right from a phone.',
     createAccount: 'Create a free account',
@@ -104,6 +107,10 @@ export const en = {
         title: 'Expiry alerts',
         body: 'Get reminded before goods expire, so you can sell them first.',
       },
+      stock: {
+        title: 'Track your stock',
+        body: 'See what you have, what is running low and what to order next.',
+      },
       offline: {
         title: 'Works offline',
         body: 'Keep selling without data. Everything syncs when you are back online.',
@@ -111,6 +118,10 @@ export const en = {
       team: {
         title: 'Your team',
         body: 'Invite workers with a link and choose what each person can do.',
+      },
+      grow: {
+        title: 'Grow your business',
+        body: 'Less waste, better control and more profit.',
       },
     },
     notConfiguredTitle: 'Accounts are not set up on this site yet',

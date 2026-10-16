@@ -6,6 +6,8 @@ import { isLocale, LANGUAGES } from '../../lib/languages';
 interface LanguagePickerProps {
   /** Header style: shows the language code (EN, ZU, AM, SO, BN) instead of the full name. */
   compact?: boolean;
+  /** Rounded outline used on the marketing page. */
+  pill?: boolean;
   className?: string;
 }
 
@@ -17,17 +19,19 @@ function optionText(lang: (typeof LANGUAGES)[number]): string {
   return lang.pickerLabel === lang.name ? lang.name : `${lang.pickerLabel} — ${lang.name}`;
 }
 
-export const LanguagePicker: React.FC<LanguagePickerProps> = ({ compact = false, className = '' }) => {
+export const LanguagePicker: React.FC<LanguagePickerProps> = ({ compact = false, pill = false, className = '' }) => {
   const { locale, setLocale, t } = useLanguage();
   const current = LANGUAGES.find((l) => l.code === locale) ?? LANGUAGES[0];
   const visibleLabel = compact ? current.code.toUpperCase() : optionText(current);
 
   return (
     <label
-      className={`relative inline-flex items-center gap-1.5 rounded-lg text-xs cursor-pointer focus-within:ring-2 focus-within:ring-emerald-500 ${
-        compact
-          ? 'px-2.5 py-1.5 font-semibold bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-zinc-200'
-          : 'px-2 py-1.5 text-zinc-400 hover:text-zinc-200'
+      className={`relative inline-flex items-center gap-1.5 text-xs cursor-pointer focus-within:ring-2 focus-within:ring-emerald-500 ${
+        pill
+          ? 'rounded-full px-3 py-2 font-medium bg-zinc-900/80 border border-zinc-700 text-zinc-200'
+          : compact
+            ? 'rounded-lg px-2.5 py-1.5 font-semibold bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-zinc-200'
+            : 'rounded-lg px-2 py-1.5 text-zinc-400 hover:text-zinc-200'
       } ${className}`}
     >
       <Globe className={`w-3.5 h-3.5 ${compact ? 'text-emerald-400' : ''}`} />

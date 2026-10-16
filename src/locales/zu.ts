@@ -91,7 +91,10 @@ export const zu: Translations = {
     },
   },
   landing: {
+    tagline: 'Ukuphathwa kwempahla okuhlakaniphile kwesitolo sakho se-spaza',
+    badge: 'Dayisa · Landelela · Khula',
     headline: 'Yazi impahla yakho. Dayisa ngokushesha. Chitha kancane.',
+    headlineAccent: 'Dayisa ngokushesha.',
     intro:
       'I-SpazaStock isiza ama-spaza nezitolo ezincane ukulandelela impahla, ukurekhoda ukuthengisa nokubona izimpahla eziphelelwa yisikhathi, kusukela efonini.',
     createAccount: 'Vula i-akhawunti mahhala',
@@ -106,6 +109,10 @@ export const zu: Translations = {
         title: 'Izexwayiso zokuphelelwa yisikhathi',
         body: 'Ukhunjuzwa ngaphambi kokuthi izimpahla ziphelelwe yisikhathi, ukuze uzidayise kuqala.',
       },
+      stock: {
+        title: 'Landelela impahla yakho',
+        body: 'Bona okunakho, okuphela, nokufanele uku-oda ngokulandelayo.',
+      },
       offline: {
         title: 'Isebenza ngaphandle kwe-inthanethi',
         body: 'Qhubeka udayisa ngaphandle kwedatha. Konke kuyavumelaniswa uma usubuyele ku-inthanethi.',
@@ -113,6 +120,10 @@ export const zu: Translations = {
       team: {
         title: 'Ithimba lakho',
         body: 'Mema abasebenzi ngesixhumanisi bese ukhetha ukuthi umuntu ngamunye angenzani.',
+      },
+      grow: {
+        title: 'Khulisa ibhizinisi lakho',
+        body: 'Chitha kancane, lawula kangcono, uthole inzuzo eyengeziwe.',
       },
     },
     notConfiguredTitle: 'Ama-akhawunti awakasethwa kule sayithi',
