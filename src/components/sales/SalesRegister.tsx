@@ -102,14 +102,9 @@ export const SalesRegister: React.FC<SalesRegisterProps> = ({ register, onOpenSc
 
   return (
     <div className="space-y-5 pb-24">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-bold text-zinc-100">{t('sales.title')}</h2>
-          <p className="text-xs text-zinc-400">{t('sales.subtitle')}</p>
-        </div>
-        <Button onClick={onOpenScanner} variant="primary" size="sm" leftIcon={<ScanBarcode className="w-4 h-4" />}>
-          {t('sales.scanToSell')}
-        </Button>
+      <div>
+        <h2 className="text-lg font-bold text-zinc-100">{t('sales.title')}</h2>
+        <p className="text-xs text-zinc-400">{t('sales.subtitle')}</p>
       </div>
 
       <div className="p-5 bg-gradient-to-br from-zinc-900 via-zinc-950 to-zinc-900 rounded-3xl border border-zinc-800 shadow-xl space-y-4">
@@ -120,8 +115,6 @@ export const SalesRegister: React.FC<SalesRegisterProps> = ({ register, onOpenSc
           <ScanBarcode className="w-6 h-6" />
           <span>{t('sales.tapToScan')}</span>
         </button>
-
-        <p className="text-[11px] text-zinc-400 text-center leading-relaxed px-2">{t('sales.scanInstruction')}</p>
 
         <form onSubmit={handleManualSubmit} className="flex gap-2 pt-1">
           <Input
