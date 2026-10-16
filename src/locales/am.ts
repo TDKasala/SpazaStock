@@ -94,6 +94,7 @@ export const am: Translations = {
     intro:
       'SpazaStock ስፓዛ ሱቆችና ትናንሽ መደብሮች ዕቃቸውን እንዲከታተሉ፣ ሽያጭ እንዲመዘግቡ እና ጊዜያቸው የሚያልፍ ዕቃዎችን እንዲለዩ ይረዳል፤ ሁሉም ከስልክ።',
     createAccount: 'ነፃ መለያ ይክፈቱ',
+    backToOverview: 'ወደ አጠቃላይ ተመለስ',
     haveAccount: 'መለያ አለኝ',
     features: {
       scan: {

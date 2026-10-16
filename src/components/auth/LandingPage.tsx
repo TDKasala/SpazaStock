@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { BellRing, Package, RefreshCw, ScanBarcode, Users } from 'lucide-react';
+import { BellRing, ChevronLeft, Package, RefreshCw, ScanBarcode, Users } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { Button } from '../ui/Button';
 import { LanguagePicker } from '../ui/LanguagePicker';
@@ -24,18 +24,32 @@ export const LandingPage: React.FC<LandingPageProps> = ({ notConfigured = false 
   const { t } = useLanguage();
   const { needsInstallPrompt } = usePWAInstall();
   const [view, setView] = useState<SignInView>('password');
+  const [authPanelOpen, setAuthPanelOpen] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
-  const showCard = (next: SignInView) => {
+  const openAuthPanel = (next: SignInView) => {
     setView(next);
-    cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setAuthPanelOpen(true);
+    window.requestAnimationFrame(() => {
+      cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
   };
 
   const frame = ({ title, subtitle, children }: PanelFrame) => (
     <>
-      <div>
-        <h2 className="text-lg font-bold text-zinc-100">{title ?? t('auth.signIn')}</h2>
-        {subtitle && <p className="text-xs text-zinc-400 mt-1 leading-relaxed">{subtitle}</p>}
+      <div className="flex items-start gap-2">
+        <button
+          type="button"
+          onClick={() => setAuthPanelOpen(false)}
+          className="shrink-0 w-9 h-9 -ml-1 flex items-center justify-center rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
+          aria-label={t('landing.backToOverview')}
+        >
+          <ChevronLeft className="w-5 h-5" />
+        </button>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-lg font-bold text-zinc-100">{title ?? t('auth.signIn')}</h2>
+          {subtitle && <p className="text-xs text-zinc-400 mt-1 leading-relaxed">{subtitle}</p>}
+        </div>
       </div>
       {children}
     </>
@@ -54,9 +68,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ notConfigured = false 
       </header>
 
       <main
-        className={`flex-1 w-full max-w-5xl mx-auto px-5 pt-4 md:pt-12 grid gap-10 md:grid-cols-2 md:items-start ${
-          needsInstallPrompt ? 'pb-44' : 'pb-10'
-        }`}
+        className={`flex-1 w-full max-w-5xl mx-auto px-5 pt-4 md:pt-12 grid gap-10 md:items-start ${
+          authPanelOpen && !notConfigured ? 'md:grid-cols-2' : 'max-w-3xl'
+        } ${needsInstallPrompt ? 'pb-44' : 'pb-10'}`}
       >
         <section className="space-y-6">
           <div className="space-y-3">
@@ -64,15 +78,23 @@ export const LandingPage: React.FC<LandingPageProps> = ({ notConfigured = false 
             <p className="text-sm md:text-base text-zinc-400 leading-relaxed">{t('landing.intro')}</p>
           </div>
 
-          {!notConfigured && (
-            <div className="flex flex-col sm:flex-row gap-3">
-              <Button size="lg" onClick={() => showCard('register')}>
-                {t('landing.createAccount')}
-              </Button>
-              <Button size="lg" variant="outline" onClick={() => showCard('password')}>
-                {t('landing.haveAccount')}
-              </Button>
-            </div>
+          {notConfigured ? (
+            <ErrorMessage
+              variant="warning"
+              title={t('landing.notConfiguredTitle')}
+              message={t('landing.notConfiguredBody')}
+            />
+          ) : (
+            !authPanelOpen && (
+              <div className="flex flex-col sm:flex-row gap-3">
+                <Button size="lg" onClick={() => openAuthPanel('register')}>
+                  {t('landing.createAccount')}
+                </Button>
+                <Button size="lg" variant="outline" onClick={() => openAuthPanel('password')}>
+                  {t('landing.haveAccount')}
+                </Button>
+              </div>
+            )
           )}
 
           <ul className="grid gap-3 sm:grid-cols-2">
@@ -88,17 +110,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({ notConfigured = false 
           </ul>
         </section>
 
-        <div ref={cardRef} className="scroll-mt-4 p-5 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4 md:sticky md:top-6">
-          {notConfigured ? (
-            <ErrorMessage
-              variant="warning"
-              title={t('landing.notConfiguredTitle')}
-              message={t('landing.notConfiguredBody')}
-            />
-          ) : (
+        {authPanelOpen && !notConfigured && (
+          <div
+            ref={cardRef}
+            className="scroll-mt-4 p-5 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4 md:sticky md:top-6"
+          >
             <SignInPanel view={view} onViewChange={setView} frame={frame} />
-          )}
-        </div>
+          </div>
+        )}
       </main>
 
       <PWAInstallBanner aboveBottomNav={false} />

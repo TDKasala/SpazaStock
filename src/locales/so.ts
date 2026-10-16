@@ -94,6 +94,7 @@ export const so: Translations = {
     intro:
       'SpazaStock waxay ka caawisaa dukaamada spaza iyo dukaamada yaryar inay la socdaan alaabta, diiwaangeliyaan iibka oo ay ogaadaan alaabta dhacaysa, iyagoo isticmaalaya taleefan.',
     createAccount: 'Samee akoon bilaash ah',
+    backToOverview: 'Ku noqo dulmarinta',
     haveAccount: 'Akoon baan leeyahay',
     features: {
       scan: {

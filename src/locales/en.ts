@@ -92,6 +92,7 @@ export const en = {
     intro:
       'SpazaStock helps spaza shops and small stores track stock, record sales and catch expiring goods, right from a phone.',
     createAccount: 'Create a free account',
+    backToOverview: 'Back to overview',
     haveAccount: 'I already have an account',
     features: {
       scan: {

@@ -95,6 +95,7 @@ export const bn: Translations = {
     intro:
       'SpazaStock স্পাজা ও ছোট দোকানের মাল ট্র্যাক, বিক্রয় রেকর্ড ও মেয়াদোত্তীর্ণ পণ্য ধরতে সাহায্য করে—সবই ফোন থেকে।',
     createAccount: 'বিনামূল্যে অ্যাকাউন্ট তৈরি',
+    backToOverview: 'সারাংশে ফিরে যান',
     haveAccount: 'আমার অ্যাকাউন্ট আছে',
     features: {
       scan: {

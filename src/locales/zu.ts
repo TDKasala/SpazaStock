@@ -94,6 +94,7 @@ export const zu: Translations = {
     intro:
       'I-SpazaStock isiza ama-spaza nezitolo ezincane ukulandelela impahla, ukurekhoda ukuthengisa nokubona izimpahla eziphelelwa yisikhathi, kusukela efonini.',
     createAccount: 'Vula i-akhawunti mahhala',
+    backToOverview: 'Buyela emuva',
     haveAccount: 'Senginayo i-akhawunti',
     features: {
       scan: {
