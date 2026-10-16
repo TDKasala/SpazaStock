@@ -721,6 +721,9 @@ export const zu: Translations = {
     alerts: 'Izexwayiso',
   },
   pwa: {
+    promoTitle: 'Faka i-SpazaStock kule foni',
+    promoBody: 'Ivula isikrini esigcwele, isebenza ngaphandle kwe-inthanethi, futhi iskena ishesha kusuka esikrinini sasekhaya.',
+    promoBodyIos: 'Yengeza esikrinini sasekhaya ukuze uthengise ngaphandle kwe-inthanethi.',
     iosTitle: 'Faka ku-iPhone / iPad',
     iosDescription: 'Landela lezi zinyathelo ezi-2 ukufaka i-SpazaStock esikrinini sakho sasekhaya:',
     iosStep1: 'Isinyathelo 1: Cindezela inkinobho ethi Share kubha yamathuluzi ye-Safari.',

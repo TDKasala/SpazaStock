@@ -709,6 +709,9 @@ export const am: Translations = {
     alerts: 'ማንቂያዎች',
   },
   pwa: {
+    promoTitle: 'SpazaStockን በዚህ ስልክ ላይ ይጫኑ',
+    promoBody: 'ሙሉ ስክሪን ይከፍታል፣ ከመስመር ውጭ ይሰራል፣ እና ስካነሩን ከመነሻ ገጽዎ ያቀርባል።',
+    promoBodyIos: 'ለከመስመር ውጭ ሽያጭ ለሙሉ ስክሪን መተግበሪያ ወደ መነሻ ገጽዎ ይጨምሩ።',
     iosTitle: 'በiPhone / iPad ላይ ይጫኑ',
     iosDescription: 'SpazaStockን ወደ መነሻ ገጽዎ ለማከል እነዚህን 2 ፈጣን ደረጃዎች ይከተሉ፦',
     iosStep1: 'ደረጃ 1፦ በSafari የመሳሪያ አሞሌ ላይ የማጋሪያ ቁልፉን ይጫኑ።',

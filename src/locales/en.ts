@@ -708,6 +708,9 @@ export const en = {
     alerts: 'Alerts',
   },
   pwa: {
+    promoTitle: 'Install SpazaStock on this phone',
+    promoBody: 'Opens full screen, works offline, and keeps the scanner ready from your home screen.',
+    promoBodyIos: 'Add to your home screen for offline sales and a full-screen shop app.',
     iosTitle: 'Install on iPhone / iPad',
     iosDescription: 'Follow these 2 quick steps to add SpazaStock to your home screen:',
     iosStep1: 'Step 1: Tap the Share button in the Safari toolbar.',

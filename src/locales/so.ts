@@ -712,6 +712,9 @@ export const so: Translations = {
     alerts: 'Digniinaha',
   },
   pwa: {
+    promoTitle: 'Ku rakib SpazaStock taleefankan',
+    promoBody: 'Wuxuu furaa shaashad buuxda, wuu shaqeeyaa offline, skaan-ka guriga kaaga ayuu diyaar u yahay.',
+    promoBodyIos: 'Ku dar shaashadda hore si aad u iibiso offline oo aad u hesho app buuxa.',
     iosTitle: 'Ku rakib iPhone / iPad',
     iosDescription: 'Raac 2-dan tallaabo ee degdegga ah si aad SpazaStock ugu darto shaashaddaada hore:',
     iosStep1: 'Tallaabada 1: Taabo badhanka Share ee ku yaal Safari.',

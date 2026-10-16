@@ -53,10 +53,13 @@ export function usePWAInstall() {
     return false;
   };
 
+  const needsInstallPrompt = !isInstalled && (!!deferredPrompt || isIOS);
+
   return {
     isInstallable: !!deferredPrompt,
     isInstalled,
     isIOS,
+    needsInstallPrompt,
     install,
   };
 }

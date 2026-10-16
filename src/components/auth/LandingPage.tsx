@@ -5,6 +5,8 @@ import { Button } from '../ui/Button';
 import { LanguagePicker } from '../ui/LanguagePicker';
 import { ErrorMessage } from '../ui/ErrorMessage';
 import { SignInPanel, type PanelFrame, type SignInView } from './SignInScreen';
+import { PWAInstallBanner } from '../pwa/PWAInstallBanner';
+import { usePWAInstall } from '../../hooks/usePWAInstall';
 
 interface LandingPageProps {
   /** The build has no Supabase settings, so nobody can sign in or register. */
@@ -20,6 +22,7 @@ const FEATURES = [
 
 export const LandingPage: React.FC<LandingPageProps> = ({ notConfigured = false }) => {
   const { t } = useLanguage();
+  const { needsInstallPrompt } = usePWAInstall();
   const [view, setView] = useState<SignInView>('password');
   const cardRef = useRef<HTMLDivElement>(null);
 
@@ -50,7 +53,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ notConfigured = false 
         <LanguagePicker />
       </header>
 
-      <main className="flex-1 w-full max-w-5xl mx-auto px-5 pb-10 pt-4 md:pt-12 grid gap-10 md:grid-cols-2 md:items-start">
+      <main
+        className={`flex-1 w-full max-w-5xl mx-auto px-5 pt-4 md:pt-12 grid gap-10 md:grid-cols-2 md:items-start ${
+          needsInstallPrompt ? 'pb-44' : 'pb-10'
+        }`}
+      >
         <section className="space-y-6">
           <div className="space-y-3">
             <h1 className="text-3xl md:text-4xl font-extrabold leading-tight">{t('landing.headline')}</h1>
@@ -93,6 +100,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ notConfigured = false 
           )}
         </div>
       </main>
+
+      <PWAInstallBanner aboveBottomNav={false} />
 
       <footer className="w-full max-w-5xl mx-auto px-5 py-6 text-center text-xs text-zinc-600">
         {t('landing.footer')}

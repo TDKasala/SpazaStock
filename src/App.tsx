@@ -10,6 +10,8 @@ import { StockView } from './components/views/StockView';
 import { SalesView } from './components/views/SalesView';
 import { AlertsView } from './components/views/AlertsView';
 import { OfflineIndicator } from './components/pwa/OfflineIndicator';
+import { PWAInstallBanner, pwaInstallLayoutPadding } from './components/pwa/PWAInstallBanner';
+import { usePWAInstall } from './hooks/usePWAInstall';
 import { SyncBanner } from './components/sync/SyncBanner';
 import { ProductFoundDialog } from './components/scanner/ProductFoundDialog';
 import { ProductRegisterDialog } from './components/scanner/ProductRegisterDialog';
@@ -83,6 +85,7 @@ export function AppContent() {
   const [currentTab, setCurrentTab] = useState<AppTab>(initialTab);
   const [refreshCounter, setRefreshCounter] = useState(0);
   const expiry = useExpiryAlerts(shopId, refreshCounter);
+  const { needsInstallPrompt } = usePWAInstall();
 
   useEffect(() => {
     if (typeof navigator === 'undefined' || !navigator.serviceWorker) return;
@@ -206,7 +209,9 @@ export function AppContent() {
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col font-sans selection:bg-emerald-500 selection:text-white">
       <Header onOpenTeam={() => setCurrentTab('team')} />
 
-      <main className="flex-1 w-full max-w-md sm:max-w-xl mx-auto px-4 py-5">
+      <main
+        className={`flex-1 w-full max-w-md sm:max-w-xl mx-auto px-4 py-5 ${pwaInstallLayoutPadding(needsInstallPrompt)}`}
+      >
         <RevokedNotice className="mb-4" />
         <SuspendedNotice />
         <SyncBanner />
@@ -249,6 +254,7 @@ export function AppContent() {
         )}
       </main>
 
+      <PWAInstallBanner />
       <BottomNav currentTab={currentTab} onSelectTab={setCurrentTab} />
       <OfflineIndicator />
 

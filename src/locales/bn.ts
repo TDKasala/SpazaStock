@@ -711,6 +711,9 @@ export const bn: Translations = {
     alerts: 'সতর্কতা',
   },
   pwa: {
+    promoTitle: 'এই ফোনে SpazaStock ইনস্টল করুন',
+    promoBody: 'পূর্ণ স্ক্রিন, অফলাইনে কাজ করে, হোম স্ক্রিন থেকে দ্রুত স্ক্যান।',
+    promoBodyIos: 'অফলাইন বিক্রি ও পূর্ণ স্ক্রিন অ্যাপের জন্য হোম স্ক্রিনে যোগ করুন।',
     iosTitle: 'iPhone / iPad-এ ইনস্টল',
     iosDescription: 'SpazaStock হোম স্ক্রিনে যোগ করতে ২ দ্রুত ধাপ:',
     iosStep1: 'ধাপ ১: Safari টুলবারে শেয়ার বাটন ট্যাপ করুন।',
