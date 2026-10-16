@@ -41,7 +41,7 @@ export const am: Translations = {
     appInviteText:
       'ለሱቅዎ SpazaStock ይሞክሩ — ባርኮድ ይስካኑ፣ ክምችት ይከታተሉ፣ ከመስመር ውጭ ይሽጡ። ነጻ መለያ ይክፈቱ፦ {{link}}',
     appInviteTextNamed:
-      '{{inviter}} ለሱቁ SpazaStock ይጠቀማል። ነጻ ይቀላቀሉ — ባርኮድ፣ ክምችት፣ ከመስመር ውጭ ሽያጭ፦ {{link}}',
+      'ለሱቄ SpazaStock እጠቀማለሁ። ነጻ ይቀላቀሉ — ባርኮድ፣ ክምችት፣ ከመስመር ውጭ ሽያጭ፦ {{link}}',
     changeDetails: 'መረጃዬን ቀይር',
     confirmTitle: 'ኢሜይልዎን ያረጋግጡ',
     confirmSent: 'ወደ {{email}} ባለ 6 አሃዝ ኮድ ልከናል። መለያዎን ለመክፈት ያስገቡት።',

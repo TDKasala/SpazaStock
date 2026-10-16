@@ -41,7 +41,7 @@ export const so: Translations = {
     appInviteText:
       'Isku day SpazaStock dukaankaaga — iskaan barcode, xisaabi alaabta, iibi offline. Samee akoon bilaash ah: {{link}}',
     appInviteTextNamed:
-      '{{inviter}} wuxuu u isticmaalaa SpazaStock dukaankiisa. Ku biir bilaash — barcode, alaab, iib offline: {{link}}',
+      'Waxaan u isticmaalaa SpazaStock dukaankayga. Ku biir bilaash — barcode, alaab, iib offline: {{link}}',
     changeDetails: 'Beddel xogtayda',
     confirmTitle: 'Xaqiiji iimaylkaaga',
     confirmSent: 'Waxaan koodh 6 god ah u dirnay {{email}}. Geli si aad u dhammaystirto samaynta akoonkaaga.',

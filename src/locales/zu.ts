@@ -41,7 +41,7 @@ export const zu: Translations = {
     appInviteText:
       'Zama i-SpazaStock yesitolo sakho — skena amabhakhodi, landelela impahla, uthengise ngaphandle kwe-inthanethi. Vula i-akhawunti yamahhala: {{link}}',
     appInviteTextNamed:
-      '{{inviter}} usebenzisa i-SpazaStock esitolo sakhe. Joyina mahhala — skena amabhakhodi, landelela impahla, uthengise offline: {{link}}',
+      'Ngisebenzisa i-SpazaStock esitolo sami. Joyina mahhala — skena amabhakhodi, landelela impahla, uthengise offline: {{link}}',
     changeDetails: 'Shintsha imininingwane yami',
     confirmTitle: 'Qinisekisa i-imeyili yakho',
     confirmSent: 'Sithumele ikhodi yezinombolo eziyi-6 ku-{{email}}. Yifake ukuze uqedele ukuvula i-akhawunti yakho.',
