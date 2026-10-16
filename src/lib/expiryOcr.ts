@@ -65,14 +65,21 @@ function lastDayOfMonth(y: number, m: number): string | null {
 }
 
 /**
- * OCR often confuses O/0 and I/1/l next to digits. Only rewrite characters that sit beside a digit
- * so brand words are left alone.
+ * OCR often confuses O/0 and I/1/l inside numbers, glues "EXP" to the date, and puts spaces
+ * around the slashes. Letters that start a word (the O in OCT) are left alone.
  */
 export function normalizeOcrText(raw: string): string {
   let text = raw.toUpperCase().replace(/\s+/g, ' ').trim();
-  text = text.replace(/([0-9])O|O([0-9])/g, (_, a: string, b: string) => (a ? `${a}0` : `0${b}`));
-  text = text.replace(/([0-9])[IL]|[IL]([0-9])/g, (_, a: string, b: string) => (a ? `${a}1` : `1${b}`));
-  return text;
+  for (let pass = 0; pass < 2; pass++) {
+    text = text.replace(/([0-9])O(?=[0-9/.-])/g, '$10').replace(/(?<=[0-9/.-])O([0-9])/g, '0$1');
+    text = text.replace(/([0-9])[IL](?=[0-9/.\-\s]|$)/g, '$11').replace(/(?<=[0-9/.\-\s]|^)[IL]([0-9])/g, '1$1');
+  }
+  text = text.replace(/\s*([/.-])\s*/g, '$1');
+  text = text.replace(
+    /(^|[^A-Z])(EXPIRY|EXP\.?|USE\s*BY|BEST\s*BEFORE(?:\s*END)?|BBE|BBD|BB)\s*[:.]?\s*/g,
+    '$1$2 '
+  );
+  return text.replace(/\s+/g, ' ').trim();
 }
 
 function expandYear(yy: number, nowYear: number): number {
@@ -111,6 +118,7 @@ function scoreCandidate(
 
 function nearestMarkerDistance(text: string, matchIndex: number): { distance: number; hasMarker: boolean } {
   let best = Number.POSITIVE_INFINITY;
+  MARKER_RE.lastIndex = 0;
   for (const m of text.matchAll(MARKER_RE)) {
     const end = (m.index ?? 0) + m[0].length;
     // Prefer dates that appear after the marker.
@@ -154,9 +162,9 @@ export function extractExpiryCandidates(rawText: string, today: Date = new Date(
     if (date) pushHit(hits, { isoDate: date, raw: m[0], index: m.index ?? 0, unambiguousFormat: true });
   }
 
-  // Month name: 31 OCT 2026 / OCT 31 2026 / 31 OCTOBER 2026
+  // Month name, including glued reads such as 31OCT2026.
   for (const m of text.matchAll(
-    /\b(\d{1,2})\s+([A-Z]{3,9})\.?\s+((?:19|20)\d{2}|\d{2})\b|\b([A-Z]{3,9})\.?\s+(\d{1,2})\s+((?:19|20)\d{2}|\d{2})\b/g
+    /\b(\d{1,2})\s*([A-Z]{3,9})\.?\s*((?:19|20)\d{2}|\d{2})\b|\b([A-Z]{3,9})\.?\s*(\d{1,2})\s*((?:19|20)\d{2}|\d{2})\b/g
   )) {
     let day: number;
     let monthName: string;
@@ -177,14 +185,14 @@ export function extractExpiryCandidates(rawText: string, today: Date = new Date(
     if (date) pushHit(hits, { isoDate: date, raw: m[0], index: m.index ?? 0, unambiguousFormat: true });
   }
 
-  // Numeric D/M/Y or M/D/Y with separators
-  for (const m of text.matchAll(/\b(\d{1,2})([\/\-.])(\d{1,2})\2((?:19|20)\d{2}|\d{2})\b/g)) {
+  // Numeric D/M/Y or M/D/Y. A letter glued on the front (EXP31/10/2026) still counts.
+  for (const m of text.matchAll(/(?:^|[^0-9])(\d{1,2})([/.-])(\d{1,2})\2((?:19|20)\d{2}|\d{2})\b/g)) {
     const a = Number(m[1]);
     const b = Number(m[3]);
     const y = expandYear(Number(m[4]), nowYear);
     const asDmy = iso(y, b, a);
     const asMdy = iso(y, a, b);
-    const index = m.index ?? 0;
+    const index = (m.index ?? 0) + m[0].indexOf(m[1]);
     if (asDmy && asMdy && asDmy !== asMdy) {
       pushHit(hits, {
         isoDate: asDmy,
@@ -209,8 +217,47 @@ export function extractExpiryCandidates(rawText: string, today: Date = new Date(
     }
   }
 
+  // Day month year written with spaces: "31 10 2026" or "31 10 26".
+  for (const m of text.matchAll(/\b(\d{1,2})\s+(\d{1,2})\s+((?:19|20)\d{2}|\d{2})\b/g)) {
+    const a = Number(m[1]);
+    const b = Number(m[2]);
+    const y = expandYear(Number(m[3]), nowYear);
+    const asDmy = iso(y, b, a);
+    const asMdy = iso(y, a, b);
+    const index = m.index ?? 0;
+    if (asDmy && asMdy && asDmy !== asMdy) {
+      pushHit(hits, { isoDate: asDmy, raw: m[0], index, unambiguousFormat: false, ambiguousPair: asMdy });
+      pushHit(hits, { isoDate: asMdy, raw: m[0], index, unambiguousFormat: false, ambiguousPair: asDmy });
+    } else if (asDmy) {
+      pushHit(hits, { isoDate: asDmy, raw: m[0], index, unambiguousFormat: !asMdy || asDmy === asMdy });
+    } else if (asMdy) {
+      pushHit(hits, { isoDate: asMdy, raw: m[0], index, unambiguousFormat: true });
+    }
+  }
+
+  const mostlyDate = text.replace(/[^0-9A-Z]/g, '').length <= 16;
+
+  // Packed digits printers use: 31102026 or 20261031, and 6-digit 311026.
+  for (const m of text.matchAll(/\b(\d{8}|\d{6})\b/g)) {
+    const index = m.index ?? 0;
+    const { hasMarker, distance } = nearestMarkerDistance(text, index);
+    if (!hasMarker && !mostlyDate) continue;
+    if (hasMarker && distance > 24 && !mostlyDate) continue;
+    const digits = m[1];
+    if (digits.length === 8) {
+      const ymd = iso(Number(digits.slice(0, 4)), Number(digits.slice(4, 6)), Number(digits.slice(6, 8)));
+      const dmy = iso(Number(digits.slice(4, 8)), Number(digits.slice(2, 4)), Number(digits.slice(0, 2)));
+      if (ymd) pushHit(hits, { isoDate: ymd, raw: digits, index, unambiguousFormat: true });
+      if (dmy && dmy !== ymd) pushHit(hits, { isoDate: dmy, raw: digits, index, unambiguousFormat: !ymd });
+    } else {
+      const y = expandYear(Number(digits.slice(4, 6)), nowYear);
+      const dmy = iso(y, Number(digits.slice(2, 4)), Number(digits.slice(0, 2)));
+      if (dmy) pushHit(hits, { isoDate: dmy, raw: digits, index, unambiguousFormat: true });
+    }
+  }
+
   // Month/year only → last day of that month (common on packs)
-  for (const m of text.matchAll(/\b(\d{1,2})([\/\-.])((?:19|20)\d{2}|\d{2})\b/g)) {
+  for (const m of text.matchAll(/\b(\d{1,2})([/.-])((?:19|20)\d{2}|\d{2})\b/g)) {
     // Skip if this looks like it was already part of a full D/M/Y (digit before separator group)
     const before = text.slice(Math.max(0, (m.index ?? 0) - 3), m.index ?? 0);
     if (/\d[\/\-.]$/.test(before) || /\d$/.test(before.trimEnd())) continue;
@@ -293,10 +340,10 @@ export function decideExpirySuggestion(candidates: ExpiryDateCandidate[]): Expir
     return { kind: 'pick', candidates: strong.slice(0, 4) };
   }
 
-  if (top.confidence === 'high' || top.confidence === 'medium') {
+  if (top.confidence === 'high' || (top.confidence === 'medium' && strong.length === 1)) {
     return { kind: 'suggest', isoDate: top.isoDate, confidence: top.confidence };
   }
 
-  if (candidates.length > 1) return { kind: 'pick', candidates: candidates.slice(0, 4) };
-  return { kind: 'none' };
+  // A weak read is still shown, and the person has to tap it before it is saved.
+  return { kind: 'pick', candidates: (strong.length > 0 ? strong : candidates).slice(0, 4) };
 }

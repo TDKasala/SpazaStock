@@ -4,8 +4,17 @@ import {
   extractExpiryCandidates,
   normalizeOcrText,
 } from '../lib/expiryOcr';
+import { ocrPixelSize } from '../lib/expiryOcrRunner';
 
 const TODAY = new Date(2026, 9, 15); // 15 Oct 2026
+
+describe('ocrPixelSize', () => {
+  it('shrinks large photos and enlarges small date crops', () => {
+    expect(ocrPixelSize(4000, 3000)).toEqual({ width: 2000, height: 1500 });
+    expect(ocrPixelSize(700, 400)).toEqual({ width: 1400, height: 800 });
+    expect(ocrPixelSize(1600, 1200)).toEqual({ width: 1600, height: 1200 });
+  });
+});
 
 describe('normalizeOcrText', () => {
   it('uppercases, collapses spaces, and fixes O/I next to digits', () => {
@@ -58,6 +67,15 @@ describe('extractExpiryCandidates', () => {
     const hits = extractExpiryCandidates('PACKED 01/01/2026 EXP 30/06/2027', TODAY);
     expect(hits[0]?.isoDate).toBe('2027-06-30');
   });
+
+  it('reads dates the way a label photo usually comes back from OCR', () => {
+    expect(extractExpiryCandidates('EXP31/10/2026', TODAY)[0]?.isoDate).toBe('2026-10-31');
+    expect(extractExpiryCandidates('EXP: 31 / 10 / 2026', TODAY)[0]?.isoDate).toBe('2026-10-31');
+    expect(extractExpiryCandidates('BEST BEFORE 31OCT2026', TODAY)[0]?.isoDate).toBe('2026-10-31');
+    expect(extractExpiryCandidates('USE BY 31 10 2026', TODAY)[0]?.isoDate).toBe('2026-10-31');
+    expect(extractExpiryCandidates('EXP 31102026', TODAY)[0]?.isoDate).toBe('2026-10-31');
+    expect(extractExpiryCandidates('BB 20261031', TODAY).some((h) => h.isoDate === '2026-10-31')).toBe(true);
+  });
 });
 
 describe('decideExpirySuggestion', () => {
@@ -81,5 +99,12 @@ describe('decideExpirySuggestion', () => {
 
   it('returns none when there are no candidates', () => {
     expect(decideExpirySuggestion([])).toEqual({ kind: 'none' });
+  });
+
+  it('asks for confirmation instead of dropping a single weak date', () => {
+    const hits = extractExpiryCandidates('CODE 01/01/2020', TODAY);
+    expect(hits).toHaveLength(1);
+    expect(hits[0]?.confidence).toBe('low');
+    expect(decideExpirySuggestion(hits).kind).toBe('pick');
   });
 });
