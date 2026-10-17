@@ -716,7 +716,6 @@ export const zu: Translations = {
     scanToSell: 'Skena Uthengise Masinyane',
     tapToScan: 'Cindezela Ukuze Uskene Uthengise',
     scanInstruction: 'Skena ibhakhodi yomkhiqizo ukudonsa ucezu olu-1 masinyane. Ukuskena ngakunye kuthengisa olunye ucezu.',
-    manualPlaceholder: 'Thayipha ibhakhodi ukuthengisa ucezu olu-1...',
     sell: 'Thengisa',
     soldCount: 'Kudayiswe {{count}}',
     unitsRemaining: 'izingcezu ezisele esitolo',

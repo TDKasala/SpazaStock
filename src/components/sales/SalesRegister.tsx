@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { ScanBarcode, ShoppingCart, Plus, Minus, Barcode, Layers, CloudOff, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ScanBarcode, ShoppingCart, Plus, Minus, Layers, CloudOff, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { Product, Sale } from '../../types';
 import { useLanguage } from '../../context/LanguageContext';
 import { useShopId } from '../../context/ShopContext';
 import { Button } from '../ui/Button';
-import { Input } from '../ui/Input';
 import { ErrorMessage } from '../ui/ErrorMessage';
 import { Dialog } from '../ui/Dialog';
 import { getSales, getTodaySales, saleNetAmount, saleNetQuantity } from '../../services/salesService';
@@ -25,13 +24,12 @@ const PAGE_SIZE = 15;
 export const SalesRegister: React.FC<SalesRegisterProps> = ({ register, onOpenScanner, refreshTrigger }) => {
   const { t } = useLanguage();
   const shopId = useShopId();
-  const { lastSaleResult, error, isProcessing, sellProduct, sellBarcode, clearError, syncStates } = register;
+  const { lastSaleResult, error, isProcessing, sellProduct, clearError, syncStates } = register;
 
   const [recentSales, setRecentSales] = useState<Sale[]>([]);
   const [page, setPage] = useState(0);
   const [todaySales, setTodaySales] = useState<Sale[]>([]);
   const [productNames, setProductNames] = useState<Record<string, string>>({});
-  const [manualBarcode, setManualBarcode] = useState('');
 
   const [adjustModalProduct, setAdjustModalProduct] = useState<Product | null>(null);
   const [adjustQuantity, setAdjustQuantity] = useState('2');
@@ -60,14 +58,6 @@ export const SalesRegister: React.FC<SalesRegisterProps> = ({ register, onOpenSc
   useEffect(() => {
     setPage(0);
   }, [shopId, lastSaleResult]);
-
-  const handleManualSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const barcode = manualBarcode.trim();
-    if (!barcode) return;
-    setManualBarcode('');
-    void sellBarcode(barcode);
-  };
 
   const openAdjustModal = async (product: Product) => {
     setAdjustAvailableStock(await getProductTotalStock(product.id, shopId));
@@ -115,18 +105,6 @@ export const SalesRegister: React.FC<SalesRegisterProps> = ({ register, onOpenSc
           <ScanBarcode className="w-6 h-6" />
           <span>{t('sales.tapToScan')}</span>
         </button>
-
-        <form onSubmit={handleManualSubmit} className="flex gap-2 pt-1">
-          <Input
-            placeholder={t('sales.manualPlaceholder')}
-            value={manualBarcode}
-            onChange={(e) => setManualBarcode(e.target.value)}
-            leftIcon={<Barcode className="w-4 h-4 text-zinc-400" />}
-          />
-          <Button type="submit" variant="secondary" size="md" disabled={isProcessing}>
-            {t('sales.sell')}
-          </Button>
-        </form>
       </div>
 
       {error && <ErrorMessage variant="error" message={error} onDismiss={clearError} />}

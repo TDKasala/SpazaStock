@@ -703,7 +703,6 @@ export const en = {
     scanToSell: 'Rapid Scan-to-Sell',
     tapToScan: 'Tap to Rapid Scan-to-Sell',
     scanInstruction: 'Scan a product barcode to deduct 1 unit instantly. Each new scan sells another unit.',
-    manualPlaceholder: 'Type barcode to sell 1 unit...',
     sell: 'Sell',
     soldCount: 'Sold {{count}}',
     unitsRemaining: 'units left in stock',

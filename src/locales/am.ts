@@ -704,7 +704,6 @@ export const am: Translations = {
     scanToSell: 'ፈጣን ስካን ሽያጭ',
     tapToScan: 'ለፈጣን ስካን ሽያጭ ይጫኑ',
     scanInstruction: '1 ዕቃ ወዲያውኑ ለመቀነስ የዕቃውን ባርኮድ ስካን ያድርጉ። እያንዳንዱ አዲስ ስካን አንድ ተጨማሪ ይሸጣል።',
-    manualPlaceholder: '1 ለመሸጥ ባርኮድ ይጻፉ...',
     sell: 'ሽጥ',
     soldCount: '{{count}} ተሽጧል',
     unitsRemaining: 'በክምችት የቀሩ',

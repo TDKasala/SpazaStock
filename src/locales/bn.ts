@@ -706,7 +706,6 @@ export const bn: Translations = {
     scanToSell: 'দ্রুত স্ক্যান-টু-সেল',
     tapToScan: 'দ্রুত স্ক্যান-টু-সেলের জন্য ট্যাপ',
     scanInstruction: '১ ইউনিট কাটতে পণ্যের বারকোড স্ক্যান করুন। প্রতিটি স্ক্যানে আরেক ইউনিট বিক্রি।',
-    manualPlaceholder: '১ ইউনিট বিক্রির জন্য বারকোড টাইপ করুন...',
     sell: 'বিক্রি',
     soldCount: 'বিক্রি {{count}}',
     unitsRemaining: 'মালে বাকি ইউনিট',

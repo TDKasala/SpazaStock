@@ -707,7 +707,6 @@ export const so: Translations = {
     scanToSell: 'Iib iskaan degdeg ah',
     tapToScan: 'Taabo si aad u bilowdo iib iskaan degdeg ah',
     scanInstruction: 'Iskaan barcode-ka alaabta si 1 xabbo isla markiiba looga jaro. Iskaan kasta oo cusub wuxuu iibiyaa mid kale.',
-    manualPlaceholder: 'Qor barcode si aad u iibiso 1 xabbo...',
     sell: 'Iibi',
     soldCount: 'La iibiyay {{count}}',
     unitsRemaining: 'xabbo ayaa ku haray kaydka',
