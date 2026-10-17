@@ -1,14 +1,17 @@
 import React, { useState } from 'react';
-import { CheckCircle2 } from 'lucide-react';
+import { Calendar, CheckCircle2 } from 'lucide-react';
 import type { Product, ProductLookupSuggestion } from '../../types';
 import { useLanguage } from '../../context/LanguageContext';
 import { useShop, useShopId } from '../../context/ShopContext';
 import { Dialog } from '../ui/Dialog';
 import { Button } from '../ui/Button';
+import { Input } from '../ui/Input';
 import { ErrorMessage } from '../ui/ErrorMessage';
 import { createProduct, isArchived, setProductArchived } from '../../services/productService';
+import { isValidDateFormat, stockIn } from '../../services/stockService';
 import { saveProductImage } from '../../services/productImageService';
 import { productFormFromSuggestion } from '../../services/productLookupService';
+import { newId } from '../../lib/ids';
 import { can } from '../../lib/permissions';
 import { ProductImagePicker, UNCHANGED_IMAGE, type ImageDraft } from '../stock/ProductImagePicker';
 import {
@@ -46,8 +49,14 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
   /** An archived product already uses the barcode: offer to restore it instead. */
   const [archivedMatch, setArchivedMatch] = useState<Product | null>(null);
   const [image, setImage] = useState<ImageDraft>(UNCHANGED_IMAGE);
-  /** Saved, but its picture could not be stored: the next tap continues instead of registering again. */
+  /** Saved, but its picture or first delivery still needs another tap. Do not register again. */
   const [registered, setRegistered] = useState<Product | null>(null);
+  const [quantity, setQuantity] = useState('1');
+  const [hasExpiry, setHasExpiry] = useState(true);
+  const [expiryDate, setExpiryDate] = useState('');
+  const [quantityError, setQuantityError] = useState<string | null>(null);
+  const [dateError, setDateError] = useState<string | null>(null);
+  const [deliveryKey, setDeliveryKey] = useState(() => newId());
 
   React.useEffect(() => {
     if (!isOpen) return;
@@ -57,6 +66,12 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
     setArchivedMatch(null);
     setImage(UNCHANGED_IMAGE);
     setRegistered(null);
+    setQuantity('1');
+    setHasExpiry(true);
+    setExpiryDate('');
+    setQuantityError(null);
+    setDateError(null);
+    setDeliveryKey(newId());
   }, [initialBarcode, isOpen, suggestion]);
 
   if (!isOpen) return null;
@@ -64,16 +79,66 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
   const suggestedImageUrl = suggestion?.imageUrl.value ?? null;
   const fromExternal = Boolean(suggestion && suggestion.name.source === 'external');
 
+  /** Opening stock for this registration. Blank expiry is allowed only when the toggle is off. */
+  const readDelivery = (): { quantity: number; expiryDate: string | null } | null => {
+    const qty = Number(quantity);
+    if (!Number.isInteger(qty) || qty <= 0) {
+      setQuantityError(t('stockIn.invalidQuantity'));
+      return null;
+    }
+    setQuantityError(null);
+    if (!hasExpiry) {
+      setDateError(null);
+      return { quantity: qty, expiryDate: null };
+    }
+    const trimmed = expiryDate.trim();
+    if (!trimmed || !isValidDateFormat(trimmed)) {
+      setDateError(t('stockIn.invalidDate'));
+      return null;
+    }
+    setDateError(null);
+    return { quantity: qty, expiryDate: trimmed };
+  };
+
+  const recordOpeningStock = async (product: Product): Promise<boolean> => {
+    const delivery = readDelivery();
+    if (!delivery) return false;
+    const res = await stockIn(
+      {
+        productId: product.id,
+        quantity: delivery.quantity,
+        expiryDate: delivery.expiryDate,
+        idempotencyKey: deliveryKey,
+      },
+      shopId
+    );
+    if (res.error && !res.error.includes('already processed')) {
+      setRegistered(product);
+      setServerError(res.error);
+      return false;
+    }
+    return true;
+  };
+
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (isSubmitting) return;
     if (registered) {
-      onProductRegistered(registered);
+      setIsSubmitting(true);
+      setServerError(null);
+      try {
+        if (await recordOpeningStock(registered)) onProductRegistered(registered);
+      } catch (err) {
+        setServerError(err instanceof Error ? err.message : t('errors.generic'));
+      } finally {
+        setIsSubmitting(false);
+      }
       return;
     }
     const { input, errors: formErrors } = parseProductForm(values, t);
     setErrors(formErrors);
-    if (!input) return;
+    const delivery = readDelivery();
+    if (!input || !delivery) return;
 
     setIsSubmitting(true);
     setServerError(null);
@@ -99,7 +164,8 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
         }
         product = saved.product;
       }
-      onProductRegistered(product);
+      setRegistered(product);
+      if (await recordOpeningStock(product)) onProductRegistered(product);
     } catch (err) {
       setServerError(err instanceof Error ? err.message : t('errors.generic'));
     } finally {
@@ -178,8 +244,55 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
 
         <ProductFormFields values={values} errors={errors} onChange={setValues} autoFocusName />
 
-        <div className="p-3 bg-zinc-950/80 rounded-xl border border-zinc-800/80 text-[11px] text-zinc-400 leading-relaxed">
-          {t('product.priceNotice')}
+        <Input
+          label={t('stockIn.quantityLabel')}
+          type="number"
+          inputMode="numeric"
+          min={1}
+          step={1}
+          value={quantity}
+          onChange={(e) => {
+            setQuantity(e.target.value);
+            if (quantityError) setQuantityError(null);
+          }}
+          error={quantityError ?? undefined}
+          required
+          disabled={isSubmitting}
+        />
+
+        <div className="p-3.5 bg-zinc-950/80 rounded-xl border border-zinc-800/80 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={hasExpiry}
+                onChange={(e) => {
+                  setHasExpiry(e.target.checked);
+                  if (dateError) setDateError(null);
+                }}
+                disabled={isSubmitting}
+                className="w-4 h-4 rounded text-emerald-600 bg-zinc-800 border-zinc-700 focus:ring-emerald-500 focus:ring-offset-zinc-900"
+              />
+              <span className="text-xs font-semibold text-zinc-200">{t('stockIn.hasExpiryToggle')}</span>
+            </label>
+            <span className="text-[10px] text-zinc-400">
+              {hasExpiry ? t('stockIn.perishable') : t('stockIn.nonPerishable')}
+            </span>
+          </div>
+          {hasExpiry && (
+            <Input
+              type="date"
+              value={expiryDate}
+              onChange={(e) => {
+                setExpiryDate(e.target.value);
+                if (dateError) setDateError(null);
+              }}
+              error={dateError ?? undefined}
+              leftIcon={<Calendar className="w-4 h-4 text-amber-500" />}
+              required
+              disabled={isSubmitting}
+            />
+          )}
         </div>
       </form>
     </Dialog>
