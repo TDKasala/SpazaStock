@@ -28,8 +28,6 @@ export interface QuickStockInModalProps {
 
 const getPresetDate = (daysAhead: number): string => addDaysLocal(daysAhead);
 
-const toCents = (value: number): number => Math.round(value * 100) / 100;
-
 export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
   isOpen,
   product,
@@ -46,9 +44,6 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
   const [quantityInput, setQuantityInput] = useState<string>('1');
   const [hasExpiry, setHasExpiry] = useState<boolean>(true);
   const [expiryDate, setExpiryDate] = useState<string>('');
-  const [costPrice, setCostPrice] = useState<string>('');
-  const [lotNumber, setLotNumber] = useState('');
-  const [supplierName, setSupplierName] = useState('');
   const [scannedBarcode, setScannedBarcode] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -83,9 +78,6 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
         setExpiryDate('');
       }
 
-      setCostPrice(product.buyingPrice != null ? String(product.buyingPrice) : '');
-      setLotNumber('');
-      setSupplierName('');
       setScannedBarcode(null);
       if (barcodeId) {
         void db.barcodes.get(barcodeId).then((link) => {
@@ -97,12 +89,7 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
       void getPackagings(product.id, shopId).then((found) => {
         setPackagings(found);
         const scanned = found.find((p) => p.id === packagingId);
-        if (scanned) {
-          setSelectedPackagingId(scanned.id);
-          if (product.buyingPrice != null) {
-            setCostPrice(String(toCents(Number(product.buyingPrice) * scanned.unitsPerPackage)));
-          }
-        }
+        if (scanned) setSelectedPackagingId(scanned.id);
       });
     }
   }, [isOpen, product, packagingId, barcodeId, shopId]);
@@ -114,11 +101,7 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
   const enteredQuantity = Number(quantityInput);
   const unitsToAdd = Number.isInteger(enteredQuantity) && enteredQuantity > 0 ? enteredQuantity * unitsPerPackage : 0;
 
-  /** Switching between units and packages keeps the typed cost by converting it. */
   const selectPackaging = (next: ProductPackaging | null) => {
-    const nextUnits = next?.unitsPerPackage ?? 1;
-    const cost = parseFloat(costPrice);
-    if (costPrice.trim() && !isNaN(cost)) setCostPrice(String(toCents((cost / unitsPerPackage) * nextUnits)));
     setSelectedPackagingId(next?.id ?? null);
     setQuantityInput('1');
     setErrorMsg(null);
@@ -162,17 +145,6 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
       finalExpiry = trimmedDate;
     }
 
-    // Optional cost price
-    let parsedCost: number | null = null;
-    if (costPrice.trim()) {
-      const num = parseFloat(costPrice.trim());
-      if (isNaN(num) || num < 0) {
-        setErrorMsg(t('errors.invalidNumber'));
-        return;
-      }
-      parsedCost = num;
-    }
-
     setIsSubmitting(true);
 
     try {
@@ -181,13 +153,9 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
           productId: product.id,
           quantity: qty,
           expiryDate: finalExpiry,
-          // Cost is typed per package when receiving packages; it is stored per unit.
-          costPricePerUnit: parsedCost == null ? null : toCents(parsedCost / unitsPerPackage),
           idempotencyKey,
           packagingId: selectedPackaging?.id ?? null,
           barcodeId,
-          lotNumber,
-          supplierName,
         },
         shopId
       );
@@ -524,45 +492,6 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
                 </div>
               )}
             </div>
-
-            {/* Optional Unit Cost Override */}
-            <Input
-              label={
-                selectedPackaging
-                  ? t('stockIn.costPerPackage', { pack: packagingLabel(selectedPackaging, t) })
-                  : t('stockIn.costPricePerUnit')
-              }
-              placeholder="0.00"
-              type="number"
-              step="0.01"
-              min="0"
-              inputMode="decimal"
-              value={costPrice}
-              onChange={(e) => setCostPrice(e.target.value)}
-              leftIcon={<span className="text-xs font-bold text-zinc-400">R</span>}
-              helperText={
-                selectedPackaging && costPrice.trim() && !isNaN(parseFloat(costPrice))
-                  ? t('stockIn.costPerUnitPreview', {
-                      amount: toCents(parseFloat(costPrice) / unitsPerPackage).toFixed(2),
-                    })
-                  : t('stockIn.costHelp')
-              }
-            />
-
-            <Input
-              label={t('stockIn.lotNumber')}
-              placeholder={t('stockIn.lotPlaceholder')}
-              value={lotNumber}
-              maxLength={40}
-              onChange={(e) => setLotNumber(e.target.value)}
-            />
-            <Input
-              label={t('stockIn.supplier')}
-              placeholder={t('stockIn.supplierPlaceholder')}
-              value={supplierName}
-              maxLength={80}
-              onChange={(e) => setSupplierName(e.target.value)}
-            />
           </form>
         )}
       </div>

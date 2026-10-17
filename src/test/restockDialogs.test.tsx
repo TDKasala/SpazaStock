@@ -141,9 +141,6 @@ describe('linking a case barcode and receiving it', () => {
     await typeInto(quantity, '2');
     await waitFor(() => byTestId('units-preview') !== null);
     expect(byTestId('units-preview')?.textContent).toBe('= 48 units');
-    const cost = [...container.querySelectorAll<HTMLInputElement>('input[type="number"]')].at(-1)!;
-    await typeInto(cost, '150');
-    expect(container.textContent).toContain('Saved as R 6.25 per unit.');
 
     await click(buttonNamed('Confirm & Increase Stock'));
     await waitFor(() => byTestId('stock-in-packages') !== null);
@@ -154,7 +151,7 @@ describe('linking a case barcode and receiving it', () => {
       quantity: 48,
       packageQuantity: 2,
       unitsPerPackage: 24,
-      costPricePerUnit: 6.25,
+      costPricePerUnit: null,
       receivedBarcodeId: resolved!.barcodeId,
     });
   });
