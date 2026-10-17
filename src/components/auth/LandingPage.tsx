@@ -7,7 +7,6 @@ import {
   Package,
   ScanBarcode,
   TrendingUp,
-  User,
   UserPlus,
   Users,
   type LucideIcon,
@@ -36,6 +35,8 @@ const FEATURES: ReadonlyArray<{ icon: LucideIcon; key: FeatureArtKind }> = [
   { icon: Users, key: 'team' },
   { icon: TrendingUp, key: 'grow' },
 ];
+
+const HERO_MARKS: ReadonlyArray<FeatureArtKind> = ['scan', 'stock', 'expiry'];
 
 /** Paints the accent phrase inside the headline green. Falls back to the whole sentence. */
 function AccentHeadline({ text, accent }: { text: string; accent: string }) {
@@ -91,20 +92,29 @@ export const LandingPage: React.FC<LandingPageProps> = ({ notConfigured = false 
 
   return (
     <div className="landing-page" style={needsInstallPrompt ? { paddingBottom: '11rem' } : undefined}>
-      <div className="landing-container">
-        <header className="landing-header">
+      <header className="landing-header">
+        <div className="landing-container landing-header-inner">
           <div className="landing-brand">
             <div className="landing-logo">
-              <LandingMark className="w-7 h-7" />
+              <LandingMark className="w-5 h-5" />
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="landing-brand-name">{t('common.appName')}</p>
               <p className="landing-brand-tagline">{t('landing.tagline')}</p>
             </div>
           </div>
-          <LanguagePicker unstyled className="landing-language" />
-        </header>
+          <div className="landing-header-actions">
+            {!notConfigured && (
+              <button type="button" className="landing-header-signin" onClick={() => openAuthPanel('password')}>
+                {t('landing.haveAccount')}
+              </button>
+            )}
+            <LanguagePicker unstyled compact className="landing-language" />
+          </div>
+        </div>
+      </header>
 
+      <div className="landing-container">
         <section className="landing-hero">
           <div className="landing-hero-content">
             <p className="landing-eyebrow">{t('landing.badge')}</p>
@@ -125,25 +135,27 @@ export const LandingPage: React.FC<LandingPageProps> = ({ notConfigured = false 
               !authPanelOpen && (
                 <div className="landing-actions">
                   <button type="button" className="landing-button landing-button-primary" onClick={() => openAuthPanel('register')}>
-                    <UserPlus className="w-5 h-5" aria-hidden />
+                    <UserPlus className="w-4 h-4" aria-hidden />
                     {t('landing.createAccount')}
-                    <ArrowRight className="w-5 h-5" aria-hidden />
-                  </button>
-                  <button type="button" className="landing-button landing-button-secondary" onClick={() => openAuthPanel('password')}>
-                    <User className="w-5 h-5" aria-hidden />
-                    {t('landing.haveAccount')}
+                    <ArrowRight className="w-4 h-4" aria-hidden />
                   </button>
                 </div>
               )
             )}
           </div>
+
+          <div className="landing-hero-panel" aria-hidden="true">
+            {HERO_MARKS.map((key) => (
+              <div key={key} className="landing-hero-row">
+                <FeatureGlyph kind={key} />
+                <p>{t(`landing.features.${key}.title`)}</p>
+              </div>
+            ))}
+          </div>
         </section>
 
         {authPanelOpen && !notConfigured && (
-          <div
-            ref={cardRef}
-            className="scroll-mt-4 mt-2 mb-8 p-5 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4 max-w-lg"
-          >
+          <div ref={cardRef} className="landing-auth scroll-mt-20">
             <SignInPanel view={view} onViewChange={setView} frame={frame} />
           </div>
         )}
@@ -151,16 +163,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ notConfigured = false 
         <ul className="landing-features">
           {FEATURES.map(({ icon: Icon, key }) => (
             <li key={key} className="landing-feature-card">
-              <div className="landing-feature-copy">
-                <div className="landing-feature-icon">
-                  <Icon width={20} height={20} />
-                </div>
-                <p className="landing-feature-title">{t(`landing.features.${key}.title`)}</p>
-                <p className="landing-feature-description">{t(`landing.features.${key}.body`)}</p>
+              <div className="landing-feature-icon">
+                <Icon width={18} height={18} />
               </div>
-              <div className="landing-feature-art">
-                <FeatureGlyph kind={key} />
-              </div>
+              <p className="landing-feature-title">{t(`landing.features.${key}.title`)}</p>
+              <p className="landing-feature-description">{t(`landing.features.${key}.body`)}</p>
             </li>
           ))}
         </ul>
@@ -174,7 +181,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ notConfigured = false 
 
         <footer className="landing-footer">
           <div className="landing-footer-logo">
-            <LandingMark className="w-5 h-5" />
+            <LandingMark className="w-4 h-4" />
           </div>
           <p>{t('landing.footer')}</p>
         </footer>
