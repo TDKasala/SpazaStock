@@ -764,6 +764,7 @@ export const bn: Translations = {
     stock: 'মাল',
     sales: 'বিক্রি',
     alerts: 'সতর্কতা',
+    more: 'আরও',
   },
   pwa: {
     promoTitle: 'এই ফোনে SpazaStock ইনস্টল করুন',

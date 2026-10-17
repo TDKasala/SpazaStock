@@ -765,6 +765,7 @@ export const so: Translations = {
     stock: 'Alaabta',
     sales: 'Iibka',
     alerts: 'Digniinaha',
+    more: 'Kale',
   },
   pwa: {
     promoTitle: 'Ku rakib SpazaStock taleefankan',

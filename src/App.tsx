@@ -9,6 +9,7 @@ import { Dashboard } from './components/dashboard/Dashboard';
 import { StockView } from './components/views/StockView';
 import { SalesView } from './components/views/SalesView';
 import { AlertsView } from './components/views/AlertsView';
+import { MoreView } from './components/views/MoreView';
 import { OfflineIndicator } from './components/pwa/OfflineIndicator';
 import { PWAInstallBanner, pwaInstallLayoutPadding } from './components/pwa/PWAInstallBanner';
 import { usePWAInstall } from './hooks/usePWAInstall';
@@ -53,7 +54,7 @@ function isAdminPath(): boolean {
 }
 
 /** 'team' is reached from the shop menu, not the bottom navigation. */
-export type AppTab = 'dashboard' | 'stock' | 'sales' | 'alerts' | 'team';
+export type AppTab = 'dashboard' | 'stock' | 'sales' | 'alerts' | 'more' | 'team';
 
 interface RegisterRequest {
   barcode: string;
@@ -252,6 +253,12 @@ export function AppContent() {
             onSelectProduct={setInspectedProduct}
             onQuickStockIn={openStockIn}
             refreshTrigger={refreshCounter}
+            lowStock={intelligence.lowStock}
+            products={intelligence.products}
+          />
+        )}
+        {currentTab === 'more' && (
+          <MoreView
             lowStock={intelligence.lowStock}
             products={intelligence.products}
             sales={intelligence.sales}

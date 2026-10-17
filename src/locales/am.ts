@@ -762,6 +762,7 @@ export const am: Translations = {
     stock: 'ዕቃ',
     sales: 'ሽያጭ',
     alerts: 'ማንቂያዎች',
+    more: 'ተጨማሪ',
   },
   pwa: {
     promoTitle: 'SpazaStockን በዚህ ስልክ ላይ ይጫኑ',

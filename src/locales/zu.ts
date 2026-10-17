@@ -774,6 +774,7 @@ export const zu: Translations = {
     stock: 'Impahla',
     sales: 'Ukudayisa',
     alerts: 'Izexwayiso',
+    more: 'Okunye',
   },
   pwa: {
     promoTitle: 'Faka i-SpazaStock kule foni',

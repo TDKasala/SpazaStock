@@ -761,6 +761,7 @@ export const en = {
     stock: 'Stock',
     sales: 'Sales',
     alerts: 'Alerts',
+    more: 'More',
   },
   pwa: {
     promoTitle: 'Install SpazaStock on this phone',

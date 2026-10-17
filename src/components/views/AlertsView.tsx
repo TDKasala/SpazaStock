@@ -4,7 +4,7 @@ import { useLanguage } from '../../context/LanguageContext';
 import { useShop, useShopId } from '../../context/ShopContext';
 import { canManageExpiry } from '../../lib/shopSettings';
 import { Button } from '../ui/Button';
-import type { Product, Sale, StockBatch } from '../../types';
+import type { Product } from '../../types';
 import {
   getOpenDiscrepancies,
   resolveDiscrepancy,
@@ -12,11 +12,8 @@ import {
   type ExpiryAlertItem,
 } from '../../services/stockService';
 import { ExpiryAlertRow } from '../expiry/ExpiryAlertRow';
-import { PushAlertsToggle } from '../expiry/PushAlertsToggle';
-import { ReminderSettings } from '../expiry/ReminderSettings';
 import { ResolveExpiryDialog } from '../expiry/ResolveExpiryDialog';
 import { LowStockSection } from '../stock/LowStockSection';
-import { StockIntelligenceCard } from '../dashboard/StockIntelligenceCard';
 import { dismissLowStock } from '../../services/lowStockService';
 import type { LowStockItem } from '../../lib/lowStock';
 
@@ -31,10 +28,6 @@ export interface AlertsViewProps {
   refreshTrigger?: number;
   lowStock: LowStockItem[];
   products: Product[];
-  sales: Sale[];
-  batches: StockBatch[];
-  timezone: string;
-  isLoadingIntelligence: boolean;
 }
 
 export const AlertsView: React.FC<AlertsViewProps> = ({
@@ -46,10 +39,6 @@ export const AlertsView: React.FC<AlertsViewProps> = ({
   refreshTrigger,
   lowStock,
   products,
-  sales,
-  batches,
-  timezone,
-  isLoadingIntelligence,
 }) => {
   const { t } = useLanguage();
   const shopId = useShopId();
@@ -167,17 +156,6 @@ export const AlertsView: React.FC<AlertsViewProps> = ({
           {t('scanner.scanAction')}
         </Button>
       </div>
-
-      <PushAlertsToggle />
-      <ReminderSettings />
-      <StockIntelligenceCard
-        lowStock={lowStock}
-        products={products}
-        sales={sales}
-        batches={batches}
-        timezone={timezone}
-        isLoading={isLoadingIntelligence}
-      />
 
       {!isLoading && (
         <LowStockSection
