@@ -29,7 +29,8 @@ export const SalesRegister: React.FC<SalesRegisterProps> = ({ register, onOpenSc
   const [recentSales, setRecentSales] = useState<Sale[]>([]);
   const [page, setPage] = useState(0);
   const [todaySales, setTodaySales] = useState<Sale[]>([]);
-  const [productNames, setProductNames] = useState<Record<string, string>>({});
+  const [productsById, setProductsById] = useState<Record<string, Product>>({});
+  const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
 
   const [adjustModalProduct, setAdjustModalProduct] = useState<Product | null>(null);
   const [adjustQuantity, setAdjustQuantity] = useState('2');
@@ -48,7 +49,7 @@ export const SalesRegister: React.FC<SalesRegisterProps> = ({ register, onOpenSc
       if (cancelled) return;
       setRecentSales(sales);
       setTodaySales(today);
-      setProductNames(Object.fromEntries(products.map((p) => [p.id, p.name])));
+      setProductsById(Object.fromEntries(products.map((p) => [p.id, p])));
     })();
     return () => {
       cancelled = true;
@@ -89,6 +90,16 @@ export const SalesRegister: React.FC<SalesRegisterProps> = ({ register, onOpenSc
   const pageStart = currentPage * PAGE_SIZE;
   const pageEnd = Math.min(pageStart + PAGE_SIZE, recentSales.length);
   const pageSales = recentSales.slice(pageStart, pageEnd);
+  const selectedProduct = selectedSale ? productsById[selectedSale.productId] : undefined;
+  const selectedName = selectedProduct?.name ?? (selectedSale ? t('sales.unknownProduct') : '');
+  const selectedWhen = selectedSale
+    ? new Date(selectedSale.createdAt).toLocaleString([], {
+        day: 'numeric',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : '';
 
   return (
     <div className="space-y-5 pb-24">
@@ -177,13 +188,15 @@ export const SalesRegister: React.FC<SalesRegisterProps> = ({ register, onOpenSc
         {recentSales.length > 0 ? (
           <div className="space-y-2">
             {pageSales.map((sale) => (
-              <div
+              <button
                 key={sale.id}
-                className="p-3.5 bg-zinc-950 rounded-2xl border border-zinc-800 flex items-center justify-between gap-3 text-xs"
+                type="button"
+                onClick={() => setSelectedSale(sale)}
+                className="w-full text-left p-3.5 bg-zinc-950 hover:bg-zinc-900 rounded-2xl border border-zinc-800 hover:border-zinc-700 flex items-center justify-between gap-3 text-xs cursor-pointer transition-colors"
               >
                 <div className="min-w-0 flex-1">
                   <span className="font-semibold text-zinc-100 truncate block">
-                    {productNames[sale.productId] ?? t('sales.unknownProduct')}
+                    {productsById[sale.productId]?.name ?? t('sales.unknownProduct')}
                   </span>
                   <span className="text-[11px] text-zinc-400 block mt-0.5">
                     {t('sales.soldCount', { count: saleNetQuantity(sale) })} ·{' '}
@@ -211,7 +224,7 @@ export const SalesRegister: React.FC<SalesRegisterProps> = ({ register, onOpenSc
                     {t('sales.eachPrice', { price: sale.unitPrice.toFixed(2) })}
                   </span>
                 </div>
-              </div>
+              </button>
             ))}
             {recentSales.length > PAGE_SIZE && (
               <nav className="flex items-center justify-between gap-3 pt-1" aria-label={t('sales.paginationLabel')}>
@@ -248,6 +261,67 @@ export const SalesRegister: React.FC<SalesRegisterProps> = ({ register, onOpenSc
           </div>
         )}
       </div>
+
+      {selectedSale && (
+        <Dialog
+          isOpen
+          onClose={() => setSelectedSale(null)}
+          title={selectedName}
+          description={selectedWhen}
+          footer={
+            <Button onClick={() => setSelectedSale(null)} variant="secondary" size="md" className="w-full">
+              {t('common.close')}
+            </Button>
+          }
+        >
+          <div className="space-y-3">
+            {selectedProduct?.barcode && (
+              <p className="text-xs text-zinc-400 font-mono">{selectedProduct.barcode}</p>
+            )}
+            {(selectedProduct?.brand || selectedProduct?.size) && (
+              <p className="text-xs text-zinc-300">
+                {[selectedProduct.brand, selectedProduct.size].filter(Boolean).join(' · ')}
+              </p>
+            )}
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm text-zinc-200">
+                {t('sales.soldCount', { count: saleNetQuantity(selectedSale) })}
+              </span>
+              <span className="text-base font-bold text-emerald-400">
+                +R {saleNetAmount(selectedSale).toFixed(2)}
+              </span>
+            </div>
+            <p className="text-xs text-zinc-500">
+              {t('sales.eachPrice', { price: selectedSale.unitPrice.toFixed(2) })}
+            </p>
+            {Boolean(selectedSale.voidedQuantity) && (
+              <p className="text-xs text-zinc-500 line-through">
+                {t('sales.voidedCount', { count: selectedSale.voidedQuantity ?? 0 })}
+              </p>
+            )}
+            <SyncChip state={syncStates.get(selectedSale.id)} />
+            {selectedSale.allocations.length > 0 && (
+              <div className="pt-2 border-t border-zinc-800 space-y-1.5">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                  {t('sales.takenFrom')}
+                </p>
+                <ul className="space-y-1">
+                  {selectedSale.allocations.map((allocation) => (
+                    <li key={allocation.batchId} className="text-xs text-zinc-300">
+                      {allocation.batchExpiryDate
+                        ? t('sales.allocationLine', {
+                            count: allocation.quantityDeducted,
+                            date: allocation.batchExpiryDate,
+                          })
+                        : t('sales.allocationNoExpiry', { count: allocation.quantityDeducted })}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </Dialog>
+      )}
 
       {adjustModalProduct && (
         <Dialog
