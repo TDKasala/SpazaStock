@@ -20,7 +20,7 @@ import { PWAInstallBanner } from '../pwa/PWAInstallBanner';
 import { AppWhatsAppInvite } from '../pwa/AppWhatsAppInvite';
 import { usePWAInstall } from '../../hooks/usePWAInstall';
 import { takeIdleSignOutNotice } from '../../lib/idleSignOut';
-import { FeatureGlyph, HeroIllustration, LandingMark, type FeatureArtKind } from './LandingArt';
+import { FeatureGlyph, LandingMark, type FeatureArtKind } from './LandingArt';
 import './styles/landing-page.css';
 
 interface LandingPageProps {
@@ -136,10 +136,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({ notConfigured = false 
                 </div>
               )
             )}
-          </div>
-
-          <div className="landing-hero-visual">
-            <HeroIllustration />
           </div>
         </section>
 

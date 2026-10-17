@@ -11,65 +11,6 @@ export const LandingMark: React.FC<{ className?: string }> = ({ className = 'w-9
   </svg>
 );
 
-/** Phone scanning a barcode beside a small spaza shop. */
-export const HeroIllustration: React.FC<{ className?: string }> = ({ className = '' }) => (
-  <svg viewBox="0 0 520 420" className={`w-full h-auto ${className}`} role="img" aria-hidden>
-    <defs>
-      <linearGradient id="heroGlow" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0" stopColor="#064e3b" stopOpacity="0.9" />
-        <stop offset="1" stopColor="#022c22" stopOpacity="0" />
-      </linearGradient>
-      <linearGradient id="heroPhone" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stopColor="#1c1917" />
-        <stop offset="1" stopColor="#09090b" />
-      </linearGradient>
-    </defs>
-    <ellipse cx="270" cy="360" rx="180" ry="28" fill="#022c22" opacity="0.7" />
-    <circle cx="300" cy="190" r="150" fill="url(#heroGlow)" />
-
-    <g transform="translate(168 36)">
-      <rect x="8" y="18" width="196" height="300" rx="28" fill="url(#heroPhone)" stroke="#3f3f46" strokeWidth="3" />
-      <rect x="22" y="36" width="168" height="250" rx="8" fill="#022c22" />
-      <rect x="78" y="26" width="56" height="8" rx="4" fill="#27272a" />
-      <rect x="46" y="78" width="120" height="86" rx="8" fill="none" stroke="#34d399" strokeWidth="3" />
-      <g fill="#d4d4d8">
-        <rect x="58" y="92" width="6" height="58" />
-        <rect x="68" y="92" width="3" height="58" />
-        <rect x="75" y="92" width="8" height="58" />
-        <rect x="87" y="92" width="3" height="58" />
-        <rect x="94" y="92" width="5" height="58" />
-        <rect x="103" y="92" width="10" height="58" />
-        <rect x="117" y="92" width="3" height="58" />
-        <rect x="124" y="92" width="7" height="58" />
-        <rect x="135" y="92" width="4" height="58" />
-        <rect x="143" y="92" width="9" height="58" />
-      </g>
-      <rect x="46" y="116" width="120" height="3" fill="#f43f5e" opacity="0.9" />
-      <rect x="70" y="300" width="72" height="22" rx="11" fill="#059669" />
-      <circle cx="84" cy="311" r="4" fill="#a7f3d0" />
-    </g>
-
-    <g transform="translate(300 118)">
-      <rect x="18" y="78" width="168" height="110" rx="4" fill="#14532d" />
-      <path d="M8 84 L102 28 L196 84" fill="none" stroke="#f4f4f5" strokeWidth="10" />
-      <path d="M14 84 L102 36 L190 84 V96 H14 Z" fill="#166534" />
-      <path d="M14 84 H190" stroke="#ecfdf5" strokeWidth="6" />
-      <path d="M14 96 H190" stroke="#d1fae5" strokeWidth="6" />
-      <rect x="62" y="8" width="80" height="28" rx="4" fill="#facc15" />
-      <rect x="78" y="118" width="48" height="70" rx="2" fill="#052e16" />
-      <rect x="28" y="108" width="40" height="36" rx="2" fill="#0c4a6e" />
-      <rect x="132" y="108" width="40" height="36" rx="2" fill="#0c4a6e" />
-      <rect x="34" y="128" width="28" height="6" fill="#38bdf8" opacity="0.5" />
-      <rect x="138" y="128" width="28" height="6" fill="#38bdf8" opacity="0.5" />
-      <rect x="24" y="168" width="22" height="36" rx="3" fill="#ef4444" />
-      <rect x="50" y="176" width="16" height="28" rx="3" fill="#eab308" />
-      <rect x="112" y="164" width="28" height="24" rx="2" fill="#a16207" />
-      <rect x="144" y="156" width="32" height="32" rx="2" fill="#ca8a04" />
-      <rect x="148" y="188" width="36" height="22" rx="3" fill="#16a34a" />
-    </g>
-  </svg>
-);
-
 export type FeatureArtKind = 'scan' | 'expiry' | 'stock' | 'offline' | 'team' | 'grow';
 
 /** Small illustration sitting on the right of a feature card. */
