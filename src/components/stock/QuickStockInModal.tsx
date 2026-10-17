@@ -235,18 +235,18 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
         {/* Product Identity Header */}
         <div className="p-3.5 bg-zinc-950 rounded-2xl border border-zinc-800 flex items-center justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
+            <h3 className="text-lg font-semibold text-zinc-50 leading-snug">
+              {product.name}
+            </h3>
+            <div className="flex items-center gap-2 mt-1.5">
               <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                 {categoryName}
               </span>
-              <span className="text-xs text-zinc-400 font-mono flex items-center gap-1">
-                <Barcode className="w-3.5 h-3.5 text-zinc-500" />
-                {scannedBarcode ?? product.barcode}
+              <span className="text-xs text-zinc-400 font-mono flex items-center gap-1 min-w-0">
+                <Barcode className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                <span className="truncate">{scannedBarcode ?? product.barcode}</span>
               </span>
             </div>
-            <h3 className="text-sm font-bold text-zinc-100 truncate mt-1">
-              {product.name}
-            </h3>
           </div>
 
           {/* Current Stock Pill */}
