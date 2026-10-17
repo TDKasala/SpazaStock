@@ -1,9 +1,22 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Barcode, PackagePlus } from 'lucide-react';
 import type { Product, ProductCategory, ProductRegistrationInput } from '../../types';
 import { useLanguage } from '../../context/LanguageContext';
 import { Input } from '../ui/Input';
 import { MAX_BRAND_LENGTH, MAX_SIZE_LENGTH } from '../../services/productService';
+
+/** Pack sizes stocked in most spaza shops. The saved value is the label itself. */
+export const COMMON_PRODUCT_SIZES = {
+  volume: ['200ml', '250ml', '300ml', '330ml', '340ml', '350ml', '375ml', '440ml', '500ml', '750ml', '1L', '1.25L', '1.5L', '2L', '5L', '20L'],
+  weight: ['50g', '100g', '125g', '150g', '200g', '250g', '410g', '500g', '750g', '1kg', '2kg', '2.5kg', '5kg', '10kg', '12.5kg'],
+} as const;
+
+const COMMON_SIZE_OPTIONS = [...COMMON_PRODUCT_SIZES.volume, ...COMMON_PRODUCT_SIZES.weight];
+
+function matchingSize(size: string): string {
+  const folded = size.trim().toLowerCase();
+  return COMMON_SIZE_OPTIONS.find((option) => option.toLowerCase() === folded) ?? '';
+}
 
 export const PRODUCT_CATEGORIES: ProductCategory[] = [
   'groceries',
@@ -91,6 +104,90 @@ export function parseProductForm(
   };
 }
 
+const CUSTOM_SIZE = '__custom';
+
+const fieldClass = (error?: string) =>
+  `w-full bg-zinc-900 border rounded-xl px-3.5 py-3 text-sm text-zinc-100 focus:outline-none min-h-[46px] ${
+    error
+      ? 'border-rose-500/80 focus:border-rose-500 focus:ring-1 focus:ring-rose-500'
+      : 'border-zinc-800 hover:border-zinc-700 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500'
+  }`;
+
+const SizeField: React.FC<{
+  value: string;
+  error?: string;
+  onChange: (size: string) => void;
+  labels: { field: string; placeholder: string; volume: string; weight: string; custom: string };
+}> = ({ value, error, onChange, labels }) => {
+  const preset = matchingSize(value);
+  const [custom, setCustom] = useState(() => value.trim() !== '' && !matchingSize(value));
+  const customRef = React.useRef<HTMLInputElement>(null);
+  const focusCustom = React.useRef(false);
+  const showCustom = custom || (value.trim() !== '' && !preset);
+
+  React.useEffect(() => {
+    if (matchingSize(value)) setCustom(false);
+  }, [value]);
+
+  React.useEffect(() => {
+    if (!focusCustom.current || !showCustom) return;
+    focusCustom.current = false;
+    customRef.current?.focus();
+  }, [showCustom]);
+
+  return (
+    <div className="w-full flex flex-col gap-1.5 text-left">
+      <label htmlFor="product-size" className="text-xs font-medium text-zinc-300">
+        {labels.field}
+      </label>
+      <select
+        id="product-size"
+        value={showCustom ? CUSTOM_SIZE : preset}
+        onChange={(e) => {
+          const next = e.target.value;
+          if (next === CUSTOM_SIZE) {
+            focusCustom.current = true;
+            setCustom(true);
+            if (preset) onChange('');
+            return;
+          }
+          setCustom(false);
+          onChange(next);
+        }}
+        className={fieldClass(error)}
+      >
+        <option value="">{labels.placeholder}</option>
+        <optgroup label={labels.volume}>
+          {COMMON_PRODUCT_SIZES.volume.map((size) => (
+            <option key={size} value={size}>
+              {size}
+            </option>
+          ))}
+        </optgroup>
+        <optgroup label={labels.weight}>
+          {COMMON_PRODUCT_SIZES.weight.map((size) => (
+            <option key={size} value={size}>
+              {size}
+            </option>
+          ))}
+        </optgroup>
+        <option value={CUSTOM_SIZE}>{labels.custom}</option>
+      </select>
+      {showCustom && (
+        <Input
+          ref={customRef}
+          aria-label={labels.custom}
+          placeholder={labels.placeholder}
+          value={preset ? '' : value}
+          onChange={(e) => onChange(e.target.value)}
+          maxLength={MAX_SIZE_LENGTH}
+        />
+      )}
+      {error && <span className="text-xs text-rose-400">{error}</span>}
+    </div>
+  );
+};
+
 export interface ProductFormFieldsProps {
   values: ProductFormValues;
   errors: ProductFormErrors;
@@ -134,13 +231,17 @@ export const ProductFormFields: React.FC<ProductFormFieldsProps> = ({ values, er
           error={errors.brand}
           maxLength={MAX_BRAND_LENGTH}
         />
-        <Input
-          label={t('product.sizeOptional')}
-          placeholder={t('product.sizePlaceholder')}
+        <SizeField
           value={values.size}
-          onChange={(e) => set('size', e.target.value)}
           error={errors.size}
-          maxLength={MAX_SIZE_LENGTH}
+          onChange={(size) => set('size', size)}
+          labels={{
+            field: t('product.sizeOptional'),
+            placeholder: t('product.sizePlaceholder'),
+            volume: t('product.sizeVolume'),
+            weight: t('product.sizeWeight'),
+            custom: t('product.sizeCustom'),
+          }}
         />
       </div>
 
