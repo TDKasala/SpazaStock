@@ -25,25 +25,6 @@ export const StockProductCard: React.FC<StockProductCardProps> = ({ summary, onS
 
   return (
     <div className="p-3.5 bg-zinc-950 hover:bg-zinc-900/90 rounded-2xl border border-zinc-800/80 hover:border-zinc-700 transition-all shadow-sm flex flex-col gap-3">
-      <div className="flex items-baseline gap-2 flex-wrap">
-        <span className="text-[9px] text-zinc-500 uppercase tracking-wide font-medium leading-none">
-          {t('stock.available')}
-        </span>
-        <span
-          className={`text-xl font-extrabold leading-none tabular-nums ${
-            totalQuantity > 0 ? 'text-emerald-400' : 'text-zinc-500'
-          }`}
-        >
-          {totalQuantity}
-        </span>
-        <span className="text-[10px] text-zinc-500 leading-none">{t('stockIn.units')}</span>
-        {expiredQuantity > 0 && (
-          <span className="text-[10px] font-semibold text-rose-300">
-            {t('expiry.expiredUnits', { count: expiredQuantity })}
-          </span>
-        )}
-      </div>
-
       <div
         role="button"
         tabIndex={0}
@@ -94,7 +75,27 @@ export const StockProductCard: React.FC<StockProductCardProps> = ({ summary, onS
           </div>
         </div>
 
-        <ChevronRight className="w-4 h-4 text-zinc-600 mt-1 shrink-0" aria-hidden />
+        <div className="shrink-0 flex items-start gap-1 pt-0.5">
+          <div className="text-right">
+            <span className="text-[9px] text-zinc-500 block uppercase tracking-wide font-medium leading-none">
+              {t('stock.available')}
+            </span>
+            <span
+              className={`block text-xl font-extrabold leading-tight tabular-nums ${
+                totalQuantity > 0 ? 'text-emerald-400' : 'text-zinc-500'
+              }`}
+            >
+              {totalQuantity}
+            </span>
+            <span className="text-[10px] text-zinc-500 block leading-none">{t('stockIn.units')}</span>
+            {expiredQuantity > 0 && (
+              <span className="text-[10px] font-semibold text-rose-300 block mt-1 max-w-[4.5rem]">
+                {t('expiry.expiredUnits', { count: expiredQuantity })}
+              </span>
+            )}
+          </div>
+          <ChevronRight className="w-4 h-4 text-zinc-600 mt-3 shrink-0" aria-hidden />
+        </div>
       </div>
 
       <div className="flex items-center justify-end">
