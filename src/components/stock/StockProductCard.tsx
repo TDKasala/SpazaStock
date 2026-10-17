@@ -24,7 +24,7 @@ export const StockProductCard: React.FC<StockProductCardProps> = ({ summary, onS
       : 'text-zinc-400';
 
   return (
-    <div className="p-3.5 bg-zinc-950 hover:bg-zinc-900/90 rounded-2xl border border-zinc-800/80 hover:border-zinc-700 transition-all shadow-sm flex flex-col gap-3">
+    <div className="p-3.5 bg-zinc-950 hover:bg-zinc-900/90 rounded-2xl border border-zinc-800/80 hover:border-zinc-700 transition-all shadow-sm flex items-start gap-3">
       <div
         role="button"
         tabIndex={0}
@@ -35,7 +35,7 @@ export const StockProductCard: React.FC<StockProductCardProps> = ({ summary, onS
             onSelect();
           }
         }}
-        className="flex items-start gap-3 cursor-pointer select-none min-w-0"
+        className="flex items-start gap-3 cursor-pointer select-none min-w-0 flex-1"
       >
         <ProductThumbnail path={product.imagePath} size="md" alt={product.name} className="mt-0.5" />
 
@@ -74,8 +74,22 @@ export const StockProductCard: React.FC<StockProductCardProps> = ({ summary, onS
             )}
           </div>
         </div>
+      </div>
 
-        <div className="shrink-0 flex items-start gap-1 pt-0.5">
+      <div className="shrink-0 flex flex-col items-end gap-2 pt-0.5">
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={onSelect}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onSelect();
+            }
+          }}
+          aria-label={product.name}
+          className="flex items-start gap-1 cursor-pointer select-none"
+        >
           <div className="text-right">
             <span className="text-[9px] text-zinc-500 block uppercase tracking-wide font-medium leading-none">
               {t('stock.available')}
@@ -96,15 +110,9 @@ export const StockProductCard: React.FC<StockProductCardProps> = ({ summary, onS
           </div>
           <ChevronRight className="w-4 h-4 text-zinc-600 mt-3 shrink-0" aria-hidden />
         </div>
-      </div>
-
-      <div className="flex items-center justify-end">
         <Button
           type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onStockIn();
-          }}
+          onClick={onStockIn}
           variant="outline"
           size="sm"
           className="h-8 px-3 text-xs text-emerald-400 border-emerald-700/70 hover:bg-emerald-950/50 hover:text-emerald-300 hover:border-emerald-600"
