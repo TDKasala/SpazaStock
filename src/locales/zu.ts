@@ -333,6 +333,8 @@ export const zu: Translations = {
     lowStockNone: 'Akukho mikhiqizo engaphansi komkhawulo.',
     restock: 'Gcwalisa kuze kube namayunithi athengiswayo angu-{{count}}.',
     restockAction: 'Faka impahla',
+    sendOrder: 'Thumela ku-WhatsApp',
+    orderHeading: 'Sicela unikeze:',
     onHand: '{{count}} ekhona',
     minimum: 'Umkhawulo {{count}}',
     expiredAside: '{{count}} kuphelelwe yisikhathi futhi akuthengiseki',

@@ -84,3 +84,30 @@ export function recoveredProductIds(
   }
   return ids;
 }
+
+export interface OrderListItem {
+  name: string;
+  shortfall: number;
+  size?: string | null;
+}
+
+/**
+ * WhatsApp text for products that are short of their minimum. Items exactly on the minimum are
+ * left out. The largest gap comes first. An empty string means there is nothing to order.
+ */
+export function orderListText(
+  items: OrderListItem[],
+  options: { shopName?: string | null; heading: string }
+): string {
+  const lines = [...items]
+    .filter((item) => item.shortfall > 0)
+    .sort((a, b) => b.shortfall - a.shortfall || a.name.localeCompare(b.name))
+    .map((item) => {
+      const size = item.size?.trim();
+      const label = size ? `${item.name} ${size}` : item.name;
+      return `${label} — ${item.shortfall}`;
+    });
+  if (lines.length === 0) return '';
+  const shopName = options.shopName?.trim();
+  return [shopName, options.heading, ...lines].filter(Boolean).join('\n');
+}

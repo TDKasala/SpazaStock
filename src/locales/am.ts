@@ -330,6 +330,8 @@ export const am: Translations = {
     lowStockNone: 'ከመጠኑ በታች የሆነ ዕቃ የለም።',
     restock: 'የሚሸጥ ብዛት {{count}} እስኪሆን ድረስ ሙላ።',
     restockAction: 'ዕቃ ጨምር',
+    sendOrder: 'በWhatsApp ላክ',
+    orderHeading: 'እባክዎ ያቅርቡ፦',
     onHand: '{{count}} በእጅ',
     minimum: 'መጠን {{count}}',
     expiredAside: '{{count}} ጊዜያቸው አልፏል እና አይሸጡም',

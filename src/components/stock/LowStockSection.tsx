@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight, PackageMinus } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
-import type { LowStockItem } from '../../lib/lowStock';
+import { useShop } from '../../context/ShopContext';
+import { orderListText, type LowStockItem } from '../../lib/lowStock';
+import { whatsappShareUrl } from '../../lib/invite';
 import type { Product } from '../../types';
 import { Button } from '../ui/Button';
 
@@ -23,6 +25,7 @@ export const LowStockSection: React.FC<LowStockSectionProps> = ({
   onDismiss,
 }) => {
   const { t } = useLanguage();
+  const { shop } = useShop();
   const [page, setPage] = useState(0);
   const byId = new Map(products.map((product) => [product.id, product]));
   const pageCount = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
@@ -30,17 +33,37 @@ export const LowStockSection: React.FC<LowStockSectionProps> = ({
   const start = currentPage * PAGE_SIZE;
   const end = Math.min(start + PAGE_SIZE, items.length);
   const visible = items.slice(start, end);
+  const orderText = orderListText(
+    items.map((item) => ({
+      name: item.name,
+      shortfall: item.shortfall,
+      size: byId.get(item.productId)?.size,
+    })),
+    { shopName: shop?.name, heading: t('intelligence.orderHeading') }
+  );
 
   if (items.length === 0) return null;
 
   return (
     <section className="space-y-2">
-      <h3 className="text-xs font-bold uppercase tracking-wider px-1 flex items-center gap-1.5 text-amber-300">
-        <PackageMinus className="w-3.5 h-3.5" />
-        <span>
-          {t('intelligence.lowStockHeading')} ({items.length})
-        </span>
-      </h3>
+      <div className="flex items-center justify-between gap-2 px-1">
+        <h3 className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 text-amber-300 min-w-0">
+          <PackageMinus className="w-3.5 h-3.5 shrink-0" />
+          <span className="truncate">
+            {t('intelligence.lowStockHeading')} ({items.length})
+          </span>
+        </h3>
+        {orderText && (
+          <a
+            href={whatsappShareUrl(orderText)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shrink-0 text-[11px] font-semibold text-emerald-400 hover:text-emerald-300"
+          >
+            {t('intelligence.sendOrder')}
+          </a>
+        )}
+      </div>
       <div className="space-y-2">
         {visible.map((item) => {
           const product = byId.get(item.productId);

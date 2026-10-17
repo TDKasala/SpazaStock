@@ -328,6 +328,8 @@ export const en = {
     lowStockNone: 'No products are at or below their minimum.',
     restock: 'Restock until there are {{count}} sellable units.',
     restockAction: 'Stock in',
+    sendOrder: 'Send on WhatsApp',
+    orderHeading: 'Please supply:',
     onHand: '{{count}} on hand',
     minimum: 'Minimum {{count}}',
     expiredAside: '{{count}} expired and not sellable',

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { dismissalIsActive, lowStockItems, recoveredProductIds } from '../lib/lowStock';
+import { dismissalIsActive, lowStockItems, orderListText, recoveredProductIds } from '../lib/lowStock';
 import { getAllProductsStockSummary, stockIn } from '../services/stockService';
 import { createProduct, setProductMinStock } from '../services/productService';
 import { resetLocalDatabase } from '../lib/db';
@@ -44,6 +44,26 @@ describe('lowStockItems', () => {
         { productId: 'bread', clearedAt: null },
       ])
     ).toEqual([]);
+  });
+});
+
+describe('orderListText', () => {
+  it('lists the largest gap first, appends size, and leaves a full minimum off the message', () => {
+    const text = orderListText(
+      [
+        { name: 'Bread', shortfall: 1, size: null },
+        { name: 'Sunlight', shortfall: 6, size: '750ml' },
+        { name: 'Milk', shortfall: 0, size: '1L' },
+      ],
+      { shopName: 'Corner Spaza', heading: 'Please supply:' }
+    );
+    expect(text).toBe('Corner Spaza\nPlease supply:\nSunlight 750ml — 6\nBread — 1');
+  });
+
+  it('is empty when nothing is short of its minimum', () => {
+    expect(orderListText([{ name: 'Milk', shortfall: 0 }], { shopName: 'Corner Spaza', heading: 'Please supply:' })).toBe(
+      ''
+    );
   });
 });
 

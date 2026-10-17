@@ -330,6 +330,8 @@ export const so: Translations = {
     lowStockNone: 'Ma jiro alaab gaartay xadka ugu yar.',
     restock: 'Buuxi ilaa ay jiraan {{count}} xabbo oo la iibin karo.',
     restockAction: 'Ku dar kayd',
+    sendOrder: 'Ku dir WhatsApp',
+    orderHeading: 'Fadlan keena:',
     onHand: '{{count}} oo yaal',
     minimum: 'Xadka {{count}}',
     expiredAside: '{{count}} waa dhacay oo lama iibin karo',

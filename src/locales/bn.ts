@@ -331,6 +331,8 @@ export const bn: Translations = {
     lowStockNone: 'কোনো পণ্য সর্বনিম্নের নিচে নেই।',
     restock: 'বিক্রির যোগ্য সংখ্যা {{count}} না হওয়া পর্যন্ত ভরুন।',
     restockAction: 'স্টক যোগ',
+    sendOrder: 'হোয়াটসঅ্যাপে পাঠান',
+    orderHeading: 'সরবরাহ করুন:',
     onHand: '{{count}} হাতে আছে',
     minimum: 'সর্বনিম্ন {{count}}',
     expiredAside: '{{count}} মেয়াদোত্তীর্ণ এবং বিক্রি করা যাবে না',
