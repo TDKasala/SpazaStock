@@ -33,10 +33,18 @@ import {
 const PRODUCT_COLUMNS =
   'id, shop_id, barcode, name, category, buying_price, selling_price, created_at, updated_at, archived_at, brand, size, image_path';
 
+/** The shop app calls this from another site, so the browser preflight must succeed or the scan never runs. */
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Max-Age': '86400',
+};
+
 function json(body: LookupResponse, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+    headers: { ...CORS_HEADERS, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
   });
 }
 
@@ -264,6 +272,7 @@ async function lookupOff(
 }
 
 Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS_HEADERS });
   if (req.method !== 'POST') return json({ status: 'unavailable' }, 405);
 
   const authHeader = req.headers.get('Authorization');
