@@ -1,4 +1,4 @@
-/* Signed-out product page. Wide from 800px; one column below that. */
+/* Signed-out product page. One centered column. */
 
 .landing-page {
   --spaza-bg: #07080a;
@@ -50,10 +50,12 @@
 .landing-header-inner {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
+  flex-wrap: wrap;
   gap: 20px;
   min-height: 64px;
   padding-block: 12px;
+  text-align: center;
 }
 
 .landing-brand {
@@ -95,6 +97,8 @@
 .landing-header-actions {
   display: flex;
   align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
   gap: 8px;
   flex: 0 0 auto;
 }
@@ -137,13 +141,19 @@
 
 .landing-hero {
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(280px, 0.95fr);
-  align-items: center;
-  gap: 48px;
+  grid-template-columns: minmax(0, 40rem);
+  justify-content: center;
+  justify-items: center;
+  gap: 32px;
   padding-block: 72px 56px;
+  text-align: center;
 }
 
 .landing-hero-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
   min-width: 0;
 }
 
@@ -160,7 +170,7 @@
 
 .landing-title {
   max-width: 12em;
-  margin: 0;
+  margin: 0 auto;
   font-size: clamp(40px, 4.6vw, 64px);
   font-weight: 650;
   line-height: 1.02;
@@ -174,7 +184,7 @@
 
 .landing-description {
   max-width: 42ch;
-  margin: 20px 0 28px;
+  margin: 20px auto 28px;
   color: var(--spaza-muted);
   font-size: 16px;
   line-height: 1.65;
@@ -183,6 +193,7 @@
 .landing-actions {
   display: flex;
   align-items: center;
+  justify-content: center;
 }
 
 .landing-button {
@@ -219,6 +230,9 @@
 .landing-hero-panel {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  max-width: 28rem;
   gap: 8px;
   padding: 10px;
   border: 1px solid var(--spaza-border);
@@ -230,6 +244,7 @@
 .landing-hero-row {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 16px;
   min-height: 84px;
   padding: 12px 16px;
@@ -254,7 +269,8 @@
 
 .landing-auth {
   max-width: 32rem;
-  margin: 0 0 40px;
+  margin: 0 auto 40px;
+  text-align: left;
   padding: 20px;
   border: 1px solid var(--spaza-border);
   border-radius: 16px;
@@ -277,6 +293,8 @@
 .landing-feature-card {
   display: flex;
   flex-direction: column;
+  align-items: center;
+  text-align: center;
   min-width: 0;
   min-height: 100%;
   padding: 20px;
@@ -319,9 +337,11 @@
 
 .landing-referral {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   gap: 16px;
+  text-align: center;
   padding: 20px 0;
   border-top: 1px solid var(--spaza-border);
 }
@@ -357,7 +377,9 @@
 .landing-footer {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
+  text-align: center;
   padding: 18px 0 28px;
   border-top: 1px solid var(--spaza-border);
   color: #6e707a;
@@ -392,15 +414,16 @@
   }
 
   .landing-header-inner {
-    align-items: flex-start;
+    align-items: center;
+    justify-content: center;
     gap: 8px;
     min-height: 56px;
   }
 
   .landing-header-actions {
     flex-wrap: wrap;
-    justify-content: flex-end;
-    max-width: 58%;
+    justify-content: center;
+    max-width: none;
   }
 
   .landing-brand-tagline {
@@ -409,12 +432,11 @@
 
   .landing-header-signin {
     font-size: 12px;
-    text-align: right;
+    text-align: center;
     white-space: normal;
   }
 
   .landing-hero {
-    grid-template-columns: 1fr;
     gap: 28px;
     padding-block: 36px 28px;
   }
@@ -451,7 +473,6 @@
   }
 
   .landing-referral {
-    flex-direction: column;
     align-items: stretch;
   }
 
