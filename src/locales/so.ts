@@ -69,7 +69,7 @@ export const so: Translations = {
     signOutAs: 'Waxaad ku gashay {{email}}. Ka bax',
     signOutPendingConfirm:
       '{{count}} isbeddel weli lama sinnayn, wayna lumi doonaan haddii aad hadda ka baxdo. Ma ka baxaysaa si kastaba?',
-    idleSignedOut: 'Waa lagaa saaray 3 daqiiqo oo aan wax shaqo ahayn kadib.',
+    idleSignedOut: 'Waa lagaa saaray 30 daqiiqo oo aan wax shaqo ahayn kadib.',
     errors: {
       invalidEmail: 'Fadlan geli ciwaan iimayl oo sax ah.',
       passwordRequired: 'Fadlan geli furaha sirta ah.',

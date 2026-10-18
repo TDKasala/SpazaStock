@@ -69,7 +69,7 @@ export const am: Translations = {
     signOutAs: 'በ{{email}} ገብተዋል። ውጣ',
     signOutPendingConfirm:
       '{{count}} ለውጥ(ዎች) ገና አልተመሳሰሉም፤ አሁን ከወጡ ይጠፋሉ። ቢሆንም መውጣት ይፈልጋሉ?',
-    idleSignedOut: 'ከ3 ደቂቃ እንቅስቃሴ አልባነት በኋላ ወጥተዋል።',
+    idleSignedOut: 'ከ30 ደቂቃ እንቅስቃሴ አልባነት በኋላ ወጥተዋል።',
     errors: {
       invalidEmail: 'እባክዎ ትክክለኛ የኢሜይል አድራሻ ያስገቡ።',
       passwordRequired: 'እባክዎ የይለፍ ቃልዎን ያስገቡ።',

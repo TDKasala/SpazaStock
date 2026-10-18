@@ -1,5 +1,5 @@
 /** A signed-in person is signed out after this long with no taps, typing, scrolling, or saved changes. */
-export const IDLE_LIMIT_MS = 3 * 60 * 1000;
+export const IDLE_LIMIT_MS = 30 * 60 * 1000;
 
 /** How often the clock is checked. A hidden tab can delay timers, so becoming visible checks too. */
 export const IDLE_CHECK_MS = 10_000;
@@ -10,7 +10,7 @@ export function isIdle(lastActivity: number, now: number, limitMs = IDLE_LIMIT_M
   return now - lastActivity >= limitMs;
 }
 
-/** Remembers the last activity so a sale or tap starts a fresh 3 minutes. */
+/** Remembers the last activity so a sale or tap starts a fresh 30 minutes. */
 export function createIdleClock(startedAt: number, limitMs = IDLE_LIMIT_MS) {
   let lastActivity = startedAt;
   return {

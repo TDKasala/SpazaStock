@@ -67,7 +67,7 @@ export const en = {
     signOutAs: 'Signed in as {{email}}. Sign out',
     signOutPendingConfirm:
       '{{count}} change(s) have not synced yet and will be lost if you sign out now. Sign out anyway?',
-    idleSignedOut: 'You were signed out after 3 minutes with no activity.',
+    idleSignedOut: 'You were signed out after 30 minutes with no activity.',
     errors: {
       invalidEmail: 'Please enter a valid email address.',
       passwordRequired: 'Please enter your password.',
