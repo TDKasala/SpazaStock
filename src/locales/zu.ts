@@ -416,6 +416,7 @@ export const zu: Translations = {
       'Le mininingwane ivela ku-Open Food Facts. Ingase ingaphelele noma ingalungile. Yihlole ngaphambi kokulondoloza.',
     lookupSourceManual:
       'Le bhakhodi ayikho ohlwini. Faka umkhiqizo ngokwakho. Ukulondoloza kusiza esitolo esilandelayo.',
+    catalogSaved: 'Kulondoloziwe esitolo sakho. Uhlu olwabiwe luvuselelwa uma le foni ivumelanisa.',
     lookupSourceFailed:
       'Uhlu alufinyelelekile manje. Faka umkhiqizo ngokwakho. Akukho kulahleka uma ulondoloza manje.',
     lookupMissing: 'Kusashoda: {{fields}}',

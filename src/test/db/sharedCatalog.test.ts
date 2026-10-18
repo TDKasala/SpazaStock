@@ -217,6 +217,35 @@ describe('shared catalog', () => {
     expect(totals.map((row) => Number(row.quantity))).toEqual([4, 1]);
   });
 
+  it('gives a second shop the saved name for a non-GTIN barcode and leaves its prices empty', async () => {
+    const catalog = await submit(owner, shop, 'INTERNAL-1', {
+      p_name: 'House Bread',
+      p_category: 'bakery',
+      p_brand: null,
+      p_package_size: null,
+    });
+    const buyer = await rpc<{ name: string; selling_price: number | null; buying_price: number | null; catalog_product_id: string }>(
+      pg,
+      otherOwner,
+      'upsert_product',
+      {
+        p_id: randomUUID(),
+        p_shop_id: otherShop,
+        p_barcode: 'INTERNAL-1',
+        p_name: 'House Bread',
+        p_category: 'bakery',
+        p_buying_price: null,
+        p_selling_price: null,
+        p_created_at: new Date().toISOString(),
+        p_catalog_product_id: catalog.product.id,
+      }
+    );
+    expect(buyer.name).toBe('House Bread');
+    expect(buyer.catalog_product_id).toBe(catalog.product.id);
+    expect(buyer.selling_price).toBeNull();
+    expect(buyer.buying_price).toBeNull();
+  });
+
   it('links a pack barcode without creating a second catalog product', async () => {
     const catalog = await submit(owner, shop, '6001000000004', {
       p_name: 'Rice',

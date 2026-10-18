@@ -291,35 +291,40 @@ Deno.serve(async (req) => {
     return json({ status: 'forbidden' }, 403);
   }
 
+  const trimmed = rawBarcode.replace(/\s/g, '');
   const canonical = canonicalizeBarcode(rawBarcode);
-  if (!canonical) return json({ status: 'invalid_barcode', barcode: rawBarcode.replace(/\s/g, '') });
+  const repliedBarcode = canonical ?? trimmed;
 
   const admin = serviceClient();
   if (!(await checkRateLimit(admin, shopId))) {
-    return json({ status: 'rate_limited', barcode: canonical }, 429);
+    return json({ status: 'rate_limited', barcode: repliedBarcode }, 429);
   }
 
-  const shopProduct = await findShopProduct(admin, shopId, shopBarcodeCandidates(rawBarcode));
+  const candidates = shopBarcodeCandidates(rawBarcode);
+  const shopProduct = await findShopProduct(admin, shopId, candidates);
   if (shopProduct) {
     return json({
       status: 'found',
-      barcode: canonical,
+      barcode: repliedBarcode,
       matchSource: 'shop',
       suggestion: suggestionFromShopProduct(shopProduct),
       shopProduct,
     });
   }
 
-  const catalogHit = await findCatalogProduct(admin, shopBarcodeCandidates(rawBarcode));
+  const catalogHit = await findCatalogProduct(admin, candidates);
   if (catalogHit) {
     return json({
       status: 'found',
-      barcode: canonical,
+      barcode: repliedBarcode,
       matchSource: 'catalog',
       suggestion: catalogHit.suggestion,
       catalog: catalogHit.catalog,
     });
   }
+
+  // Open Food Facts only accepts a GTIN. A shop code still matches the catalog above.
+  if (!canonical) return json({ status: 'invalid_barcode', barcode: trimmed });
 
   const cached = await readCache(admin, canonical);
   if (cached?.status === 'not_found') {

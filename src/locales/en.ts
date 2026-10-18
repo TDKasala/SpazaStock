@@ -407,6 +407,7 @@ export const en = {
       'These details are from Open Food Facts. They can be incomplete or wrong. Check them before you save.',
     lookupSourceManual:
       'This barcode is not in the catalog. Enter the product yourself. Saving it helps the next shop that scans it.',
+    catalogSaved: 'Saved for your shop. The shared catalog updates when this phone syncs.',
     lookupSourceFailed:
       'The catalog could not be reached. Enter the product yourself. Nothing is lost if you save now.',
     lookupMissing: 'Still missing: {{fields}}',

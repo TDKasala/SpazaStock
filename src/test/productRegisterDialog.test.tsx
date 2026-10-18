@@ -119,4 +119,40 @@ describe('ProductRegisterDialog lookup sources', () => {
     expect(labelled('Product Name')?.value).toBe('');
     expect(labelled('Selling Price')?.value).toBe('');
   });
+
+  it('says the shared catalog updates after the product is saved', async () => {
+    const onProductRegistered = vi.fn();
+    await render(
+      <ProductRegisterDialog
+        isOpen
+        initialBarcode="INTERNAL-1"
+        origin="manual"
+        onClose={() => undefined}
+        onProductRegistered={onProductRegistered}
+      />
+    );
+    const name = labelled('Product Name');
+    expect(name).toBeTruthy();
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+      setter?.call(name, 'House Bread');
+      name?.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    const saveButton = () =>
+      [...container.querySelectorAll('button')].find((button) => button.textContent?.includes('Register Product'));
+    await act(async () => {
+      saveButton()?.click();
+      for (let i = 0; i < 40 && !container.querySelector('[data-testid="catalog-saved"]'); i++) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+    });
+    expect(container.querySelector('[data-testid="catalog-saved"]')?.textContent).toContain(
+      'The shared catalog updates when this phone syncs'
+    );
+    expect(onProductRegistered).not.toHaveBeenCalled();
+    await act(async () => {
+      saveButton()?.click();
+    });
+    expect(onProductRegistered).toHaveBeenCalledOnce();
+  });
 });

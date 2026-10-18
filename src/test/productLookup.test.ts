@@ -51,6 +51,11 @@ describe('product-lookup barcode canonicalize', () => {
     expect(candidates).toContain(UPCA);
     expect(candidates).toContain(`0${UPCA}`);
   });
+
+  it('keeps a non-GTIN code as a catalog candidate and out of Open Food Facts', () => {
+    expect(shopBarcodeCandidates('INTERNAL-1')).toEqual(['INTERNAL-1']);
+    expect(canonicalizeBarcode('INTERNAL-1')).toBeNull();
+  });
 });
 
 describe('product-lookup category map', () => {

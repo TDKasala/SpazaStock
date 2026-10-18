@@ -173,7 +173,7 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
         }
         product = saved.product;
       }
-      onProductRegistered(product);
+      setRegistered(product);
     } catch (err) {
       setServerError(err instanceof Error ? err.message : t('errors.generic'));
     } finally {
@@ -234,6 +234,11 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
         <p data-testid="lookup-source" className="text-[11px] text-emerald-400/90 leading-relaxed px-0.5">
           {t(sourceKey)}
         </p>
+        {registered && (
+          <p data-testid="catalog-saved" className="text-[11px] text-emerald-300 leading-relaxed px-0.5">
+            {t('product.catalogSaved')}
+          </p>
+        )}
         {missing.length > 0 && (
           <p className="text-[11px] text-amber-300/90 leading-relaxed px-0.5">
             {t('product.lookupMissing', { fields: missing.join(', ') })}
