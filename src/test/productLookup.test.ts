@@ -2,12 +2,18 @@ import { describe, it, expect } from 'vitest';
 import {
   CACHE_FOUND_TTL_MS,
   CACHE_NOT_FOUND_TTL_MS,
+  alternateBarcodesForProduct,
   canonicalizeBarcode,
   cacheExpiresAt,
+  classifyOffHttp,
   formValuesFromSuggestion,
+  isOffFoundStatus,
   mapOffCategory,
   mapOffProduct,
+  mergeCatalogText,
+  offProductUrl,
   rateWindowStart,
+  sameSellableUnit,
   shopBarcodeCandidates,
   suggestionFromShopProduct,
   type LookupSuggestion,
@@ -156,5 +162,72 @@ describe('product-lookup cache and form helpers', () => {
     expect(suggestion.name).toEqual({ value: 'Shop Coke', source: 'verified' });
     expect(suggestion.brand.source).toBe('verified');
     expect(suggestion.imageUrl.source).toBe('missing');
+  });
+});
+
+describe('Open Food Facts v3', () => {
+  it('treats v3 success and v2 status 1 as found, and failure as not found', () => {
+    expect(isOffFoundStatus('success')).toBe(true);
+    expect(isOffFoundStatus('success_with_warnings')).toBe(true);
+    expect(isOffFoundStatus(1)).toBe(true);
+    expect(isOffFoundStatus('failure')).toBe(false);
+    expect(isOffFoundStatus(0)).toBe(false);
+    expect(classifyOffHttp(404)).toBe('not_found');
+    expect(classifyOffHttp(429)).toBe('rate_limited');
+    expect(classifyOffHttp(503)).toBe('unavailable');
+    expect(classifyOffHttp(200)).toBe('ok');
+  });
+
+  it('maps a v3 product and leaves optional fields empty when they are absent', () => {
+    const suggestion = mapOffProduct(EAN13, {
+      status: 'success',
+      product: {
+        product_name: 'Maize meal',
+        product_quantity: '500',
+        product_quantity_unit: 'g',
+      },
+    });
+    expect(suggestion?.name).toEqual({ value: 'Maize meal', source: 'external' });
+    expect(suggestion?.brand.source).toBe('missing');
+    expect(suggestion?.size.source).toBe('missing');
+    expect(suggestion?.imageUrl.source).toBe('missing');
+    expect(suggestion?.packageQuantity).toBe(500);
+    expect(suggestion?.packageUnit).toBe('g');
+    expect(suggestion?.food).toBeUndefined();
+  });
+
+  it('returns null when a v3 hit has no name', () => {
+    expect(mapOffProduct(EAN13, { status: 'success', product: { brands: 'Only brand' } })).toBeNull();
+  });
+
+  it('links only another writing of the same GTIN, and not a different quantity', () => {
+    expect(alternateBarcodesForProduct(`0${UPCA}`, [UPCA, EAN13], { quantitiesMatch: true })).toEqual([UPCA]);
+    expect(alternateBarcodesForProduct(`0${UPCA}`, [UPCA], { quantitiesMatch: false })).toEqual([]);
+    expect(
+      sameSellableUnit(
+        { packageQuantity: 330, packageUnit: 'ml' },
+        { packageQuantity: 500, packageUnit: 'ml' }
+      )
+    ).toBe(false);
+    expect(
+      sameSellableUnit(
+        { packageQuantity: 330, packageUnit: 'ml' },
+        { packageQuantity: 330, packageUnit: 'ML' }
+      )
+    ).toBe(true);
+  });
+
+  it('does not replace a verified catalog field with external text', () => {
+    expect(mergeCatalogText('Sunlight', 'Sunlight Powder', 'verified', 'external')).toBe('Sunlight');
+    expect(mergeCatalogText(null, 'Sunlight', 'external', 'external')).toBe('Sunlight');
+    expect(mergeCatalogText('Plain', 'Coke', 'external', 'user_submitted')).toBe('Coke');
+  });
+
+  it('calls Open Food Facts v3.6 with a small field list', () => {
+    const url = offProductUrl(EAN13);
+    expect(url.startsWith(`https://world.openfoodfacts.org/api/v3.6/product/${EAN13}.json`)).toBe(true);
+    expect(url).toContain('product_type=all');
+    expect(url).toContain('product_name');
+    expect(url).not.toContain('knowledge_panels');
   });
 });

@@ -23,7 +23,7 @@ const PULL_OVERLAP_MS = 2 * 60 * 1000;
 const SALES_HISTORY_DAYS = 60;
 const PRODUCT_COLUMNS =
   'id, shop_id, barcode, name, category, buying_price, selling_price, created_at, updated_at, archived_at, brand, size, ' +
-  'image_path, min_stock_units';
+  'image_path, min_stock_units, catalog_product_id';
 const LOW_STOCK_DISMISSAL_COLUMNS =
   'id, shop_id, product_id, dismissed_at, dismissed_by, cleared_at, updated_at';
 const BATCH_COLUMNS =
@@ -103,6 +103,7 @@ export function mapProductRow(row: Row): Product {
     size: (row.size as string | null) ?? null,
     imagePath: (row.image_path as string | null) ?? null,
     minStockUnits: row.min_stock_units == null ? null : Number(row.min_stock_units),
+    catalogProductId: (row.catalog_product_id as string | null) ?? null,
   };
 }
 
@@ -270,6 +271,8 @@ async function remapProduct(shopId: string, oldId: string, canonical: Product): 
         item.payload.packaging.productId = canonical.id;
       } else if (item.type === 'barcode_link' && item.payload.link.productId === oldId) {
         item.payload.link.productId = canonical.id;
+      } else if (item.type === 'catalog_submit' && item.payload.productId === oldId) {
+        item.payload.productId = canonical.id;
       }
     });
 }
@@ -447,6 +450,80 @@ async function putPushedSale(sale: Sale): Promise<void> {
   await db.sales.put({ ...sale, voidedQuantity });
 }
 
+/**
+ * Saves the shared catalog identity for a shop product, then links a pack barcode when the scan
+ * was a case code. The shop product is already queued separately, so a catalog retry does not
+ * create it twice.
+ */
+async function saveCatalogIdentity(
+  client: SupabaseClient,
+  shopId: string,
+  product: Product,
+  details: {
+    barcode: string;
+    name: string;
+    category: string;
+    brand: string | null;
+    packageSize: string | null;
+    packageQuantity: number | null;
+    packageUnit: string | null;
+    imageUrl: string | null;
+    ingredients: string | null;
+  },
+  packLink: { barcode: string; unitsPerPackage: number } | null
+): Promise<SendOutcome & { catalogId?: string }> {
+  const { data, error } = await client.rpc('submit_catalog_product', {
+    p_shop_id: shopId,
+    p_barcode: details.barcode,
+    p_name: details.name,
+    p_category: details.category,
+    p_brand: details.brand,
+    p_package_size: details.packageSize,
+    p_package_quantity: details.packageQuantity,
+    p_package_unit: details.packageUnit,
+    p_image_url: details.imageUrl,
+    p_ingredients: details.ingredients,
+  });
+  if (error) return outcomeFromError(error);
+  const catalogId = String((data as { product?: { id?: string } } | null)?.product?.id ?? '');
+  if (!catalogId) return { kind: 'retry', error: 'Catalog save returned no product.' };
+
+  const linked = await client.rpc('upsert_product', {
+    p_id: product.id,
+    p_shop_id: shopId,
+    p_barcode: product.barcode,
+    p_name: product.name,
+    p_category: product.category,
+    p_buying_price: product.buyingPrice ?? null,
+    p_selling_price: product.sellingPrice ?? null,
+    p_created_at: product.createdAt,
+    ...(product.brand ? { p_brand: product.brand } : {}),
+    ...(product.size ? { p_size: product.size } : {}),
+    p_catalog_product_id: catalogId,
+  });
+  if (linked.error) return outcomeFromError(linked.error);
+
+  if (packLink && packLink.barcode !== product.barcode) {
+    const pack = await client.rpc('link_catalog_barcode', {
+      p_shop_id: shopId,
+      p_catalog_product_id: catalogId,
+      p_barcode: packLink.barcode,
+      p_kind: 'pack',
+      p_units_per_package: packLink.unitsPerPackage,
+    });
+    if (pack.error) return outcomeFromError(pack.error);
+  }
+
+  const canonical = mapProductRow(linked.data as Row);
+  return {
+    kind: 'ok',
+    catalogId,
+    apply: async () => {
+      await db.products.put({ ...canonical, catalogProductId: canonical.catalogProductId ?? catalogId });
+    },
+  };
+}
+
 async function sendItem(client: SupabaseClient, item: OutboxItem): Promise<SendOutcome> {
   switch (item.type) {
     case 'product_upsert': {
@@ -462,6 +539,7 @@ async function sendItem(client: SupabaseClient, item: OutboxItem): Promise<SendO
         p_created_at: p.createdAt,
         ...(p.brand ? { p_brand: p.brand } : {}),
         ...(p.size ? { p_size: p.size } : {}),
+        ...(p.catalogProductId ? { p_catalog_product_id: p.catalogProductId } : {}),
       });
       if (error) return outcomeFromError(error);
       const canonical = mapProductRow(data as Row);
@@ -679,13 +757,87 @@ async function sendItem(client: SupabaseClient, item: OutboxItem): Promise<SendO
         return { ...outcome, apply: () => replaceBarcodeLink(item.shopId, link.id, null) };
       }
       const server = mapBarcodeRow(data as Row);
+      const product = await db.products.get(server.productId);
+      let catalogId = product?.catalogProductId ?? null;
+      let catalogApply: (() => Promise<void>) | undefined;
+      // Catalog linking is best-effort. A retry here would hold back the delivery queued behind this link.
+      if (product && server.barcode !== product.barcode) {
+        if (!catalogId) {
+          const created = await saveCatalogIdentity(
+            client,
+            item.shopId,
+            product,
+            {
+              barcode: product.barcode,
+              name: product.name,
+              category: product.category,
+              brand: product.brand ?? null,
+              packageSize: product.size ?? null,
+              packageQuantity: null,
+              packageUnit: null,
+              imageUrl: null,
+              ingredients: null,
+            },
+            null
+          );
+          if (created.kind === 'ok') {
+            catalogId = created.catalogId ?? null;
+            catalogApply = created.apply;
+          }
+        }
+        if (catalogId) {
+          const packaging = server.packagingId ? await db.packagings.get(server.packagingId) : null;
+          const kind = server.packagingId ? 'pack' : 'alternate';
+          if (kind === 'alternate' || (packaging && packaging.unitsPerPackage >= 2)) {
+            await client.rpc('link_catalog_barcode', {
+              p_shop_id: item.shopId,
+              p_catalog_product_id: catalogId,
+              p_barcode: server.barcode,
+              p_kind: kind,
+              ...(kind === 'pack' ? { p_units_per_package: packaging!.unitsPerPackage } : {}),
+            });
+          }
+        }
+      }
       return {
         kind: 'ok',
         apply: async () => {
           if (server.id !== link.id) await replaceBarcodeLink(item.shopId, link.id, server);
           else await db.barcodes.put(server);
+          if (catalogApply) await catalogApply();
+          else if (catalogId) {
+            const current = await db.products.get(server.productId);
+            if (current && !current.catalogProductId) {
+              await db.products.put({ ...current, catalogProductId: catalogId });
+            }
+          }
         },
       };
+    }
+
+    case 'catalog_submit': {
+      const payload = item.payload;
+      const product = await db.products.get(payload.productId);
+      if (!product || product.shopId !== item.shopId) {
+        return { kind: 'fail', error: 'Product is not on this phone.', code: 'P0002' };
+      }
+      return saveCatalogIdentity(
+        client,
+        item.shopId,
+        product,
+        {
+          barcode: payload.barcode,
+          name: payload.name,
+          category: payload.category,
+          brand: payload.brand,
+          packageSize: payload.packageSize,
+          packageQuantity: payload.packageQuantity,
+          packageUnit: payload.packageUnit,
+          imageUrl: payload.imageUrl,
+          ingredients: payload.ingredients,
+        },
+        payload.packLink
+      );
     }
 
     case 'product_image':

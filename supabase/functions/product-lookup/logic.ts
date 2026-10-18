@@ -33,6 +33,11 @@ export interface LookupSuggestion {
   category: ProvenanceField<ProductCategory>;
   barcode: ProvenanceField;
   imageUrl: ProvenanceField;
+  /** Numeric amount from the source, only when the source stated one. Never guessed from the size text. */
+  packageQuantity?: number | null;
+  packageUnit?: string | null;
+  /** Other writings of this same GTIN (for example UPC-A beside EAN-13). Not a different product. */
+  alternateBarcodes?: string[];
   food?: FoodInfo;
 }
 
@@ -44,7 +49,24 @@ export type LookupStatus =
   | 'invalid_barcode'
   | 'forbidden';
 
-export type MatchSource = 'shop' | 'cache' | 'open_food_facts';
+export type MatchSource = 'shop' | 'catalog' | 'cache' | 'open_food_facts';
+
+export type CatalogVerification = 'external' | 'user_submitted' | 'verified';
+
+export type CatalogBarcodeKind = 'unit' | 'alternate' | 'pack';
+
+/** Shared catalog hit. Shop prices and stock are not part of this payload. */
+export interface CatalogMatch {
+  id: string;
+  verificationStatus: CatalogVerification;
+  kind: CatalogBarcodeKind;
+  unitsPerPackage: number | null;
+  packageQuantity: number | null;
+  packageUnit: string | null;
+  unitBarcode: string | null;
+  ingredients: string | null;
+  imageUrl: string | null;
+}
 
 export interface ShopProductPayload {
   id: string;
@@ -68,13 +90,38 @@ export interface LookupResponse {
   matchSource?: MatchSource;
   suggestion?: LookupSuggestion;
   shopProduct?: ShopProductPayload;
+  catalog?: CatalogMatch;
 }
 
 export const RATE_LIMIT_PER_MINUTE = 30;
 export const OFF_TIMEOUT_MS = 4000;
 export const CACHE_FOUND_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 export const CACHE_NOT_FOUND_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-export const OFF_USER_AGENT = 'SpazaStock/1.0 (product-lookup; https://github.com/TDKasala/SpazaStock)';
+export const OFF_USER_AGENT = 'SpazaStock/1.0 (landrykasala17@gmail.com)';
+
+/** Fields requested from Open Food Facts v3.6. Knowledge panels and the full record are left out. */
+export const OFF_PRODUCT_FIELDS = [
+  'code',
+  'codes_tags',
+  'product_name',
+  'product_name_en',
+  'generic_name',
+  'brands',
+  'quantity',
+  'product_quantity',
+  'product_quantity_unit',
+  'categories',
+  'categories_tags',
+  'image_front_url',
+  'image_url',
+  'ingredients_text',
+  'ingredients_text_en',
+].join(',');
+
+export function offProductUrl(barcode: string): string {
+  const params = new URLSearchParams({ product_type: 'all', fields: OFF_PRODUCT_FIELDS });
+  return `https://world.openfoodfacts.org/api/v3.6/product/${encodeURIComponent(barcode)}.json?${params}`;
+}
 
 const DIGITS = /^\d+$/;
 
@@ -178,13 +225,17 @@ export function mapOffCategory(tags: string[] | undefined, categoriesText: strin
 }
 
 export interface OffProductJson {
-  status?: number;
+  /** v2 uses 1/0. v3 uses "success", "success_with_warnings" or "failure". */
+  status?: number | string;
   product?: {
     product_name?: string;
     product_name_en?: string;
     generic_name?: string;
     brands?: string;
     quantity?: string;
+    product_quantity?: string | number;
+    product_quantity_unit?: string;
+    codes_tags?: string[];
     categories?: string;
     categories_tags?: string[];
     image_url?: string;
@@ -195,8 +246,95 @@ export interface OffProductJson {
   };
 }
 
+/** v2 status 1 and v3 success statuses. A failure status or a missing body is not a product. */
+export function isOffFoundStatus(status: number | string | undefined): boolean {
+  if (status === 1 || status === '1') return true;
+  if (typeof status !== 'string') return false;
+  const value = status.toLowerCase();
+  return value === 'success' || value.startsWith('success_');
+}
+
+/** Maps an HTTP result from the product endpoint. A 200 still needs a usable product body. */
+export function classifyOffHttp(status: number): 'ok' | 'not_found' | 'rate_limited' | 'unavailable' {
+  if (status === 404) return 'not_found';
+  if (status === 429) return 'rate_limited';
+  if (status < 200 || status >= 300) return 'unavailable';
+  return 'ok';
+}
+
+function catalogRank(status: CatalogVerification): number {
+  if (status === 'verified') return 3;
+  if (status === 'user_submitted') return 2;
+  return 1;
+}
+
+/**
+ * Incoming text replaces a stored value only when it is more trusted, or when nothing is stored.
+ * A verified or user-submitted value is kept when the incoming source is external.
+ */
+export function mergeCatalogText(
+  stored: string | null,
+  incoming: string | null,
+  storedStatus: CatalogVerification,
+  incomingStatus: CatalogVerification
+): string | null {
+  const next = incoming?.trim() || null;
+  const current = stored?.trim() || null;
+  if (!next) return current;
+  if (!current) return next;
+  if (catalogRank(incomingStatus) > catalogRank(storedStatus)) return next;
+  return current;
+}
+
+export function sameSellableUnit(
+  left: { packageQuantity: number | null; packageUnit: string | null },
+  right: { packageQuantity: number | null; packageUnit: string | null }
+): boolean {
+  if (left.packageQuantity == null || right.packageQuantity == null) return false;
+  if (!left.packageUnit || !right.packageUnit) return false;
+  return left.packageQuantity === right.packageQuantity && left.packageUnit.toLowerCase() === right.packageUnit.toLowerCase();
+}
+
+/**
+ * Other barcodes that are the same GTIN written another way (UPC-A next to EAN-13).
+ * A different canonical code is a different product and is not linked. A different package
+ * quantity is not linked either.
+ */
+export function alternateBarcodesForProduct(
+  primary: string,
+  codesTags: string[] | undefined,
+  options: { quantitiesMatch: boolean }
+): string[] {
+  if (!options.quantitiesMatch) return [];
+  const canonical = canonicalizeBarcode(primary);
+  if (!canonical) return [];
+  const out: string[] = [];
+  for (const tag of codesTags ?? []) {
+    const raw = String(tag).replace(/\s/g, '');
+    const code = canonicalizeBarcode(raw);
+    if (code !== canonical || raw === canonical) continue;
+    if (!out.includes(raw)) out.push(raw);
+  }
+  return out;
+}
+
+function parsePackageQuantity(value: string | number | undefined): number | null {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) return value;
+  if (typeof value === 'string' && /^\d+(\.\d+)?$/.test(value.trim())) {
+    const parsed = Number(value.trim());
+    return parsed > 0 ? parsed : null;
+  }
+  return null;
+}
+
+export function provenanceForStatus(status: CatalogVerification): FieldSource {
+  if (status === 'verified') return 'verified';
+  if (status === 'user_submitted') return 'user';
+  return 'external';
+}
+
 export function mapOffProduct(barcode: string, body: OffProductJson): LookupSuggestion | null {
-  if (body.status !== 1 || !body.product) return null;
+  if (!isOffFoundStatus(body.status) || !body.product) return null;
   const p = body.product;
   const name = p.product_name?.trim() || p.product_name_en?.trim() || p.generic_name?.trim() || null;
   if (!name) return null;
@@ -207,6 +345,8 @@ export function mapOffProduct(barcode: string, body: OffProductJson): LookupSugg
   const imageUrl = p.image_front_url?.trim() || p.image_url?.trim() || null;
   const ingredients = p.ingredients_text_en?.trim() || p.ingredients_text?.trim() || null;
   const nutriscore = p.nutriscore_grade?.trim()?.toUpperCase() || null;
+  const packageQuantity = parsePackageQuantity(p.product_quantity);
+  const packageUnit = p.product_quantity_unit?.trim() || null;
 
   const suggestion: LookupSuggestion = {
     name: field(name, 'external'),
@@ -215,6 +355,9 @@ export function mapOffProduct(barcode: string, body: OffProductJson): LookupSugg
     category: field(category, 'external'),
     barcode: field(barcode, 'external'),
     imageUrl: field(imageUrl, imageUrl ? 'external' : 'missing'),
+    packageQuantity,
+    packageUnit,
+    alternateBarcodes: alternateBarcodesForProduct(barcode, p.codes_tags, { quantitiesMatch: true }),
   };
 
   if (ingredients || nutriscore) {
@@ -224,6 +367,38 @@ export function mapOffProduct(barcode: string, body: OffProductJson): LookupSugg
     };
   }
 
+  return suggestion;
+}
+
+export function suggestionFromCatalog(input: {
+  barcode: string;
+  name: string;
+  brand: string | null;
+  size: string | null;
+  category: ProductCategory;
+  verificationStatus: CatalogVerification;
+  imageUrl: string | null;
+  ingredients: string | null;
+  packageQuantity: number | null;
+  packageUnit: string | null;
+}): LookupSuggestion {
+  const source = provenanceForStatus(input.verificationStatus);
+  const suggestion: LookupSuggestion = {
+    name: field(input.name, source),
+    brand: field(input.brand, input.brand ? source : 'missing'),
+    size: field(input.size, input.size ? source : 'missing'),
+    category: field(input.category, source),
+    barcode: field(input.barcode, source),
+    imageUrl: field(input.imageUrl, input.imageUrl ? source : 'missing'),
+    packageQuantity: input.packageQuantity,
+    packageUnit: input.packageUnit,
+  };
+  if (input.ingredients) {
+    suggestion.food = {
+      ingredients: field(input.ingredients, source),
+      nutriscore: { value: null, source: 'missing' },
+    };
+  }
   return suggestion;
 }
 

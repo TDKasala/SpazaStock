@@ -541,6 +541,7 @@ export const adminZu: AdminTranslations = {
     analytics_series: 'Uvule ukuthambekela',
     operations_view: 'Uvule ukusebenza kohlelo',
     audit_view: 'Uvule irekhodi lokuhlola',
+    catalog_verify: 'Usebenzise ukulungiswa kohlu',
   },
   targets: {
     shop: 'Isitolo',
@@ -550,6 +551,7 @@ export const adminZu: AdminTranslations = {
     feature: 'Isici',
     subscription: 'Okubhaliselwe',
     platform: 'Ipulatifomu',
+    catalog: 'Uhlu',
   },
   status: {
     active: 'Kuyasebenza',
@@ -629,6 +631,7 @@ export const adminZu: AdminTranslations = {
     sale_void: 'Ukuhlehlisa ukuthengisa',
     discrepancy_resolve: 'Umehluko wempahla uxazululiwe',
     expiry_resolve: 'Isexwayiso sokuphelelwa yisikhathi sixazululiwe',
+    catalog_submit: 'Uhlu olwabiwe',
   },
   jobs: {
     'expiry-alerts-generate': 'Dala izexwayiso zokuphelelwa yisikhathi',

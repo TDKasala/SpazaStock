@@ -410,6 +410,22 @@ export const zu: Translations = {
     lookupSuggestedImageAlt: 'Isithombe somkhiqizo esiphakanyisiwe',
     lookupSuggestedImageHint:
       'Lesithombe siphakanyisiwe ukuze ubone kuphela. Thatha noma ukhethe isithombe ngezansi ukuze usigcine esitolo sakho.',
+    lookupSourceCatalog:
+      'Le mininingwane ivela kuhlu lwemikhiqizo lwe-SpazaStock. Yihlole, bese uyilondoloza ukuze ingene esitolo sakho.',
+    lookupSourceOff:
+      'Le mininingwane ivela ku-Open Food Facts. Ingase ingaphelele noma ingalungile. Yihlole ngaphambi kokulondoloza.',
+    lookupSourceManual:
+      'Le bhakhodi ayikho ohlwini. Faka umkhiqizo ngokwakho. Ukulondoloza kusiza esitolo esilandelayo.',
+    lookupSourceFailed:
+      'Uhlu alufinyelelekile manje. Faka umkhiqizo ngokwakho. Akukho kulahleka uma ulondoloza manje.',
+    lookupMissing: 'Kusashoda: {{fields}}',
+    registerKnownTitle: 'Engeza lo mkhiqizo',
+    registerKnownSubtitle:
+      'Le bhakhodi iku-SpazaStock, kodwa ayikho esitolo sakho. Amanani akho empahla awashintshi.',
+    packBarcodeNote: 'Le bhakhodi iyiphakethe engu-{{count}}. Londoloza into eyodwa, bese uxhumanisa iphakethe uma uthola amakesi.',
+    ingredientsOptional: 'Izithako (uyazikhetha)',
+    ingredientsPlaceholder: 'Njengoba kubhalwe epaketheni',
+    linkExistingProduct: 'Xhumanisa nomkhiqizo osuvele usestolo',
     name: 'Igama Lomkhiqizo',
     namePlaceholder: 'isib. Albany Superior White Bread 700g',
     nameRequired: 'Igama lomkhiqizo liyadingeka.',

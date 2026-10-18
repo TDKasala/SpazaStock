@@ -401,6 +401,22 @@ export const en = {
     lookupSuggestion: 'Details suggested from an open food catalog. Check them, then save to add this product to your shop.',
     lookupSuggestedImageAlt: 'Suggested product picture',
     lookupSuggestedImageHint: 'Suggested picture for reference only. Take or choose a photo below to save one for your shop.',
+    lookupSourceCatalog:
+      'These details are from the SpazaStock catalog. Check them, then save to add this product to your shop.',
+    lookupSourceOff:
+      'These details are from Open Food Facts. They can be incomplete or wrong. Check them before you save.',
+    lookupSourceManual:
+      'This barcode is not in the catalog. Enter the product yourself. Saving it helps the next shop that scans it.',
+    lookupSourceFailed:
+      'The catalog could not be reached. Enter the product yourself. Nothing is lost if you save now.',
+    lookupMissing: 'Still missing: {{fields}}',
+    registerKnownTitle: 'Add this product',
+    registerKnownSubtitle:
+      'This barcode is in the SpazaStock catalog, but it is not in your shop yet. Your prices and stock stay yours.',
+    packBarcodeNote: 'This barcode is a pack of {{count}}. Save the single item, then link the pack if you receive cases.',
+    ingredientsOptional: 'Ingredients (optional)',
+    ingredientsPlaceholder: 'As printed on the pack',
+    linkExistingProduct: 'Link to a product already in this shop',
     name: 'Product Name',
     namePlaceholder: 'e.g. Albany Superior White Bread 700g',
     nameRequired: 'Product name is required.',

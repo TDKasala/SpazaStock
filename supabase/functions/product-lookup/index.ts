@@ -1,8 +1,8 @@
 // product-lookup: identifies a barcode for Smart Product Scan.
 //
-// Called by signed-in shop members with a user JWT. Looks up the shop catalog first, then the
-// shared product_lookup_cache, then Open Food Facts. Never writes shop products. Rate-limited
-// per shop. Secrets stay in the Edge runtime (service role); OFF needs no API key.
+// Called by signed-in shop members with a user JWT. Looks up this shop, then the shared
+// catalog, then the Open Food Facts cache, then Open Food Facts v3.6. Never writes shop
+// products or the shared catalog. Rate-limited per shop. Secrets stay in the Edge runtime.
 
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import {
@@ -11,14 +11,22 @@ import {
   RATE_LIMIT_PER_MINUTE,
   cacheExpiresAt,
   canonicalizeBarcode,
+  classifyOffHttp,
+  isOffFoundStatus,
   mapOffProduct,
   mapShopProductRow,
+  offProductUrl,
   rateWindowStart,
   shopBarcodeCandidates,
+  suggestionFromCatalog,
   suggestionFromShopProduct,
+  type CatalogBarcodeKind,
+  type CatalogMatch,
+  type CatalogVerification,
   type LookupResponse,
   type LookupSuggestion,
   type OffProductJson,
+  type ProductCategory,
   type ShopProductPayload,
 } from './logic.ts';
 
@@ -133,6 +141,69 @@ async function findShopProduct(
   return viaAlias ? mapShopProductRow(viaAlias as Record<string, unknown>) : null;
 }
 
+async function findCatalogProduct(
+  admin: SupabaseClient,
+  candidates: string[]
+): Promise<{ suggestion: LookupSuggestion; catalog: CatalogMatch } | null> {
+  for (const code of candidates) {
+    const { data: link } = await admin
+      .from('catalog_barcodes')
+      .select('barcode, catalog_product_id, kind, units_per_package')
+      .eq('barcode', code)
+      .maybeSingle();
+    if (!link?.catalog_product_id) continue;
+
+    const { data: product } = await admin
+      .from('catalog_products')
+      .select(
+        'id, name, brand, category, package_size, package_quantity, package_unit, image_url, ingredients, verification_status'
+      )
+      .eq('id', link.catalog_product_id)
+      .maybeSingle();
+    const name = typeof product?.name === 'string' ? product.name.trim() : '';
+    if (!product || !name) continue;
+
+    const { data: unit } = await admin
+      .from('catalog_barcodes')
+      .select('barcode')
+      .eq('catalog_product_id', product.id)
+      .eq('kind', 'unit')
+      .limit(1)
+      .maybeSingle();
+
+    const verificationStatus = product.verification_status as CatalogVerification;
+    const kind = (link.kind as CatalogBarcodeKind) ?? 'unit';
+    const packageQuantity = product.package_quantity == null ? null : Number(product.package_quantity);
+    const catalog: CatalogMatch = {
+      id: String(product.id),
+      verificationStatus,
+      kind,
+      unitsPerPackage: link.units_per_package == null ? null : Number(link.units_per_package),
+      packageQuantity: Number.isFinite(packageQuantity) ? packageQuantity : null,
+      packageUnit: product.package_unit == null ? null : String(product.package_unit),
+      unitBarcode: unit?.barcode ? String(unit.barcode) : null,
+      ingredients: product.ingredients == null ? null : String(product.ingredients),
+      imageUrl: product.image_url == null ? null : String(product.image_url),
+    };
+    return {
+      catalog,
+      suggestion: suggestionFromCatalog({
+        barcode: kind === 'pack' && catalog.unitBarcode ? catalog.unitBarcode : String(link.barcode),
+        name,
+        brand: product.brand == null ? null : String(product.brand),
+        size: product.package_size == null ? null : String(product.package_size),
+        category: product.category as ProductCategory,
+        verificationStatus,
+        imageUrl: catalog.imageUrl,
+        ingredients: catalog.ingredients,
+        packageQuantity: catalog.packageQuantity,
+        packageUnit: catalog.packageUnit,
+      }),
+    };
+  }
+  return null;
+}
+
 async function readCache(
   admin: SupabaseClient,
   barcode: string
@@ -167,17 +238,21 @@ async function writeCache(
 
 async function lookupOff(
   barcode: string
-): Promise<{ outcome: 'found' | 'not_found' | 'unavailable'; suggestion: LookupSuggestion | null }> {
+): Promise<{ outcome: 'found' | 'not_found' | 'unavailable' | 'rate_limited'; suggestion: LookupSuggestion | null }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), OFF_TIMEOUT_MS);
   try {
-    const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(barcode)}.json`, {
+    const res = await fetch(offProductUrl(barcode), {
       headers: { 'User-Agent': OFF_USER_AGENT, Accept: 'application/json' },
       signal: controller.signal,
+      redirect: 'follow',
     });
-    if (!res.ok) return { outcome: 'unavailable', suggestion: null };
+    const http = classifyOffHttp(res.status);
+    if (http === 'rate_limited') return { outcome: 'rate_limited', suggestion: null };
+    if (http === 'unavailable') return { outcome: 'unavailable', suggestion: null };
+    if (http === 'not_found') return { outcome: 'not_found', suggestion: null };
     const body = (await res.json()) as OffProductJson;
-    if (body.status === 0) return { outcome: 'not_found', suggestion: null };
+    if (!isOffFoundStatus(body.status)) return { outcome: 'not_found', suggestion: null };
     const suggestion = mapOffProduct(barcode, body);
     if (!suggestion) return { outcome: 'not_found', suggestion: null };
     return { outcome: 'found', suggestion };
@@ -235,6 +310,17 @@ Deno.serve(async (req) => {
     });
   }
 
+  const catalogHit = await findCatalogProduct(admin, shopBarcodeCandidates(rawBarcode));
+  if (catalogHit) {
+    return json({
+      status: 'found',
+      barcode: canonical,
+      matchSource: 'catalog',
+      suggestion: catalogHit.suggestion,
+      catalog: catalogHit.catalog,
+    });
+  }
+
   const cached = await readCache(admin, canonical);
   if (cached?.status === 'not_found') {
     return json({ status: 'not_found', barcode: canonical, matchSource: 'cache' });
@@ -251,6 +337,9 @@ Deno.serve(async (req) => {
   const off = await lookupOff(canonical);
   if (off.outcome === 'unavailable') {
     return json({ status: 'unavailable', barcode: canonical });
+  }
+  if (off.outcome === 'rate_limited') {
+    return json({ status: 'rate_limited', barcode: canonical }, 429);
   }
   if (off.outcome === 'not_found') {
     await writeCache(admin, canonical, 'not_found', null);

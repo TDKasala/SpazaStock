@@ -80,6 +80,8 @@ export interface Product {
   brand?: string | null;
   /** Optional size of the single item, e.g. 330ml. */
   size?: string | null;
+  /** Shared catalog identity, when this shop product was saved from one. */
+  catalogProductId?: string | null;
   /** Path of the product picture in the product-images bucket (`<shopId>/<hash>.webp`). */
   imagePath?: string | null;
   /**
@@ -320,6 +322,9 @@ export interface ProductLookupSuggestion {
   category: ProductLookupField<ProductCategory>;
   barcode: ProductLookupField;
   imageUrl: ProductLookupField;
+  /** Set only when the source gave a numeric amount. Never parsed out of the size text. */
+  packageQuantity?: number | null;
+  packageUnit?: string | null;
   food?: {
     ingredients: ProductLookupField;
     nutriscore: ProductLookupField;
@@ -334,7 +339,24 @@ export type ProductLookupStatus =
   | 'invalid_barcode'
   | 'forbidden';
 
-export type ProductLookupMatchSource = 'shop' | 'cache' | 'open_food_facts';
+export type ProductLookupMatchSource = 'shop' | 'catalog' | 'cache' | 'open_food_facts';
+
+export type CatalogVerification = 'external' | 'user_submitted' | 'verified';
+
+export type CatalogBarcodeKind = 'unit' | 'alternate' | 'pack';
+
+/** Shared catalog hit returned by product-lookup. Prices and stock are not included. */
+export interface CatalogMatch {
+  id: string;
+  verificationStatus: CatalogVerification;
+  kind: CatalogBarcodeKind;
+  unitsPerPackage: number | null;
+  packageQuantity: number | null;
+  packageUnit: string | null;
+  unitBarcode: string | null;
+  ingredients: string | null;
+  imageUrl: string | null;
+}
 
 /** Payload from `product-lookup`. Soft-fail statuses still let the phone open manual registration. */
 export interface ProductLookupResult {
@@ -344,4 +366,6 @@ export interface ProductLookupResult {
   suggestion?: ProductLookupSuggestion;
   /** Present when matchSource is `shop` — already in this shop's catalog on the server. */
   shopProduct?: Product;
+  /** Present when matchSource is `catalog` — shared identity, not yet this shop's stock. */
+  catalog?: CatalogMatch;
 }

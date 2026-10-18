@@ -10,7 +10,8 @@ export type PlatformPermission =
   | 'plans.manage'
   | 'analytics.view'
   | 'operations.view'
-  | 'audit.view';
+  | 'audit.view'
+  | 'catalog.verify';
 
 export const PLATFORM_ROLES: readonly PlatformRole[] = ['superadmin', 'support', 'billing', 'analyst'];
 
@@ -31,6 +32,7 @@ export const PLATFORM_ROLE_PERMISSIONS: Record<PlatformRole, readonly PlatformPe
     'analytics.view',
     'operations.view',
     'audit.view',
+    'catalog.verify',
   ],
   support: ['tenants.view', 'operations.view'],
   billing: ['tenants.view', 'billing.view', 'billing.manage'],

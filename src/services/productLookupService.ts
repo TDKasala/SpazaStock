@@ -1,6 +1,7 @@
 import { getSupabase } from '../lib/supabase';
 import { db } from '../lib/db';
 import type {
+  CatalogMatch,
   Product,
   ProductCategory,
   ProductLookupResult,
@@ -9,7 +10,7 @@ import type {
 import type { ProductFormValues } from '../components/stock/ProductFormFields';
 
 /**
- * Asks the server to identify a barcode (shop catalog → shared cache → Open Food Facts).
+ * Asks the server to identify a barcode (this shop, then the shared catalog, then Open Food Facts).
  * Soft-fails: network errors, missing client, and unexpected bodies become `unavailable`
  * so registration and stock-in are never blocked.
  */
@@ -50,7 +51,13 @@ function normalizeLookupResult(data: ProductLookupResult): ProductLookupResult {
     matchSource: data.matchSource,
     suggestion: data.suggestion,
     shopProduct: shopProduct ?? undefined,
+    catalog: coerceCatalog(data.catalog),
   };
+}
+
+function coerceCatalog(raw: CatalogMatch | undefined): CatalogMatch | undefined {
+  if (!raw || typeof raw !== 'object' || !raw.id || !raw.verificationStatus || !raw.kind) return undefined;
+  return raw;
 }
 
 /** Accepts camelCase from the Edge Function (and tolerates accidental snake_case). */

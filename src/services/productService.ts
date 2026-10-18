@@ -6,7 +6,7 @@ import type {
   ProductRegistrationInput,
   ResolvedBarcode,
 } from '../types';
-import { db, withWriteLock } from '../lib/db';
+import { db, withWriteLock, type CatalogSubmitPayload } from '../lib/db';
 import { newId } from '../lib/ids';
 import { emitDataChanged } from '../lib/events';
 import { isBatchExpired, todayInZone } from '../lib/expiry';
@@ -138,7 +138,8 @@ export async function getArchivedProducts(shopId: string): Promise<Product[]> {
  */
 export async function createProduct(
   input: ProductRegistrationInput,
-  shopId: string
+  shopId: string,
+  catalog?: Omit<CatalogSubmitPayload, 'productId'> | null
 ): Promise<{ product?: Product; error?: string; isDuplicate?: boolean }> {
   const barcode = normalizeBarcode(input.barcode);
   const name = input.name.trim();
@@ -177,6 +178,9 @@ export async function createProduct(
 
       await db.products.add(product);
       await enqueue(shopId, { type: 'product_upsert', payload: { product } });
+      if (catalog) {
+        await enqueue(shopId, { type: 'catalog_submit', payload: { ...catalog, productId: product.id } });
+      }
       return { product };
     })
   );

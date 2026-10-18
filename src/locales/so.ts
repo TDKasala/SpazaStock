@@ -405,6 +405,22 @@ export const so: Translations = {
     lookupSuggestedImageAlt: 'Sawirka alaabta ee la soo jeediyay',
     lookupSuggestedImageHint:
       'Sawirkan waa tixraac oo keliya. Qaado ama dooro sawir hoose si aad ugu kaydiso dukaankaaga.',
+    lookupSourceCatalog:
+      'Faahfaahintan waxay ka timid liiska SpazaStock. Hubi, ka dibna kaydi si aad ugu darto dukaankaaga.',
+    lookupSourceOff:
+      'Faahfaahintan waxay ka timid Open Food Facts. Way ka maqnaan karaan ama khaldan. Hubi ka hor intaadan kaydin.',
+    lookupSourceManual:
+      'Barcode-kan kuma jiro liiska. Geli alaabta adiga. Kaydintu waxay caawisaa dukaan kale.',
+    lookupSourceFailed:
+      'Liiska lama gaari karo hadda. Geli alaabta adiga. Waxba ma luminayo haddii aad hadda kaydiso.',
+    lookupMissing: 'Weli waa ka maqan: {{fields}}',
+    registerKnownTitle: 'Ku dar alaabtan',
+    registerKnownSubtitle:
+      'Barcode-kan wuxuu ku jiraa SpazaStock, laakiin kuma jiro dukaankaaga. Qiimahaaga iyo kaydkaagu way kala duwan yihiin.',
+    packBarcodeNote: 'Barcode-kani waa xirmo {{count}}. Kaydi hal shay, ka dibna ku xir xirmada haddii aad hesho kiisas.',
+    ingredientsOptional: 'Waxyaabaha ka kooban (ikhtiyaari)',
+    ingredientsPlaceholder: 'Sida ku qoran baakadda',
+    linkExistingProduct: 'Ku xir alaab horey ugu jirtay dukaanka',
     name: 'Magaca alaabta',
     namePlaceholder: 'tusaale Albany Superior Rooti Cad 700g',
     nameRequired: 'Magaca alaabta waa loo baahan yahay.',

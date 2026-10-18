@@ -13,6 +13,22 @@ import type {
   StockMovement,
 } from '../types';
 
+/** Confirmed product details to store in the shared catalog after the shop product is queued. */
+export interface CatalogSubmitPayload {
+  productId: string;
+  barcode: string;
+  name: string;
+  category: string;
+  brand: string | null;
+  packageSize: string | null;
+  packageQuantity: number | null;
+  packageUnit: string | null;
+  imageUrl: string | null;
+  ingredients: string | null;
+  /** Set when the scanned code is a pack and the saved barcode is the single item. */
+  packLink: { barcode: string; unitsPerPackage: number } | null;
+}
+
 export type OutboxOperation =
   | { type: 'product_upsert'; payload: { product: Product } }
   | { type: 'product_update'; payload: { productId: string; changes: ProductEditInput } }
@@ -48,6 +64,7 @@ export type OutboxOperation =
     }
   | { type: 'product_image'; payload: { productId: string; imagePath: string | null } }
   | { type: 'product_min_stock'; payload: { productId: string; minStockUnits: number | null } }
+  | { type: 'catalog_submit'; payload: CatalogSubmitPayload }
   | { type: 'low_stock_dismiss'; payload: { productId: string } }
   | { type: 'low_stock_clear'; payload: { productId: string } };
 

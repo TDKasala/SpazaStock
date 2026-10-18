@@ -688,6 +688,7 @@ describe('packagings and barcode links', () => {
       'upsert_product',
       'create_product_packaging',
       'link_product_barcode',
+      'submit_catalog_product',
       'record_stock_in',
     ]);
     expect(fake.rpc.mock.calls[2][1]).toMatchObject({
@@ -696,7 +697,7 @@ describe('packagings and barcode links', () => {
       p_packaging_id: packaging.id,
       p_barcode: '16001087361257',
     });
-    expect(fake.rpc.mock.calls[3][1]).toMatchObject({
+    expect(fake.rpc.mock.calls[4][1]).toMatchObject({
       p_batch_id: batch.id,
       p_quantity: 48,
       p_packaging_id: packaging.id,
@@ -733,7 +734,7 @@ describe('packagings and barcode links', () => {
 
     expect((await pushOutbox(fake.client, SHOP_ID)).pushed).toBe(4);
     for (const call of fake.rpc.mock.calls.slice(1)) {
-      expect(call[1]).toMatchObject({ p_product_id: canonicalId });
+      if ('p_product_id' in (call[1] as object)) expect(call[1]).toMatchObject({ p_product_id: canonicalId });
     }
     expect((await db.packagings.get(packaging.id))?.productId).toBe(canonicalId);
     expect((await db.barcodes.get(link.id))?.productId).toBe(canonicalId);

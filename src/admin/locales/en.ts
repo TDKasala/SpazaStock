@@ -539,6 +539,7 @@ export const adminEn = {
     analytics_series: 'Opened a trend',
     operations_view: 'Opened operations',
     audit_view: 'Opened audit log',
+    catalog_verify: 'Applied a catalog correction',
   },
   targets: {
     shop: 'Shop',
@@ -548,6 +549,7 @@ export const adminEn = {
     feature: 'Feature',
     subscription: 'Subscription',
     platform: 'Platform',
+    catalog: 'Catalog',
   },
   status: {
     active: 'Active',
@@ -627,6 +629,7 @@ export const adminEn = {
     sale_void: 'Sale reversal',
     discrepancy_resolve: 'Stock mismatch resolved',
     expiry_resolve: 'Expiry alert resolved',
+    catalog_submit: 'Shared catalog',
   },
   jobs: {
     'expiry-alerts-generate': 'Create expiry alerts',
