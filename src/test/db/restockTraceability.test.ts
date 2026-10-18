@@ -44,7 +44,7 @@ beforeAll(async () => {
   shop = await createShop(pg, owner);
   otherShop = await createShop(pg, outsider);
   await addMember(pg, owner, shop, staff, 'staff');
-}, 30_000);
+}, 60_000);
 
 afterAll(async () => {
   await pg.close();

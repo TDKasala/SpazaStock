@@ -124,7 +124,7 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
       </a>
       <button
         type="button"
-        onClick={() => void signOut().then(() => window.location.assign('/'))}
+        onClick={() => void signOut()}
         className="flex items-center gap-2 hover:text-zinc-100"
       >
         <LogOut className="w-4 h-4" />

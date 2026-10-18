@@ -19,6 +19,7 @@ import { PWAInstallBanner } from '../pwa/PWAInstallBanner';
 import { AppWhatsAppInvite } from '../pwa/AppWhatsAppInvite';
 import { usePWAInstall } from '../../hooks/usePWAInstall';
 import { takeIdleSignOutNotice } from '../../lib/idleSignOut';
+import { takeSignInScreenRequest } from '../../lib/signInRedirect';
 import { FeatureGlyph, LandingMark, type FeatureArtKind } from './LandingArt';
 import './styles/landing-page.css';
 
@@ -59,7 +60,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ notConfigured = false 
   const { needsInstallPrompt } = usePWAInstall();
   const [idleNotice] = useState(takeIdleSignOutNotice);
   const [view, setView] = useState<SignInView>('password');
-  const [authPanelOpen, setAuthPanelOpen] = useState(false);
+  const [authPanelOpen, setAuthPanelOpen] = useState(takeSignInScreenRequest);
   const cardRef = useRef<HTMLDivElement>(null);
 
   const openAuthPanel = (next: SignInView) => {

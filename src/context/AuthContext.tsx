@@ -6,6 +6,7 @@ import { normalizeDisplayName, normalizeEmail } from '../lib/authValidation';
 import { clearFreshSignIn, markFreshSignIn } from '../lib/platformAdmin';
 import { onDataChanged } from '../lib/events';
 import { createIdleClock, IDLE_CHECK_MS, markIdleSignOut } from '../lib/idleSignOut';
+import { requestSignInScreen } from '../lib/signInRedirect';
 
 /** 'device' = Supabase not configured, data stays on this device; 'cloud' = signed-in sync. */
 export type AuthMode = 'device' | 'cloud';
@@ -270,6 +271,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
     setIsOfflineSession(false);
     setRecovering(false);
+    requestSignInScreen();
+    window.location.replace('/');
   }, [supabase, setRecovering]);
 
   const signOutRef = useRef(signOut);
