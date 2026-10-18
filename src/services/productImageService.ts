@@ -6,7 +6,7 @@ import { emitDataChanged } from '../lib/events';
 import { newId } from '../lib/ids';
 import { can } from '../lib/permissions';
 import { getShopSettings } from '../lib/shopSettings';
-import type { CompressedImage } from '../lib/imageCompression';
+import { compressProductImage, type CompressedImage } from '../lib/imageCompression';
 import { enqueue } from '../sync/outbox';
 
 export const PRODUCT_IMAGE_BUCKET = 'product-images';
@@ -138,6 +138,37 @@ export async function adoptCatalogImage(
     }
     if (cached.mimeType !== 'image/webp' && cached.mimeType !== 'image/jpeg') return null;
     return saveProductImage(productId, shopId, { bytes: cached.bytes, mimeType: cached.mimeType });
+  } catch {
+    return null;
+  }
+}
+
+function remoteImageType(blobType: string, url: string): string {
+  const type = blobType.split(';')[0].trim().toLowerCase();
+  if (type === 'image/jpg') return 'image/jpeg';
+  if (type === 'image/jpeg' || type === 'image/png' || type === 'image/webp' || type === 'image/gif') return type;
+  if (/\.png(?:$|\?)/i.test(url)) return 'image/png';
+  if (/\.webp(?:$|\?)/i.test(url)) return 'image/webp';
+  if (/\.gif(?:$|\?)/i.test(url)) return 'image/gif';
+  return 'image/jpeg';
+}
+
+/**
+ * Downloads an https picture (Open Food Facts) and stores a shop copy.
+ * A failed download leaves the product without a picture.
+ */
+export async function adoptRemoteImage(
+  productId: string,
+  shopId: string,
+  url: string
+): Promise<ProductImageOutcome | null> {
+  if (!url.startsWith('https://')) return null;
+  try {
+    const response = await fetch(url, { referrerPolicy: 'no-referrer' });
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    const file = new File([blob], 'product', { type: remoteImageType(blob.type, url) });
+    return saveProductImage(productId, shopId, await compressProductImage(file));
   } catch {
     return null;
   }

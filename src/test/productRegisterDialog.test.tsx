@@ -79,6 +79,24 @@ describe('ProductRegisterDialog lookup sources', () => {
     expect(labelled('Buying Price')?.value).toBe('');
   });
 
+  it('fills the product picture from an Open Food Facts photo', async () => {
+    const photo = 'https://images.openfoodfacts.org/images/products/example.jpg';
+    await render(
+      <ProductRegisterDialog
+        isOpen
+        initialBarcode="5449000000996"
+        suggestion={{ ...suggestion, imageUrl: { value: photo, source: 'external' } }}
+        origin="open_food_facts"
+        onClose={() => undefined}
+        onProductRegistered={() => undefined}
+      />
+    );
+    expect(container.querySelector(`img[src="${photo}"]`)).toBeTruthy();
+    expect(container.textContent).toContain('Take photo');
+    expect(container.textContent).toContain('Replace');
+    expect(container.textContent).toContain('This picture is saved with the product');
+  });
+
   it('names the SpazaStock catalog when the barcode is already known', async () => {
     await render(
       <ProductRegisterDialog

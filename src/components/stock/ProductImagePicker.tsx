@@ -17,6 +17,8 @@ export const UNCHANGED_IMAGE: ImageDraft = { kind: 'unchanged' };
 export interface ProductImagePickerProps {
   /** The product's saved picture, if any. */
   currentPath?: string | null;
+  /** An https picture to show and keep until the user replaces or removes it. */
+  remoteUrl?: string | null;
   draft: ImageDraft;
   onChange: (draft: ImageDraft) => void;
   /** Whether an existing picture may be replaced or removed (owners and managers). */
@@ -31,6 +33,7 @@ const smallButton =
 
 export const ProductImagePicker: React.FC<ProductImagePickerProps> = ({
   currentPath = null,
+  remoteUrl = null,
   draft,
   onChange,
   canChange = true,
@@ -57,7 +60,8 @@ export const ProductImagePicker: React.FC<ProductImagePickerProps> = ({
   }, [draft]);
 
   const shownPath = draft.kind === 'unchanged' ? currentPath : null;
-  const hasPicture = draft.kind === 'new' || Boolean(shownPath);
+  const shownRemote = draft.kind === 'unchanged' && !shownPath ? remoteUrl : null;
+  const hasPicture = draft.kind === 'new' || Boolean(shownPath) || Boolean(shownRemote);
   const locked = Boolean(currentPath) && !canChange;
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -78,7 +82,7 @@ export const ProductImagePicker: React.FC<ProductImagePickerProps> = ({
 
   const handleRemove = () => {
     setError(null);
-    onChange(currentPath ? { kind: 'removed' } : UNCHANGED_IMAGE);
+    onChange(currentPath || remoteUrl ? { kind: 'removed' } : UNCHANGED_IMAGE);
   };
 
   const statusLine = (() => {
@@ -98,7 +102,7 @@ export const ProductImagePicker: React.FC<ProductImagePickerProps> = ({
       );
     }
     if (draft.kind === 'removed') return <span className="text-zinc-400">{t('productImage.willRemove')}</span>;
-    if (shared && shownPath) return <span className="text-zinc-400">{t('product.lookupSharedImageHint')}</span>;
+    if (shared && (shownPath || shownRemote)) return <span className="text-zinc-400">{t('product.lookupSharedImageHint')}</span>;
     if (!shownPath) return <span className="text-zinc-500">{t('productImage.optional')}</span>;
     if (!saved.pending) {
       return (
@@ -125,7 +129,12 @@ export const ProductImagePicker: React.FC<ProductImagePickerProps> = ({
     <div className="space-y-2">
       <span className="text-xs font-medium text-zinc-300">{t('productImage.label')}</span>
       <div className="flex items-center gap-3">
-        <ProductThumbnail path={shownPath} previewUrl={previewUrl} size="form" alt={t('productImage.previewAlt')} />
+        <ProductThumbnail
+          path={shownPath}
+          previewUrl={previewUrl ?? shownRemote}
+          size="form"
+          alt={t('productImage.previewAlt')}
+        />
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex flex-wrap gap-2">
             {!hasPicture ? (

@@ -116,7 +116,14 @@ export const ProductThumbnail: React.FC<ProductThumbnailProps> = ({ path, size =
       className={`relative shrink-0 overflow-hidden bg-zinc-900 border border-zinc-800 flex items-center justify-center ${SIZE_CLASSES[size]} ${className}`}
     >
       {src ? (
-        <img src={src} alt={alt} className="w-full h-full object-cover" loading="lazy" decoding="async" />
+        <img
+          src={src}
+          alt={alt}
+          className="w-full h-full object-cover"
+          loading="lazy"
+          decoding="async"
+          referrerPolicy="no-referrer"
+        />
       ) : (
         <Package className="w-1/2 h-1/2 text-zinc-600" aria-hidden />
       )}

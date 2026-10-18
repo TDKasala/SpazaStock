@@ -7,7 +7,7 @@ import { Dialog } from '../ui/Dialog';
 import { Button } from '../ui/Button';
 import { ErrorMessage } from '../ui/ErrorMessage';
 import { createProduct, isArchived, normalizeBarcode, setProductArchived } from '../../services/productService';
-import { adoptCatalogImage, saveProductImage } from '../../services/productImageService';
+import { adoptCatalogImage, adoptRemoteImage, saveProductImage } from '../../services/productImageService';
 import { productFormFromSuggestion } from '../../services/productLookupService';
 import { can } from '../../lib/permissions';
 import type { CatalogSubmitPayload } from '../../lib/db';
@@ -103,6 +103,8 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
 
   const suggestedImageUrl = suggestion?.imageUrl.value ?? null;
   const sharedImagePath = catalog?.imagePath || null;
+  const remoteImageUrl =
+    !sharedImagePath && suggestedImageUrl?.startsWith('https://') ? suggestedImageUrl : null;
   const sourceKey =
     origin === 'catalog'
       ? 'product.lookupSourceCatalog'
@@ -163,6 +165,9 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
         if (saved?.product) product = saved.product;
       } else if (image.kind === 'unchanged' && catalog?.imagePath) {
         const saved = await adoptCatalogImage(product.id, shopId, catalog.imagePath);
+        if (saved?.product) product = saved.product;
+      } else if (image.kind === 'unchanged' && suggestedImageUrl?.startsWith('https://')) {
+        const saved = await adoptRemoteImage(product.id, shopId, suggestedImageUrl);
         if (saved?.product) product = saved.product;
       }
       onProductRegistered(product);
@@ -237,22 +242,10 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
           </p>
         )}
 
-        {!sharedImagePath && suggestedImageUrl && image.kind === 'unchanged' && (
-          <div className="flex items-center gap-3 p-2 rounded-xl bg-zinc-950 border border-zinc-800">
-            <img
-              src={suggestedImageUrl}
-              alt={t('product.lookupSuggestedImageAlt')}
-              className="w-14 h-14 rounded-lg object-cover bg-zinc-900 shrink-0"
-              loading="lazy"
-              referrerPolicy="no-referrer"
-            />
-            <p className="text-[11px] text-zinc-400 leading-relaxed">{t('product.lookupSuggestedImageHint')}</p>
-          </div>
-        )}
-
         <ProductImagePicker
           currentPath={sharedImagePath}
-          shared={Boolean(sharedImagePath)}
+          remoteUrl={remoteImageUrl}
+          shared={Boolean(sharedImagePath || remoteImageUrl)}
           draft={image}
           onChange={setImage}
           disabled={isSubmitting}
