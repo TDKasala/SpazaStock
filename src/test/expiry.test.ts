@@ -3,6 +3,7 @@ import {
   alertDedupKey,
   batchCode,
   daysUntil,
+  filterExpiryAlerts,
   normalizeReminderDays,
   reminderStage,
   todayInZone,
@@ -23,6 +24,28 @@ import type { Product, StockBatch } from '../types';
 import { SHOP_ID } from './helpers';
 
 const SAST = 'Africa/Johannesburg';
+
+describe('filterExpiryAlerts', () => {
+  const alert = (status: 'expired' | 'urgent' | 'warning', name: string, barcode: string, batchId: string) => ({
+    status,
+    product: { name, brand: 'Nestlé', barcode, size: '500g' },
+    batch: { id: batchId },
+  });
+
+  const alerts = [
+    alert('expired', 'Milk', '111', 'abcdef12-0000-4000-8000-000000000001'),
+    alert('urgent', 'Bread', '222', 'bbbbbb22-0000-4000-8000-000000000002'),
+    alert('warning', 'Rice', '333', 'cccccc33-0000-4000-8000-000000000003'),
+  ];
+
+  it('filters by status and by name, brand, barcode or batch code', () => {
+    expect(filterExpiryAlerts(alerts, { query: '', status: 'urgent' }).map((a) => a.product.name)).toEqual(['Bread']);
+    expect(filterExpiryAlerts(alerts, { query: 'nest', status: 'all' })).toHaveLength(3);
+    expect(filterExpiryAlerts(alerts, { query: '333', status: 'all' }).map((a) => a.product.name)).toEqual(['Rice']);
+    expect(filterExpiryAlerts(alerts, { query: 'abcdef', status: 'expired' }).map((a) => a.product.name)).toEqual(['Milk']);
+    expect(filterExpiryAlerts(alerts, { query: 'bread', status: 'expired' })).toEqual([]);
+  });
+});
 
 describe('todayInZone', () => {
   it('rolls over at local midnight, not UTC midnight', () => {

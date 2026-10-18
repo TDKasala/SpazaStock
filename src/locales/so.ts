@@ -645,6 +645,14 @@ export const so: Translations = {
   expiry: {
     alertsTitle: 'Digniinaha dhicitaanka',
     alertsSubtitle: 'La soco alaabta halaabaysa ee dhicitaankeedu dhow yahay',
+    searchPlaceholder: 'Raadi magac, sumad, barcode ama batch',
+    filterLabel: 'Shaandhee digniinaha dhicitaanka',
+    filterAll: 'Dhammaan',
+    filterExpired: 'Dhacay',
+    filterUrgent: '7 maalmood gudahood',
+    filterWarning: 'Dhowaan dhacaya',
+    noMatchesTitle: 'Digniin lama helin',
+    noMatchesMessage: 'Waxba kuma habboona raadintan ama shaandhadan.',
     policyTitle: 'Hubinta cusaybka',
     policyMessage:
       'Waxaa lagu xasuusinayaa {{days}} maalmood ka hor inta rasadu aysan dhicin, iyo digniin gooni ah marka ay dhacdo. Alaabta dhacday lama iibin karo ilaa laga saaro ama taariikhdeeda la saxo.',

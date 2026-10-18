@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { CalendarClock, ShieldCheck, AlertCircle, Clock, Plus, ClipboardCheck, Ban, ChevronLeft, ChevronRight } from 'lucide-react';
+import { CalendarClock, ShieldCheck, AlertCircle, Clock, Plus, ClipboardCheck, Ban, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { useShop, useShopId } from '../../context/ShopContext';
 import { canManageExpiry } from '../../lib/shopSettings';
 import { Button } from '../ui/Button';
+import { Input } from '../ui/Input';
+import { filterExpiryAlerts, type ExpiryAlertFilter } from '../../lib/expiry';
 import type { Product } from '../../types';
 import {
   getOpenDiscrepancies,
@@ -49,6 +51,8 @@ export const AlertsView: React.FC<AlertsViewProps> = ({
   const [resolveItem, setResolveItem] = useState<ExpiryAlertItem | null>(null);
   const [alertPage, setAlertPage] = useState(0);
   const [discrepancyPage, setDiscrepancyPage] = useState(0);
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<ExpiryAlertFilter>('all');
 
   useEffect(() => {
     let cancelled = false;
@@ -71,9 +75,10 @@ export const AlertsView: React.FC<AlertsViewProps> = ({
     }
   };
 
-  const expiredAlerts = alerts.filter((a) => a.status === 'expired');
-  const urgentAlerts = alerts.filter((a) => a.status === 'urgent');
-  const warningAlerts = alerts.filter((a) => a.status === 'warning');
+  const visibleAlerts = filterExpiryAlerts(alerts, { query, status: statusFilter });
+  const expiredAlerts = visibleAlerts.filter((a) => a.status === 'expired');
+  const urgentAlerts = visibleAlerts.filter((a) => a.status === 'urgent');
+  const warningAlerts = visibleAlerts.filter((a) => a.status === 'warning');
   const orderedAlerts = [...expiredAlerts, ...urgentAlerts, ...warningAlerts];
   const alertPageCount = Math.max(1, Math.ceil(orderedAlerts.length / PAGE_SIZE));
   const currentAlertPage = Math.min(alertPage, alertPageCount - 1);
@@ -156,6 +161,47 @@ export const AlertsView: React.FC<AlertsViewProps> = ({
           {t('scanner.scanAction')}
         </Button>
       </div>
+
+      {!isLoading && alerts.length > 0 && (
+        <div className="space-y-2">
+          <Input
+            placeholder={t('expiry.searchPlaceholder')}
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setAlertPage(0);
+            }}
+            leftIcon={<Search className="w-4 h-4" />}
+            aria-label={t('expiry.searchPlaceholder')}
+          />
+          <div className="flex gap-2 overflow-x-auto pb-1" role="group" aria-label={t('expiry.filterLabel')}>
+            {(
+              [
+                ['all', 'expiry.filterAll', alerts.length],
+                ['expired', 'expiry.filterExpired', alerts.filter((a) => a.status === 'expired').length],
+                ['urgent', 'expiry.filterUrgent', alerts.filter((a) => a.status === 'urgent').length],
+                ['warning', 'expiry.filterWarning', alerts.filter((a) => a.status === 'warning').length],
+              ] as const
+            ).map(([value, label, count]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => {
+                  setStatusFilter(value);
+                  setAlertPage(0);
+                }}
+                className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                  statusFilter === value
+                    ? 'bg-emerald-600/20 border-emerald-500/40 text-emerald-200'
+                    : 'bg-zinc-900 border-zinc-800 text-zinc-400'
+                }`}
+              >
+                {t(label)} ({count})
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {!isLoading && (
         <LowStockSection
@@ -245,6 +291,12 @@ export const AlertsView: React.FC<AlertsViewProps> = ({
             </div>
           )}
 
+          {alerts.length > 0 && orderedAlerts.length === 0 && (
+            <div className="bg-zinc-900/40 border border-dashed border-zinc-800 rounded-2xl p-6 text-center">
+              <h3 className="text-sm font-semibold text-zinc-200">{t('expiry.noMatchesTitle')}</h3>
+              <p className="text-xs text-zinc-400 mt-1.5">{t('expiry.noMatchesMessage')}</p>
+            </div>
+          )}
           {section(pageExpired, t('expiry.expired'), <Ban className="w-3.5 h-3.5" />, 'text-rose-400', expiredAlerts.length)}
           {section(pageUrgent, t('expiry.urgentExpiring'), <AlertCircle className="w-3.5 h-3.5" />, 'text-amber-400', urgentAlerts.length)}
           {section(pageWarning, t('expiry.warningExpiring'), <Clock className="w-3.5 h-3.5" />, 'text-amber-400', warningAlerts.length)}

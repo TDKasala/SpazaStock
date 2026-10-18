@@ -641,6 +641,14 @@ export const en = {
   expiry: {
     alertsTitle: 'Expiry Alerts',
     alertsSubtitle: 'Track perishables approaching expiration dates',
+    searchPlaceholder: 'Search name, brand, barcode or batch',
+    filterLabel: 'Filter expiry alerts',
+    filterAll: 'All',
+    filterExpired: 'Expired',
+    filterUrgent: 'Within 7 days',
+    filterWarning: 'Expiring soon',
+    noMatchesTitle: 'No matching alerts',
+    noMatchesMessage: 'Nothing matches this search or filter.',
     policyTitle: 'Freshness check',
     policyMessage:
       'You get a reminder {{days}} days before a batch expires, and a separate alert once it has expired. Expired stock cannot be sold until it is removed or its date is corrected.',

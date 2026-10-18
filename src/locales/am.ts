@@ -637,6 +637,14 @@ export const am: Translations = {
   expiry: {
     alertsTitle: 'የማብቂያ ቀን ማንቂያዎች',
     alertsSubtitle: 'የማብቂያ ቀናቸው የቀረበ የሚበላሹ ዕቃዎችን ይከታተሉ',
+    searchPlaceholder: 'በስም፣ ብራንድ፣ ባርኮድ ወይም ባች ይፈልጉ',
+    filterLabel: 'የማብቂያ ማስጠንቀቂያዎችን ያጣሩ',
+    filterAll: 'ሁሉም',
+    filterExpired: 'ጊዜው ያለፈ',
+    filterUrgent: 'በ7 ቀናት ውስጥ',
+    filterWarning: 'በቅርብ የሚያበቃ',
+    noMatchesTitle: 'የሚዛመድ ማስጠንቀቂያ የለም',
+    noMatchesMessage: 'ይህ ፍለጋ ወይም ማጣሪያ ምንም አላገኘም።',
     policyTitle: 'የትኩስነት ፍተሻ',
     policyMessage:
       'ጭነቱ ጊዜው ከማለፉ {{days}} ቀናት በፊት ማሳሰቢያ ያገኛሉ፤ ጊዜው ካለፈ በኋላም የተለየ ማንቂያ ያገኛሉ። ጊዜው ያለፈበት ዕቃ እስኪወገድ ወይም ቀኑ እስኪታረም ድረስ መሸጥ አይቻልም።',

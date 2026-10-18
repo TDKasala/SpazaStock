@@ -655,6 +655,14 @@ export const zu: Translations = {
   expiry: {
     alertsTitle: 'Izexwayiso Zokuphelelwa Isikhathi',
     alertsSubtitle: 'Landelela amabheji asondela ezinsukwini zokuphela',
+    searchPlaceholder: 'Funa igama, umkhiqizo, ibhakhodi noma ibhetshi',
+    filterLabel: 'Hlunga izexwayiso zokuphelelwa',
+    filterAll: 'Konke',
+    filterExpired: 'Kuphelelwe',
+    filterUrgent: 'Ezinsukwini eziyi-7',
+    filterWarning: 'Kuphela maduze',
+    noMatchesTitle: 'Azikho izexwayiso ezifananayo',
+    noMatchesMessage: 'Akukho okufana nalokhu kufuna noma lesi sihlungi.',
     policyTitle: 'Ukuhlola ubusha',
     policyMessage:
       'Uthola isikhumbuzo ezinsukwini ezi-{{days}} ngaphambi kokuthi ibheji liphelelwe, kanye nesexwayiso esehlukile uma selephelelwe. Impahla ephelelwe ayikwazi ukudayiswa uze uyisuse noma ulungise usuku lwayo.',

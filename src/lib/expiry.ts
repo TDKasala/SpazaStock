@@ -84,6 +84,30 @@ export function batchCode(batchId: string): string {
   return batchId.slice(0, 6).toUpperCase();
 }
 
+export type ExpiryAlertFilter = 'all' | 'expired' | 'urgent' | 'warning';
+
+interface FilterableAlert {
+  status: 'expired' | 'urgent' | 'warning';
+  product: { name: string; brand?: string | null; barcode: string; size?: string | null };
+  batch: { id: string };
+}
+
+/** Keeps alerts whose status matches and whose name, brand, barcode, size or batch code contains the query. */
+export function filterExpiryAlerts<T extends FilterableAlert>(
+  alerts: T[],
+  options: { query: string; status: ExpiryAlertFilter }
+): T[] {
+  const query = options.query.trim().toLowerCase();
+  return alerts.filter((alert) => {
+    if (options.status !== 'all' && alert.status !== options.status) return false;
+    if (!query) return true;
+    const haystack = [alert.product.name, alert.product.brand ?? '', alert.product.barcode, alert.product.size ?? '', batchCode(alert.batch.id)]
+      .join(' ')
+      .toLowerCase();
+    return haystack.includes(query);
+  });
+}
+
 /** Same key the server deduplicates on: one alert per batch, expiry date, kind and threshold. */
 export function alertDedupKey(batchId: string, expiryDate: string, stage: ReminderStage): string {
   return `${batchId}:${expiryDate}:${stage.kind}:${stage.threshold ?? ''}`;

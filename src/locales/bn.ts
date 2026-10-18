@@ -639,6 +639,14 @@ export const bn: Translations = {
   expiry: {
     alertsTitle: 'মেয়াদ সতর্কতা',
     alertsSubtitle: 'মেয়াদ শেষের কাছাকাছি নশ্বর পণ্য ট্র্যাক',
+    searchPlaceholder: 'নাম, ব্র্যান্ড, বারকোড বা ব্যাচ খুঁজুন',
+    filterLabel: 'মেয়াদ সতর্কতা ফিল্টার',
+    filterAll: 'সব',
+    filterExpired: 'মেয়াদোত্তীর্ণ',
+    filterUrgent: '৭ দিনের মধ্যে',
+    filterWarning: 'শীঘ্রই শেষ',
+    noMatchesTitle: 'মিলে এমন সতর্কতা নেই',
+    noMatchesMessage: 'এই খোঁজ বা ফিল্টারে কিছু মেলেনি।',
     policyTitle: 'তাজা কি না যাচাই',
     policyMessage:
       'ব্যাচ মেয়াদ শেষের {{days}} দিন আগে স্মরণ, মেয়াদ শেষে আলাদা সতর্কতা। মেয়াদোত্তীর্ণ মাল সরানো বা তারিখ ঠিক না হলে বিক্রি যাবে না।',
