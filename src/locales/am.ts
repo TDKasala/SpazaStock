@@ -407,7 +407,6 @@ export const am: Translations = {
     lookupSourceCatalog: 'እነዚህ ዝርዝሮች ከSpazaStock ካታሎግ ናቸው። ያረጋግጡ፣ ከዚያ ወደ ሱቅዎ ለመጨመር ያስቀምጡ።',
     lookupSourceOff: 'እነዚህ ዝርዝሮች ከOpen Food Facts ናቸው። ሊጎድሉ ወይም ሊሳሳቱ ይችላሉ። ከማስቀመጥዎ በፊት ያረጋግጡ።',
     lookupSourceManual: 'ይህ ባርኮድ በካታሎግ ውስጥ የለም። ምርቱን እርስዎ ያስገቡ። ማስቀመጥ ለሚቀጥለው ሱቅ ይረዳል።',
-    catalogSaved: 'ለሱቅዎ ተቀምጧል። የጋራ ካታሎጉ ይህ ስልክ ሲያመሳስል ይዘምናል።',
     lookupSourceFailed: 'ካታሎጉ አልተደረሰም። ምርቱን እርስዎ ያስገቡ። አሁን ቢያስቀምጡ ምንም አይጠፋም።',
     lookupMissing: 'አሁንም የጎደለ፦ {{fields}}',
     registerKnownTitle: 'ይህን ምርት ጨምር',

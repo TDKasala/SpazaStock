@@ -87,8 +87,6 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
   const [archivedMatch, setArchivedMatch] = useState<Product | null>(null);
   const [image, setImage] = useState<ImageDraft>(UNCHANGED_IMAGE);
   const [ingredients, setIngredients] = useState('');
-  /** Saved, but its picture could not be stored: the next tap continues instead of registering again. */
-  const [registered, setRegistered] = useState<Product | null>(null);
 
   React.useEffect(() => {
     if (!isOpen) return;
@@ -99,7 +97,6 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
     setServerError(null);
     setArchivedMatch(null);
     setImage(UNCHANGED_IMAGE);
-    setRegistered(null);
   }, [catalog, initialBarcode, isOpen, suggestion]);
 
   if (!isOpen) return null;
@@ -126,10 +123,6 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (isSubmitting) return;
-    if (registered) {
-      onProductRegistered(registered);
-      return;
-    }
     const { input, errors: formErrors } = parseProductForm(values, t);
     setErrors(formErrors);
     if (!input) return;
@@ -167,22 +160,12 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
       let product = result.product;
       if (image.kind === 'new') {
         const saved = await saveProductImage(product.id, shopId, image.image).catch(() => null);
-        if (!saved?.product) {
-          setRegistered(product);
-          setServerError(t('productImage.saveFailed'));
-          return;
-        }
-        product = saved.product;
+        if (saved?.product) product = saved.product;
       } else if (image.kind === 'unchanged' && catalog?.imagePath) {
         const saved = await adoptCatalogImage(product.id, shopId, catalog.imagePath);
-        if (!saved?.product) {
-          setRegistered(product);
-          setServerError(t('productImage.saveFailed'));
-          return;
-        }
-        product = saved.product;
+        if (saved?.product) product = saved.product;
       }
-      setRegistered(product);
+      onProductRegistered(product);
     } catch (err) {
       setServerError(err instanceof Error ? err.message : t('errors.generic'));
     } finally {
@@ -243,11 +226,6 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
         <p data-testid="lookup-source" className="text-[11px] text-emerald-400/90 leading-relaxed px-0.5">
           {t(sourceKey)}
         </p>
-        {registered && (
-          <p data-testid="catalog-saved" className="text-[11px] text-emerald-300 leading-relaxed px-0.5">
-            {t('product.catalogSaved')}
-          </p>
-        )}
         {missing.length > 0 && (
           <p className="text-[11px] text-amber-300/90 leading-relaxed px-0.5">
             {t('product.lookupMissing', { fields: missing.join(', ') })}
@@ -277,7 +255,7 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
           shared={Boolean(sharedImagePath)}
           draft={image}
           onChange={setImage}
-          disabled={isSubmitting || Boolean(registered)}
+          disabled={isSubmitting}
         />
 
         <ProductFormFields values={values} errors={errors} onChange={setValues} autoFocusName />

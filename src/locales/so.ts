@@ -412,7 +412,6 @@ export const so: Translations = {
       'Faahfaahintan waxay ka timid Open Food Facts. Way ka maqnaan karaan ama khaldan. Hubi ka hor intaadan kaydin.',
     lookupSourceManual:
       'Barcode-kan kuma jiro liiska. Geli alaabta adiga. Kaydintu waxay caawisaa dukaan kale.',
-    catalogSaved: 'Waxaa loo kaydiyay dukaankaaga. Liiska la wadaago wuu cusboonaadaa marka taleefankani isku duwo.',
     lookupSourceFailed:
       'Liiska lama gaari karo hadda. Geli alaabta adiga. Waxba ma luminayo haddii aad hadda kaydiso.',
     lookupMissing: 'Weli waa ka maqan: {{fields}}',

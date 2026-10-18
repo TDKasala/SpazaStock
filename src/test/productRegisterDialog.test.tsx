@@ -149,7 +149,7 @@ describe('ProductRegisterDialog lookup sources', () => {
     expect(labelled('Selling Price')?.value).toBe('');
   });
 
-  it('says the shared catalog updates after the product is saved', async () => {
+  it('registers the product on the first tap', async () => {
     const onProductRegistered = vi.fn();
     await render(
       <ProductRegisterDialog
@@ -167,21 +167,16 @@ describe('ProductRegisterDialog lookup sources', () => {
       setter?.call(name, 'House Bread');
       name?.dispatchEvent(new Event('input', { bubbles: true }));
     });
-    const saveButton = () =>
-      [...container.querySelectorAll('button')].find((button) => button.textContent?.includes('Register Product'));
+    const saveButton = [...container.querySelectorAll('button')].find((button) =>
+      button.textContent?.includes('Register Product')
+    );
     await act(async () => {
-      saveButton()?.click();
-      for (let i = 0; i < 40 && !container.querySelector('[data-testid="catalog-saved"]'); i++) {
+      saveButton?.click();
+      for (let i = 0; i < 40 && onProductRegistered.mock.calls.length === 0; i++) {
         await new Promise((resolve) => setTimeout(resolve, 50));
       }
     });
-    expect(container.querySelector('[data-testid="catalog-saved"]')?.textContent).toContain(
-      'The shared catalog updates when this phone syncs'
-    );
-    expect(onProductRegistered).not.toHaveBeenCalled();
-    await act(async () => {
-      saveButton()?.click();
-    });
     expect(onProductRegistered).toHaveBeenCalledOnce();
+    expect(container.querySelector('[data-testid="catalog-saved"]')).toBeNull();
   });
 });
