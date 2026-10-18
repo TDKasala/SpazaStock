@@ -12,7 +12,6 @@ import { productFormFromSuggestion } from '../../services/productLookupService';
 import { can } from '../../lib/permissions';
 import type { CatalogSubmitPayload } from '../../lib/db';
 import { ProductImagePicker, UNCHANGED_IMAGE, type ImageDraft } from '../stock/ProductImagePicker';
-import { ProductThumbnail } from '../stock/ProductThumbnail';
 import {
   ProductFormFields,
   emptyProductForm,
@@ -174,7 +173,7 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
           return;
         }
         product = saved.product;
-      } else if (catalog?.imagePath) {
+      } else if (image.kind === 'unchanged' && catalog?.imagePath) {
         const saved = await adoptCatalogImage(product.id, shopId, catalog.imagePath);
         if (!saved?.product) {
           setRegistered(product);
@@ -260,13 +259,6 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
           </p>
         )}
 
-        {sharedImagePath && image.kind === 'unchanged' && (
-          <div className="flex items-center gap-3 p-2 rounded-xl bg-zinc-950 border border-zinc-800">
-            <ProductThumbnail path={sharedImagePath} size="md" alt={t('product.lookupSuggestedImageAlt')} />
-            <p className="text-[11px] text-zinc-400 leading-relaxed">{t('product.lookupSharedImageHint')}</p>
-          </div>
-        )}
-
         {!sharedImagePath && suggestedImageUrl && image.kind === 'unchanged' && (
           <div className="flex items-center gap-3 p-2 rounded-xl bg-zinc-950 border border-zinc-800">
             <img
@@ -280,7 +272,13 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
           </div>
         )}
 
-        <ProductImagePicker draft={image} onChange={setImage} disabled={isSubmitting || Boolean(registered)} />
+        <ProductImagePicker
+          currentPath={sharedImagePath}
+          shared={Boolean(sharedImagePath)}
+          draft={image}
+          onChange={setImage}
+          disabled={isSubmitting || Boolean(registered)}
+        />
 
         <ProductFormFields values={values} errors={errors} onChange={setValues} autoFocusName />
 

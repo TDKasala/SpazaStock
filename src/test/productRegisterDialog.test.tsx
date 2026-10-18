@@ -105,6 +105,35 @@ describe('ProductRegisterDialog lookup sources', () => {
     expect(container.textContent).toContain('Add this product');
   });
 
+  it('fills the product picture from the shared catalog and still offers a new photo', async () => {
+    await render(
+      <ProductRegisterDialog
+        isOpen
+        initialBarcode="6009668781362"
+        suggestion={{ ...suggestion, name: { value: 'Excella', source: 'user' }, imageUrl: { value: null, source: 'user' } }}
+        origin="catalog"
+        catalog={{
+          id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          verificationStatus: 'user_submitted',
+          kind: 'unit',
+          unitsPerPackage: null,
+          packageQuantity: null,
+          packageUnit: null,
+          unitBarcode: '6009668781362',
+          ingredients: null,
+          imageUrl: null,
+          imagePath: 'catalog/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.webp',
+        }}
+        onClose={() => undefined}
+        onProductRegistered={() => undefined}
+      />
+    );
+    expect(container.textContent).toContain('Take photo');
+    expect(container.textContent).toContain('Replace');
+    expect(container.textContent).toContain('This picture is saved with the product');
+    expect(container.querySelector('input[capture="environment"]')).toBeTruthy();
+  });
+
   it('explains a manual entry when lookup did not find a product', async () => {
     await render(
       <ProductRegisterDialog

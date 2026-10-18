@@ -90,7 +90,7 @@ export interface ProductThumbnailProps {
 
 export const ProductThumbnail: React.FC<ProductThumbnailProps> = ({ path, size = 'sm', previewUrl, alt = '', className = '' }) => {
   const ref = useRef<HTMLDivElement>(null);
-  const [visible, setVisible] = useState(typeof IntersectionObserver === 'undefined');
+  const [visible, setVisible] = useState(size === 'form' || typeof IntersectionObserver === 'undefined');
 
   useEffect(() => {
     if (visible || !ref.current) return;

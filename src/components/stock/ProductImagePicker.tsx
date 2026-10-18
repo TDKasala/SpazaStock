@@ -21,6 +21,8 @@ export interface ProductImagePickerProps {
   onChange: (draft: ImageDraft) => void;
   /** Whether an existing picture may be replaced or removed (owners and managers). */
   canChange?: boolean;
+  /** The picture was filled in from the shared catalog and is not saved on this product yet. */
+  shared?: boolean;
   disabled?: boolean;
 }
 
@@ -32,6 +34,7 @@ export const ProductImagePicker: React.FC<ProductImagePickerProps> = ({
   draft,
   onChange,
   canChange = true,
+  shared = false,
   disabled,
 }) => {
   const { t } = useLanguage();
@@ -95,6 +98,7 @@ export const ProductImagePicker: React.FC<ProductImagePickerProps> = ({
       );
     }
     if (draft.kind === 'removed') return <span className="text-zinc-400">{t('productImage.willRemove')}</span>;
+    if (shared && shownPath) return <span className="text-zinc-400">{t('product.lookupSharedImageHint')}</span>;
     if (!shownPath) return <span className="text-zinc-500">{t('productImage.optional')}</span>;
     if (!saved.pending) {
       return (
@@ -148,6 +152,15 @@ export const ProductImagePicker: React.FC<ProductImagePickerProps> = ({
             ) : (
               !locked && (
                 <>
+                  <button
+                    type="button"
+                    onClick={() => cameraInput.current?.click()}
+                    disabled={disabled || isCompressing}
+                    className={`${smallButton} bg-emerald-600/15 border-emerald-500/30 text-emerald-300 hover:bg-emerald-600/25`}
+                  >
+                    <Camera className="w-4 h-4" />
+                    {t('productImage.takePhoto')}
+                  </button>
                   <button
                     type="button"
                     onClick={() => fileInput.current?.click()}
