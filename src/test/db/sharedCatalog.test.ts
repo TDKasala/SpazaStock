@@ -306,6 +306,58 @@ describe('shared catalog', () => {
     expect(other.product.name).not.toBe('Different rice');
   });
 
+  it('stores the first shared picture and leaves a later one alone', async () => {
+    const saved = await submit(owner, shop, '6009668781362', { p_name: 'Excella', p_category: 'groceries', p_brand: null });
+    const catalogId = saved.product.id;
+    const product = await rpc<{ id: string }>(pg, owner, 'upsert_product', {
+      p_id: randomUUID(),
+      p_shop_id: shop,
+      p_barcode: '6009668781362',
+      p_name: 'Excella',
+      p_category: 'groceries',
+      p_buying_price: null,
+      p_selling_price: null,
+      p_created_at: new Date().toISOString(),
+      p_catalog_product_id: catalogId,
+    });
+    const path = `catalog/${catalogId}.webp`;
+    await query(pg, 'service', `insert into storage.objects (bucket_id, name) values ('product-images', $1)`, [path]);
+
+    expect(await rpc<string>(pg, owner, 'set_catalog_image', {
+      p_shop_id: shop,
+      p_catalog_product_id: catalogId,
+      p_image_path: path,
+    })).toBe(path);
+
+    const otherPath = `catalog/${catalogId}.jpg`;
+    await query(pg, 'service', `insert into storage.objects (bucket_id, name) values ('product-images', $1)`, [otherPath]);
+    expect(await rpc<string>(pg, owner, 'set_catalog_image', {
+      p_shop_id: shop,
+      p_catalog_product_id: catalogId,
+      p_image_path: otherPath,
+    })).toBe(path);
+
+    expect(await errorCode(rpc(pg, otherOwner, 'set_catalog_image', {
+      p_shop_id: otherShop,
+      p_catalog_product_id: catalogId,
+      p_image_path: otherPath,
+    }))).toBe('42501');
+
+    expect(await errorCode(rpc(pg, outsider, 'set_catalog_image', {
+      p_shop_id: shop,
+      p_catalog_product_id: catalogId,
+      p_image_path: path,
+    }))).toBe('42501');
+
+    expect(await errorCode(rpc(pg, owner, 'set_catalog_image', {
+      p_shop_id: shop,
+      p_catalog_product_id: catalogId,
+      p_image_path: `catalog/${randomUUID()}.webp`,
+    }))).toBe('22023');
+
+    expect(product.id).toBeTruthy();
+  });
+
   it('does not let a shop member apply a verified correction', async () => {
     const refused = await rpc<{ ok: boolean; code: string }>(pg, owner, 'apply_catalog_correction', {
       p_correction_id: randomUUID(),

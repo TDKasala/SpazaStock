@@ -403,6 +403,7 @@ export const am: Translations = {
     lookupSuggestion: 'ዝርዝሮች ከክፍት የምግብ ካታሎግ ተጠቁመዋል። ያረጋግጡ፣ ከዚያ ይህን ዕቃ ወደ ሱቅዎ ለመጨመር ያስቀምጡ።',
     lookupSuggestedImageAlt: 'የተጠቆመ የዕቃ ፎቶ',
     lookupSuggestedImageHint: 'ይህ ፎቶ ለማጣቀሻ ብቻ ነው። ለሱቅዎ ለማስቀመጥ ከታች ፎቶ ያንሱ ወይም ይምረጡ።',
+    lookupSharedImageHint: 'ይህ ፎቶ ከዕቃው ጋር ይቀመጣል። ለመቀየር ከታች ሌላ ፎቶ ያንሱ ወይም ይምረጡ።',
     lookupSourceCatalog: 'እነዚህ ዝርዝሮች ከSpazaStock ካታሎግ ናቸው። ያረጋግጡ፣ ከዚያ ወደ ሱቅዎ ለመጨመር ያስቀምጡ።',
     lookupSourceOff: 'እነዚህ ዝርዝሮች ከOpen Food Facts ናቸው። ሊጎድሉ ወይም ሊሳሳቱ ይችላሉ። ከማስቀመጥዎ በፊት ያረጋግጡ።',
     lookupSourceManual: 'ይህ ባርኮድ በካታሎግ ውስጥ የለም። ምርቱን እርስዎ ያስገቡ። ማስቀመጥ ለሚቀጥለው ሱቅ ይረዳል።',

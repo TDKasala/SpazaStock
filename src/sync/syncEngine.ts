@@ -431,6 +431,10 @@ async function sendProductImage(
       // Ignored.
     }
   }
+  const local = await db.products.get(productId);
+  if (imagePath && local?.catalogProductId) {
+    await publishCatalogImage(client, item.shopId, local.catalogProductId, imagePath);
+  }
   return {
     kind: 'ok',
     apply: async () => {
@@ -438,6 +442,58 @@ async function sendProductImage(
       await putProductUnlessChangedLater(item, mapProductRow(result.product))();
     },
   };
+}
+
+/** Remembers that this phone has already published a catalog product's picture. */
+function catalogImageMetaKey(catalogId: string): string {
+  return `catalog-image:${catalogId}`;
+}
+
+/**
+ * Uploads this phone's picture to `catalog/<id>.webp` when the shared catalog has none yet.
+ * A failure does not undo the shop product; the next sync tries again.
+ */
+async function publishCatalogImage(
+  client: SupabaseClient,
+  shopId: string,
+  catalogId: string,
+  imagePath: string
+): Promise<void> {
+  if (await getMeta(catalogImageMetaKey(catalogId))) return;
+  try {
+    const image = await db.productImages.get(imagePath);
+    if (!image) return;
+    const ext = image.mimeType === 'image/jpeg' ? 'jpg' : 'webp';
+    const path = `catalog/${catalogId}.${ext}`;
+    const { error } = await client.storage.from(PRODUCT_IMAGE_BUCKET).upload(path, image.bytes, {
+      contentType: image.mimeType,
+      upsert: false,
+      cacheControl: '31536000',
+    });
+    if (error) {
+      const status = storageStatus(error as StorageErrorLike);
+      const duplicate = status === 409 || /already exists|duplicate/i.test(error.message);
+      if (!duplicate) return;
+    }
+    const { error: rpcError } = await client.rpc('set_catalog_image', {
+      p_shop_id: shopId,
+      p_catalog_product_id: catalogId,
+      p_image_path: path,
+    });
+    if (rpcError) return;
+    await setMeta(catalogImageMetaKey(catalogId), path);
+  } catch {
+    // The shop product is already saved. The next sync tries the shared picture again.
+  }
+}
+
+/** Publishes pictures for catalog products this phone already has, including ones saved before sharing existed. */
+async function publishLocalCatalogImages(client: SupabaseClient, shopId: string): Promise<void> {
+  const products = await db.products.where('shopId').equals(shopId).toArray();
+  for (const product of products) {
+    if (!product.catalogProductId || !product.imagePath) continue;
+    await publishCatalogImage(client, shopId, product.catalogProductId, product.imagePath);
+  }
 }
 
 /**
@@ -515,6 +571,7 @@ async function saveCatalogIdentity(
   }
 
   const canonical = mapProductRow(linked.data as Row);
+  if (product.imagePath) await publishCatalogImage(client, shopId, catalogId, product.imagePath);
   return {
     kind: 'ok',
     catalogId,
@@ -924,6 +981,7 @@ export async function pushOutbox(
   shopId: string,
   now: number = Date.now()
 ): Promise<PushResult> {
+  await publishLocalCatalogImages(client, shopId);
   const queued = await db.outbox.where('[shopId+status]').equals([shopId, 'pending']).sortBy('seq');
   const result: PushResult = { pushed: 0, failed: 0, retryAt: null };
 

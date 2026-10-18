@@ -401,6 +401,7 @@ export const en = {
     lookupSuggestion: 'Details suggested from an open food catalog. Check them, then save to add this product to your shop.',
     lookupSuggestedImageAlt: 'Suggested product picture',
     lookupSuggestedImageHint: 'Suggested picture for reference only. Take or choose a photo below to save one for your shop.',
+    lookupSharedImageHint: 'This picture is saved with the product. Take or choose another photo to replace it.',
     lookupSourceCatalog:
       'These details are from the SpazaStock catalog. Check them, then save to add this product to your shop.',
     lookupSourceOff:

@@ -7,11 +7,12 @@ import { Dialog } from '../ui/Dialog';
 import { Button } from '../ui/Button';
 import { ErrorMessage } from '../ui/ErrorMessage';
 import { createProduct, isArchived, normalizeBarcode, setProductArchived } from '../../services/productService';
-import { saveProductImage } from '../../services/productImageService';
+import { adoptCatalogImage, saveProductImage } from '../../services/productImageService';
 import { productFormFromSuggestion } from '../../services/productLookupService';
 import { can } from '../../lib/permissions';
 import type { CatalogSubmitPayload } from '../../lib/db';
 import { ProductImagePicker, UNCHANGED_IMAGE, type ImageDraft } from '../stock/ProductImagePicker';
+import { ProductThumbnail } from '../stock/ProductThumbnail';
 import {
   ProductFormFields,
   emptyProductForm,
@@ -105,6 +106,7 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
   if (!isOpen) return null;
 
   const suggestedImageUrl = suggestion?.imageUrl.value ?? null;
+  const sharedImagePath = catalog?.imagePath || null;
   const sourceKey =
     origin === 'catalog'
       ? 'product.lookupSourceCatalog'
@@ -166,6 +168,14 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
       let product = result.product;
       if (image.kind === 'new') {
         const saved = await saveProductImage(product.id, shopId, image.image).catch(() => null);
+        if (!saved?.product) {
+          setRegistered(product);
+          setServerError(t('productImage.saveFailed'));
+          return;
+        }
+        product = saved.product;
+      } else if (catalog?.imagePath) {
+        const saved = await adoptCatalogImage(product.id, shopId, catalog.imagePath);
         if (!saved?.product) {
           setRegistered(product);
           setServerError(t('productImage.saveFailed'));
@@ -250,7 +260,14 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
           </p>
         )}
 
-        {suggestedImageUrl && image.kind === 'unchanged' && (
+        {sharedImagePath && image.kind === 'unchanged' && (
+          <div className="flex items-center gap-3 p-2 rounded-xl bg-zinc-950 border border-zinc-800">
+            <ProductThumbnail path={sharedImagePath} size="md" alt={t('product.lookupSuggestedImageAlt')} />
+            <p className="text-[11px] text-zinc-400 leading-relaxed">{t('product.lookupSharedImageHint')}</p>
+          </div>
+        )}
+
+        {!sharedImagePath && suggestedImageUrl && image.kind === 'unchanged' && (
           <div className="flex items-center gap-3 p-2 rounded-xl bg-zinc-950 border border-zinc-800">
             <img
               src={suggestedImageUrl}

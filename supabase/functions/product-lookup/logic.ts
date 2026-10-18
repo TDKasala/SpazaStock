@@ -66,6 +66,7 @@ export interface CatalogMatch {
   unitBarcode: string | null;
   ingredients: string | null;
   imageUrl: string | null;
+  imagePath: string | null;
 }
 
 export interface ShopProductPayload {
@@ -378,6 +379,7 @@ export function suggestionFromCatalog(input: {
   category: ProductCategory;
   verificationStatus: CatalogVerification;
   imageUrl: string | null;
+  imagePath?: string | null;
   ingredients: string | null;
   packageQuantity: number | null;
   packageUnit: string | null;
@@ -389,7 +391,9 @@ export function suggestionFromCatalog(input: {
     size: field(input.size, input.size ? source : 'missing'),
     category: field(input.category, source),
     barcode: field(input.barcode, source),
-    imageUrl: field(input.imageUrl, input.imageUrl ? source : 'missing'),
+    imageUrl: input.imagePath && !input.imageUrl
+      ? { value: null, source }
+      : field(input.imageUrl, input.imageUrl ? source : 'missing'),
     packageQuantity: input.packageQuantity,
     packageUnit: input.packageUnit,
   };

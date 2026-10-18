@@ -164,7 +164,7 @@ async function findCatalogProduct(
     const { data: product } = await admin
       .from('catalog_products')
       .select(
-        'id, name, brand, category, package_size, package_quantity, package_unit, image_url, ingredients, verification_status'
+        'id, name, brand, category, package_size, package_quantity, package_unit, image_url, image_path, ingredients, verification_status'
       )
       .eq('id', link.catalog_product_id)
       .maybeSingle();
@@ -192,6 +192,7 @@ async function findCatalogProduct(
       unitBarcode: unit?.barcode ? String(unit.barcode) : null,
       ingredients: product.ingredients == null ? null : String(product.ingredients),
       imageUrl: product.image_url == null ? null : String(product.image_url),
+      imagePath: product.image_path == null ? null : String(product.image_path),
     };
     return {
       catalog,
@@ -203,6 +204,7 @@ async function findCatalogProduct(
         category: product.category as ProductCategory,
         verificationStatus,
         imageUrl: catalog.imageUrl,
+        imagePath: catalog.imagePath,
         ingredients: catalog.ingredients,
         packageQuantity: catalog.packageQuantity,
         packageUnit: catalog.packageUnit,

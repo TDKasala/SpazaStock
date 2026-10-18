@@ -405,6 +405,7 @@ export const so: Translations = {
     lookupSuggestedImageAlt: 'Sawirka alaabta ee la soo jeediyay',
     lookupSuggestedImageHint:
       'Sawirkan waa tixraac oo keliya. Qaado ama dooro sawir hoose si aad ugu kaydiso dukaankaaga.',
+    lookupSharedImageHint: 'Sawirkan waa la kaydiyaa alaabta. Qaado ama dooro mid kale hoose si aad u bedesho.',
     lookupSourceCatalog:
       'Faahfaahintan waxay ka timid liiska SpazaStock. Hubi, ka dibna kaydi si aad ugu darto dukaankaaga.',
     lookupSourceOff:

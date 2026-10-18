@@ -1,5 +1,6 @@
 import type { Product } from '../types';
 import { db, withWriteLock, type ProductImage } from '../lib/db';
+import { getSupabase } from '../lib/supabase';
 import { DEVICE_SHOP_ID } from '../lib/constants';
 import { emitDataChanged } from '../lib/events';
 import { newId } from '../lib/ids';
@@ -110,6 +111,36 @@ async function changeImage(
 /** Stores a compressed picture on the phone, shows it on the product and queues the upload. */
 export async function saveProductImage(productId: string, shopId: string, image: ImageBytes): Promise<ProductImageOutcome> {
   return changeImage(productId, shopId, await productImagePath(shopId, image), image);
+}
+
+/**
+ * Copies a shared catalog picture onto this shop's product. The shop keeps its own file;
+ * the catalog object stays shared. A failed download leaves the product without a picture.
+ */
+export async function adoptCatalogImage(
+  productId: string,
+  shopId: string,
+  sourcePath: string
+): Promise<ProductImageOutcome | null> {
+  if (!/^catalog\/[0-9a-f-]{36}\.(webp|jpg)$/i.test(sourcePath)) return null;
+  try {
+    let cached = await getCachedImage(sourcePath);
+    if (!cached) {
+      const client = getSupabase();
+      if (!client) return null;
+      const { data, error } = await client.storage.from(PRODUCT_IMAGE_BUCKET).download(sourcePath);
+      if (error || !data) return null;
+      const bytes = await data.arrayBuffer();
+      const mimeType = data.type === 'image/jpeg' ? 'image/jpeg' : 'image/webp';
+      await cacheImage(sourcePath, shopId, bytes, mimeType);
+      cached = await getCachedImage(sourcePath);
+      if (!cached) cached = { path: sourcePath, shopId, bytes, mimeType, pending: false, cachedAt: new Date().toISOString() };
+    }
+    if (cached.mimeType !== 'image/webp' && cached.mimeType !== 'image/jpeg') return null;
+    return saveProductImage(productId, shopId, { bytes: cached.bytes, mimeType: cached.mimeType });
+  } catch {
+    return null;
+  }
 }
 
 export async function removeProductImage(productId: string, shopId: string): Promise<ProductImageOutcome> {

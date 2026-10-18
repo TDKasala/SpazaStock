@@ -356,6 +356,8 @@ export interface CatalogMatch {
   unitBarcode: string | null;
   ingredients: string | null;
   imageUrl: string | null;
+  /** Shared picture in the product-images bucket (`catalog/<id>.webp`), when one has been published. */
+  imagePath?: string | null;
 }
 
 /** Payload from `product-lookup`. Soft-fail statuses still let the phone open manual registration. */

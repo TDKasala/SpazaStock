@@ -410,6 +410,8 @@ export const zu: Translations = {
     lookupSuggestedImageAlt: 'Isithombe somkhiqizo esiphakanyisiwe',
     lookupSuggestedImageHint:
       'Lesithombe siphakanyisiwe ukuze ubone kuphela. Thatha noma ukhethe isithombe ngezansi ukuze usigcine esitolo sakho.',
+    lookupSharedImageHint:
+      'Lesi sithombe sigcinwa nomkhiqizo. Thatha noma ukhethe esinye ngezansi ukuze usishintshe.',
     lookupSourceCatalog:
       'Le mininingwane ivela kuhlu lwemikhiqizo lwe-SpazaStock. Yihlole, bese uyilondoloza ukuze ingene esitolo sakho.',
     lookupSourceOff:

@@ -57,7 +57,11 @@ function normalizeLookupResult(data: ProductLookupResult): ProductLookupResult {
 
 function coerceCatalog(raw: CatalogMatch | undefined): CatalogMatch | undefined {
   if (!raw || typeof raw !== 'object' || !raw.id || !raw.verificationStatus || !raw.kind) return undefined;
-  return raw;
+  const record = raw as CatalogMatch & { image_path?: string | null };
+  return {
+    ...raw,
+    imagePath: record.imagePath ?? record.image_path ?? null,
+  };
 }
 
 /** Accepts camelCase from the Edge Function (and tolerates accidental snake_case). */

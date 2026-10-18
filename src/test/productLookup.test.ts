@@ -15,6 +15,7 @@ import {
   rateWindowStart,
   sameSellableUnit,
   shopBarcodeCandidates,
+  suggestionFromCatalog,
   suggestionFromShopProduct,
   type LookupSuggestion,
   type ShopProductPayload,
@@ -167,6 +168,24 @@ describe('product-lookup cache and form helpers', () => {
     expect(suggestion.name).toEqual({ value: 'Shop Coke', source: 'verified' });
     expect(suggestion.brand.source).toBe('verified');
     expect(suggestion.imageUrl.source).toBe('missing');
+  });
+
+  it('treats a shared catalog picture as present even without a web address', () => {
+    const suggestion = suggestionFromCatalog({
+      barcode: EAN13,
+      name: 'Excella',
+      brand: null,
+      size: null,
+      category: 'groceries',
+      verificationStatus: 'user_submitted',
+      imageUrl: null,
+      imagePath: 'catalog/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.webp',
+      ingredients: null,
+      packageQuantity: null,
+      packageUnit: null,
+    });
+    expect(suggestion.imageUrl.source).toBe('user');
+    expect(suggestion.imageUrl.value).toBeNull();
   });
 });
 
