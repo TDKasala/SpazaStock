@@ -24,8 +24,7 @@ function catalogDraft(
   input: { barcode: string; name: string; category: ProductCategory; brand: string | null; size: string | null },
   suggestion: ProductLookupSuggestion | null,
   catalog: CatalogMatch | null,
-  scannedBarcode: string,
-  ingredients: string
+  scannedBarcode: string
 ): Omit<CatalogSubmitPayload, 'productId'> {
   const sizeSame = (input.size ?? '').trim() === (suggestion?.size.value ?? '').trim();
   const image = suggestion?.imageUrl.value;
@@ -41,7 +40,7 @@ function catalogDraft(
     packageQuantity: sizeSame ? (suggestion?.packageQuantity ?? catalog?.packageQuantity ?? null) : null,
     packageUnit: sizeSame ? (suggestion?.packageUnit ?? catalog?.packageUnit ?? null) : null,
     imageUrl: image && image.startsWith('https://') ? image : null,
-    ingredients: ingredients.trim() || null,
+    ingredients: suggestion?.food?.ingredients.value?.trim() || null,
     packLink:
       catalog?.kind === 'pack' && units != null && units >= 2 && scanned && saved !== scanned
         ? { barcode: scanned, unitsPerPackage: units }
@@ -86,13 +85,11 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
   /** An archived product already uses the barcode: offer to restore it instead. */
   const [archivedMatch, setArchivedMatch] = useState<Product | null>(null);
   const [image, setImage] = useState<ImageDraft>(UNCHANGED_IMAGE);
-  const [ingredients, setIngredients] = useState('');
 
   React.useEffect(() => {
     if (!isOpen) return;
     const formBarcode = catalog?.kind === 'pack' && catalog.unitBarcode ? catalog.unitBarcode : initialBarcode;
     setValues(suggestion ? productFormFromSuggestion(formBarcode, suggestion) : emptyProductForm(initialBarcode));
-    setIngredients(suggestion?.food?.ingredients.value ?? '');
     setErrors({});
     setServerError(null);
     setArchivedMatch(null);
@@ -146,8 +143,7 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
           },
           suggestion,
           catalog,
-          initialBarcode,
-          ingredients
+          initialBarcode
         )
       );
       if (result.isDuplicate && result.product && isArchived(result.product)) {
@@ -252,18 +248,6 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
         />
 
         <ProductFormFields values={values} errors={errors} onChange={setValues} autoFocusName />
-
-        <label className="block text-left">
-          <span className="text-xs font-medium text-zinc-300">{t('product.ingredientsOptional')}</span>
-          <textarea
-            value={ingredients}
-            onChange={(e) => setIngredients(e.target.value)}
-            placeholder={t('product.ingredientsPlaceholder')}
-            maxLength={4000}
-            rows={2}
-            className="mt-1.5 w-full bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-xl px-3.5 py-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
-          />
-        </label>
 
         {onLinkExisting && (
           <Button type="button" variant="ghost" size="sm" className="w-full" onClick={onLinkExisting} disabled={isSubmitting}>
