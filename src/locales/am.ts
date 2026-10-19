@@ -70,6 +70,7 @@ export const am: Translations = {
     signOutPendingConfirm:
       '{{count}} ለውጥ(ዎች) ገና አልተመሳሰሉም፤ አሁን ከወጡ ይጠፋሉ። ቢሆንም መውጣት ይፈልጋሉ?',
     idleSignedOut: 'ከ30 ደቂቃ እንቅስቃሴ አልባነት በኋላ ወጥተዋል።',
+    shopSuspended: 'ይህ ሱቅ ታግዷል። ሱቁ እስኪከፈት ድረስ መግባት አይችሉም።',
     errors: {
       invalidEmail: 'እባክዎ ትክክለኛ የኢሜይል አድራሻ ያስገቡ።',
       passwordRequired: 'እባክዎ የይለፍ ቃልዎን ያስገቡ።',

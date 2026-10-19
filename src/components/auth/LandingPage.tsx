@@ -19,6 +19,7 @@ import { PWAInstallBanner } from '../pwa/PWAInstallBanner';
 import { AppWhatsAppInvite } from '../pwa/AppWhatsAppInvite';
 import { usePWAInstall } from '../../hooks/usePWAInstall';
 import { takeIdleSignOutNotice } from '../../lib/idleSignOut';
+import { takeSuspendedSignInNotice } from '../../lib/suspendedSignIn';
 import { takeSignInScreenRequest } from '../../lib/signInRedirect';
 import { FeatureGlyph, LandingMark, type FeatureArtKind } from './LandingArt';
 import './styles/landing-page.css';
@@ -59,6 +60,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ notConfigured = false 
   const { t } = useLanguage();
   const { needsInstallPrompt } = usePWAInstall();
   const [idleNotice] = useState(takeIdleSignOutNotice);
+  const [shopSuspended] = useState(takeSuspendedSignInNotice);
   const [view, setView] = useState<SignInView>('password');
   const [authPanelOpen, setAuthPanelOpen] = useState(takeSignInScreenRequest);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -87,6 +89,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ notConfigured = false 
           {subtitle && <p className="text-xs text-zinc-400 mt-1 leading-relaxed">{subtitle}</p>}
         </div>
       </div>
+      {shopSuspended && <ErrorMessage variant="error" message={t('auth.shopSuspended')} />}
       {children}
     </>
   );
@@ -125,6 +128,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ notConfigured = false 
             <p className="landing-description">{t('landing.intro')}</p>
 
             {idleNotice && <ErrorMessage variant="info" message={t('auth.idleSignedOut')} />}
+            {shopSuspended && !authPanelOpen && <ErrorMessage variant="error" message={t('auth.shopSuspended')} />}
 
             {notConfigured ? (
               <ErrorMessage

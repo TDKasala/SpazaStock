@@ -70,6 +70,7 @@ export const zu: Translations = {
     signOutPendingConfirm:
       'Izinguquko eziyi-{{count}} azikaxhunyaniswa futhi zizolahleka uma uphuma manje. Uqinisekile ukuthi ufuna ukuphuma?',
     idleSignedOut: 'Uphume ngemva kwemizuzu engama-30 ngaphandle kokuthinta noma ukuthayipha.',
+    shopSuspended: 'Lesi sitolo simisiwe. Awukwazi ukungena kuze sivulwe futhi.',
     errors: {
       invalidEmail: 'Sicela ufake ikheli le-imeyili elifanele.',
       passwordRequired: 'Sicela ufake iphasiwedi yakho.',

@@ -52,3 +52,17 @@ export function revokedShops(cached: readonly Shop[], fresh: readonly Shop[]): S
 export function pickShop(shops: readonly Shop[], preferredId: string | null): Shop | null {
   return shops.find((s) => s.id === preferredId) ?? shops[0] ?? null;
 }
+
+export function isShopSuspended(shop: Shop): boolean {
+  return shop.status === 'suspended';
+}
+
+/** Shops the signed-in person may open. A suspended shop is not one of them. */
+export function openableShops(shops: readonly Shop[]): Shop[] {
+  return shops.filter((shop) => !isShopSuspended(shop));
+}
+
+/** True when the account has shops and every one of them is suspended. */
+export function signInDenied(shops: readonly Shop[]): boolean {
+  return shops.length > 0 && shops.every(isShopSuspended);
+}

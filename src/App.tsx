@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { LanguageProvider, useLanguage } from './context/LanguageContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ShopProvider, useShop, useShopId } from './context/ShopContext';
@@ -39,6 +39,7 @@ import { refreshPushSubscription } from './lib/push';
 import { captureInviteFromUrl } from './lib/invite';
 import { can } from './lib/permissions';
 import { clearFreshSignIn, hasFreshSignIn, postSignInDestination } from './lib/platformAdmin';
+import { markSuspendedSignInDenied } from './lib/suspendedSignIn';
 import type { CatalogMatch, Product, ProductLookupResult, ProductLookupSuggestion, ResolvedBarcode, ScanMode } from './types';
 
 // The scanner (and its WASM decoder fallback) is only needed once the camera opens.
@@ -417,8 +418,18 @@ function FullScreenLoading() {
 }
 
 function ShopGate() {
-  const { shop, isLoading } = useShop();
-  if (isLoading) return <FullScreenLoading />;
+  const { shop, isLoading, accessDenied } = useShop();
+  const { signOut } = useAuth();
+  const signingOut = useRef(false);
+
+  useEffect(() => {
+    if (!accessDenied || signingOut.current) return;
+    signingOut.current = true;
+    markSuspendedSignInDenied();
+    void signOut();
+  }, [accessDenied, signOut]);
+
+  if (isLoading || accessDenied) return <FullScreenLoading />;
   if (!shop) return <ShopOnboarding />;
   // Keyed by shop so switching shops restarts sync and resets every screen.
   return (

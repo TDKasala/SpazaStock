@@ -6,7 +6,7 @@ import { DEVICE_SHOP_ID } from '../lib/constants';
 import { clearShopData } from '../lib/db';
 import { isValidTimezone, normalizeReminderDays } from '../lib/expiry';
 import { getShopSettings, sanitizeShopSettings, saveShopSettings } from '../lib/shopSettings';
-import { pickShop, revokedShops, shopFromRow, type ShopRow } from '../lib/shopList';
+import { openableShops, pickShop, revokedShops, shopFromRow, signInDenied, type ShopRow } from '../lib/shopList';
 import type { NewShopInput } from '../lib/shopDetails';
 import { emitDataChanged } from '../lib/events';
 import { useAuth } from './AuthContext';
@@ -24,6 +24,8 @@ interface ShopContextValue {
   error: string | null;
   /** Names of shops whose access ended since the last check; their data has been cleared. */
   revokedShopNames: string[];
+  /** Every shop on the account is suspended, so sign-in must stop. */
+  accessDenied: boolean;
   dismissRevoked: () => void;
   createShop: (input: NewShopInput) => Promise<{ error?: string }>;
   switchShop: (shopId: string) => void;
@@ -83,11 +85,13 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState(mode === 'cloud');
   const [error, setError] = useState<string | null>(null);
   const [revokedShopNames, setRevokedShopNames] = useState<string[]>([]);
+  const [membershipReady, setMembershipReady] = useState(mode !== 'cloud');
   const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     if (mode === 'device') {
       setIsLoading(false);
+      setMembershipReady(true);
       // Device-only settings live on the phone.
       void getShopSettings(DEVICE_SHOP_ID).then((s) =>
         setShops([{ ...DEVICE_SHOP, timezone: s.timezone, reminderDays: s.reminderDays, role: 'owner', isAccountOwner: true }])
@@ -98,6 +102,7 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!supabase || !userId) {
       setShops([]);
       setIsLoading(false);
+      setMembershipReady(true);
       return;
     }
 
@@ -106,19 +111,24 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setShops(cached);
     setSelectedId(readSelectedShopId(userId));
     setError(null);
+    setMembershipReady(false);
 
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       setIsLoading(false);
+      setMembershipReady(true);
       if (cached.length === 0) setError('offline');
       return;
     }
 
-    setIsLoading(cached.length === 0);
+    // A cached list of only suspended shops stays on the loading screen until the server answers,
+    // so a shop that was just reactivated is not refused from stale data.
+    setIsLoading(cached.length === 0 || signInDenied(cached));
     const load = async () => {
       const { data, error: queryError } = await supabase.rpc('my_shops');
       if (!active) return;
       if (queryError) {
         if (cached.length === 0) setError(queryError.message);
+        setMembershipReady(true);
         setIsLoading(false);
         return;
       }
@@ -136,6 +146,7 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       writeCachedShops(userId, fresh);
       setShops(fresh);
+      setMembershipReady(true);
       setIsLoading(false);
     };
     void load();
@@ -145,7 +156,9 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [mode, userId, reloadToken]);
 
-  const shop = useMemo(() => pickShop(shops, selectedId), [shops, selectedId]);
+  const availableShops = useMemo(() => openableShops(shops), [shops]);
+  const shop = useMemo(() => pickShop(availableShops, selectedId), [availableShops, selectedId]);
+  const accessDenied = membershipReady && signInDenied(shops);
   const shopId = shop?.id ?? null;
 
   useEffect(() => {
@@ -172,7 +185,7 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const switchShop = useCallback(
     (nextId: string) => {
-      if (!shops.some((s) => s.id === nextId)) return;
+      if (!openableShops(shops).some((s) => s.id === nextId)) return;
       if (userId) rememberSelectedShop(userId, nextId);
       setSelectedId(nextId);
     },
@@ -242,18 +255,32 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const value = useMemo(
     () => ({
       shop,
-      shops,
+      shops: availableShops,
       settings,
       isLoading,
       error,
       revokedShopNames,
+      accessDenied,
       dismissRevoked,
       createShop,
       switchShop,
       updateAlertSettings,
       reload,
     }),
-    [shop, shops, settings, isLoading, error, revokedShopNames, dismissRevoked, createShop, switchShop, updateAlertSettings, reload]
+    [
+      shop,
+      availableShops,
+      settings,
+      isLoading,
+      error,
+      revokedShopNames,
+      accessDenied,
+      dismissRevoked,
+      createShop,
+      switchShop,
+      updateAlertSettings,
+      reload,
+    ]
   );
 
   return <ShopContext.Provider value={value}>{children}</ShopContext.Provider>;

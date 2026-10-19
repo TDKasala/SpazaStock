@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { LandingPage } from '../components/auth/LandingPage';
 import { LanguageProvider } from '../context/LanguageContext';
 import { requestSignInScreen, takeSignInScreenRequest } from '../lib/signInRedirect';
+import { markSuspendedSignInDenied } from '../lib/suspendedSignIn';
 
 vi.mock('../context/AuthContext', () => ({
   useAuth: () => ({
@@ -55,5 +56,19 @@ describe('sign-in redirect', () => {
     });
     expect(container.textContent).toContain('Password');
     expect(container.querySelector('input[autocomplete="current-password"]')).toBeTruthy();
+  });
+
+  it('shows a message when sign-in was refused because the shop is suspended', async () => {
+    markSuspendedSignInDenied();
+    requestSignInScreen();
+    await act(async () => {
+      root.render(
+        <LanguageProvider>
+          <LandingPage />
+        </LanguageProvider>
+      );
+    });
+    expect(container.textContent).toContain('This shop is suspended');
+    expect(container.textContent).toContain('You cannot sign in until it is reactivated.');
   });
 });

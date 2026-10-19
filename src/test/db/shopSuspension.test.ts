@@ -111,11 +111,12 @@ describe('suspending a shop', () => {
     expect(audit).toHaveLength(1);
     expect(audit[0]).toMatchObject({ shop_id: shop, reason: REASON, details: { before: 'active', after: 'suspended' } });
 
-    const notified = await pg.query<{ user_id: string }>(
-      `select user_id from public.notifications where shop_id = $1 and type = 'system' and data->>'kind' = 'shop_status'`,
+    const notified = await pg.query<{ user_id: string; body: string }>(
+      `select user_id, body from public.notifications where shop_id = $1 and type = 'system' and data->>'kind' = 'shop_status'`,
       [shop]
     );
     expect(notified.rows.map((r) => r.user_id).sort()).toEqual([owner.id, manager.id].sort());
+    expect(notified.rows[0].body).toContain('Sign-in is refused');
   });
 
   it('hides who suspended the shop and why from shop members', async () => {

@@ -259,7 +259,7 @@ export const adminEn = {
     reactivate: 'Reactivate shop',
     suspendTitle: 'Suspend {{name}}?',
     suspendDescription:
-      'Members can still sign in and view their data, but every change is refused until the shop is reactivated. Changes made offline stay on their phones. Owners and managers are notified.',
+      'Members cannot sign in to this shop until it is reactivated. If this is their only shop, sign-in is refused and they see a message. Changes made offline stay on their phones. Owners and managers are notified.',
     reactivateTitle: 'Reactivate {{name}}?',
     reactivateDescription: 'Members can make changes again and waiting changes will sync. Owners and managers are notified.',
     suspended: 'Shop suspended.',

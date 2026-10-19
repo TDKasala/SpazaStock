@@ -68,6 +68,7 @@ export const en = {
     signOutPendingConfirm:
       '{{count}} change(s) have not synced yet and will be lost if you sign out now. Sign out anyway?',
     idleSignedOut: 'You were signed out after 30 minutes with no activity.',
+    shopSuspended: 'This shop is suspended. You cannot sign in until it is reactivated.',
     errors: {
       invalidEmail: 'Please enter a valid email address.',
       passwordRequired: 'Please enter your password.',

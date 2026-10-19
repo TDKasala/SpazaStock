@@ -71,6 +71,7 @@ export const bn: Translations = {
     signOutPendingConfirm:
       '{{count}}টি পরিবর্তন এখনও সিঙ্ক হয়নি; সাইন আউট করলে হারিয়ে যাবে। তবু সাইন আউট করবেন?',
     idleSignedOut: '৩০ মিনিট কোনো কাজ না করায় আপনাকে সাইন আউট করা হয়েছে।',
+    shopSuspended: 'এই দোকান স্থগিত। আবার চালু না হওয়া পর্যন্ত সাইন ইন করা যাবে না।',
     errors: {
       invalidEmail: 'সঠিক ইমেইল ঠিকানা লিখুন।',
       passwordRequired: 'পাসওয়ার্ড লিখুন।',

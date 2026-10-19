@@ -23,7 +23,7 @@ import {
   readPendingInvite,
   whatsappShareUrl,
 } from '../lib/invite';
-import { pickShop, revokedShops, shopFromRow } from '../lib/shopList';
+import { openableShops, pickShop, revokedShops, shopFromRow, signInDenied } from '../lib/shopList';
 import { inviteErrorKey, teamErrorKey, type MemberStatus, type MembershipAction } from '../services/teamService';
 import { clearShopData, db, getMeta, resetLocalDatabase, setMeta } from '../lib/db';
 import { en } from '../locales/en';
@@ -221,6 +221,17 @@ describe('shop list', () => {
     expect(pickShop([a, b], 'gone')).toBe(a);
     expect(pickShop([a, b], null)).toBe(a);
     expect(pickShop([], 'b')).toBeNull();
+  });
+
+  it('refuses sign-in only when every shop is suspended', () => {
+    const suspended = { ...a, status: 'suspended' as const };
+    const active = { ...b, status: 'active' as const };
+    expect(signInDenied([suspended])).toBe(true);
+    expect(signInDenied([suspended, { ...active, status: 'suspended' }])).toBe(true);
+    expect(signInDenied([suspended, active])).toBe(false);
+    expect(signInDenied([])).toBe(false);
+    expect(signInDenied([a])).toBe(false);
+    expect(openableShops([suspended, active])).toEqual([active]);
   });
 });
 

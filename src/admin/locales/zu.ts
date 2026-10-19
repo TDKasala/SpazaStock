@@ -261,7 +261,7 @@ export const adminZu: AdminTranslations = {
     reactivate: 'Vula isitolo futhi',
     suspendTitle: 'Misa i-{{name}}?',
     suspendDescription:
-      'Amalungu angakwazi ukungena futhi abone idatha yawo, kodwa zonke izinguquko ziyenqatshwa size isitolo sivulwe futhi. Izinguquko ezenziwe ngaphandle kwe-inthanethi zihlala emafonini abo. Abanikazi nabaphathi bayaziswa.',
+      'Amalungu awakwazi ukungena kulesi sitolo size sivulwe futhi. Uma yiso kuphela isitolo sabo, ukungena kwenqatshwa futhi babone umyalezo. Izinguquko ezenziwe ngaphandle kwe-inthanethi zihlala emafonini abo. Abanikazi nabaphathi bayaziswa.',
     reactivateTitle: 'Vula i-{{name}} futhi?',
     reactivateDescription: 'Amalungu angakwazi ukwenza izinguquko futhi, nezinguquko ezilindile zizovumelaniswa. Abanikazi nabaphathi bayaziswa.',
     suspended: 'Isitolo simisiwe.',
