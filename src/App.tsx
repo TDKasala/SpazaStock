@@ -40,6 +40,8 @@ import { captureInviteFromUrl } from './lib/invite';
 import { can } from './lib/permissions';
 import { clearFreshSignIn, hasFreshSignIn, postSignInDestination } from './lib/platformAdmin';
 import type { CatalogMatch, Product, ProductLookupResult, ProductLookupSuggestion, ResolvedBarcode, ScanMode } from './types';
+import { parseGs1 } from './lib/barcode/gs1';
+import { playScanBeep, vibrateScan } from './lib/barcode/feedback';
 
 // The scanner (and its WASM decoder fallback) is only needed once the camera opens.
 const BarcodeScannerModal = lazy(() =>
@@ -68,6 +70,11 @@ interface RegisterRequest {
 interface StockInVia {
   packagingId: string | null;
   barcodeId: string | null;
+}
+
+interface StockInPrefill {
+  expiryDate: string | null;
+  lotNumber: string | null;
 }
 
 /** Notifications open the app at `/?tab=alerts`. */
@@ -112,6 +119,7 @@ export function AppContent() {
   const [registerRequest, setRegisterRequest] = useState<RegisterRequest | null>(null);
   const [stockInProduct, setStockInProduct] = useState<Product | null>(null);
   const [stockInVia, setStockInVia] = useState<StockInVia | null>(null);
+  const [stockInPrefill, setStockInPrefill] = useState<StockInPrefill | null>(null);
   const [unknownStockBarcode, setUnknownStockBarcode] = useState<string | null>(null);
   const [linkBarcode, setLinkBarcode] = useState<string | null>(null);
   const [inspectedProduct, setInspectedProduct] = useState<Product | null>(null);
@@ -120,6 +128,7 @@ export function AppContent() {
 
   const openStockIn = useCallback((product: Product, via: StockInVia | null = null) => {
     setStockInVia(via);
+    setStockInPrefill((prev) => prev); // keep last prefill by default; cleared when closing
     setStockInProduct(product);
   }, []);
 
@@ -194,9 +203,23 @@ export function AppContent() {
   const handleBarcodeScanned = async (barcode: string) => {
     const mode = scanMode ?? 'lookup';
 
+    // Parse GS1 element string for GTIN/expiry/lot; fall back to plain code unchanged.
+    const parsed = parseGs1(barcode);
+    let lookupCodes: string[] = [];
+    let prefillExpiry: string | null = null;
+    let prefillLot: string | null = null;
+    if (parsed.kind === 'gs1') {
+      lookupCodes = parsed.lookupBarcodes;
+      prefillExpiry = parsed.expiry;
+      prefillLot = parsed.lot ?? null;
+    } else {
+      lookupCodes = [barcode.trim()];
+    }
+
     if (mode === 'sell') {
       setCurrentTab('sales');
-      await saleRegister.stageBarcode(barcode);
+      // For GS1, prefer the GTIN candidate.
+      await saleRegister.stageBarcode(lookupCodes[0] ?? '');
       return;
     }
 
@@ -204,10 +227,31 @@ export function AppContent() {
 
     setIsSearching(true);
     try {
-      const resolved = await resolveBarcode(barcode, shopId);
-      if (!resolved) await openRegister(barcode, mode);
+      let resolved: ResolvedBarcode | null = null;
+      for (const candidate of lookupCodes) {
+        // Stop at the first match; candidates are ordered by specificity.
+        // eslint-disable-next-line no-await-in-loop
+        const r = await resolveBarcode(candidate, shopId);
+        if (r) {
+          resolved = r;
+          break;
+        }
+      }
+      if (!resolved) {
+        // Unknown: keep the most human-friendly code for registration (prefer EAN-13 if we have it).
+        const regCode = lookupCodes.find((c) => c.length === 13) ?? lookupCodes[0] ?? barcode;
+        await openRegister(regCode, mode);
+        // Error feedback for an unknown code in immediate stock-in.
+        if (mode === 'stock_in') vibrateScan([70, 40, 40]);
+      }
       else if (mode === 'stock_in' && !isArchived(resolved.product)) openStockInResolved(resolved);
       else setFoundProduct(resolved.product);
+      if (resolved && mode === 'stock_in') {
+        // Prefill GS1 expiry/lot for the stock-in modal.
+        setStockInPrefill({ expiryDate: prefillExpiry, lotNumber: prefillLot });
+        playScanBeep();
+        vibrateScan(50);
+      }
     } finally {
       setIsSearching(false);
     }
@@ -247,6 +291,11 @@ export function AppContent() {
             onOpenScanner={() => openScanner('stock_in')}
             onSelectProduct={setInspectedProduct}
             onQuickStockIn={openStockIn}
+            onHardwareScan={(code) => {
+              // Route HID scan into the same flow as camera scans in stock-in mode.
+              setScanMode(null);
+              void handleBarcodeScanned(code);
+            }}
             refreshTrigger={refreshCounter}
           />
         )}
@@ -377,6 +426,8 @@ export function AppContent() {
         product={stockInProduct}
         packagingId={stockInVia?.packagingId ?? null}
         barcodeId={stockInVia?.barcodeId ?? null}
+        prefillExpiryDate={stockInPrefill?.expiryDate ?? null}
+        prefillLotNumber={stockInPrefill?.lotNumber ?? null}
         onClose={() => setStockInProduct(null)}
         onStockInAnother={() => {
           setStockInProduct(null);

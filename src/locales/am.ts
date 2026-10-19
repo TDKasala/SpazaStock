@@ -633,6 +633,7 @@ export const am: Translations = {
     packagesLabel: 'የጥቅሎች ብዛት ({{pack}})',
     equalsUnits: '= {{count}} ዕቃዎች',
     addedPackages: '{{count}} × {{pack}} = {{units}} ዕቃዎች',
+    lotOptional: 'ሎት/ባች ቁጥር (አማራጭ)',
   },
   expiry: {
     alertsTitle: 'የማብቂያ ቀን ማንቂያዎች',
@@ -799,5 +800,18 @@ export const am: Translations = {
     generic: 'ያልተጠበቀ ስህተት ተፈጥሯል።',
     networkOffline: 'ከመስመር ውጭ ነዎት። የሚያደርጉት ሁሉ በዚህ ስልክ ላይ ይቀመጣል፤ እንደገና ሲገናኙ ይመሳሰላል።',
     invalidNumber: 'እባክዎ ትክክለኛ የዋጋ መጠን ያስገቡ።',
+  },
+  scannerTest: {
+    cardTitle: 'ስካነርዎን ይፈትሹ',
+    cardSubtitle: 'ስካነሩ ምን እንደሚጻፍ ይመልከቱ እና መጀመሪያ ምክሮች ያግኙ',
+    open: 'ክፈት',
+    title: 'ስካነር ፈተና',
+    subtitle: 'ስካነሩን ወደ Keyboard/HID ሁነታ ያቀዱ እና ኮድ ይስካኑ።',
+    rawInput: 'ነጻ ጽሑፍ (የማይታዩ ቁምፊዎች <GS> እንደሚባሉ ይታያሉ):',
+    tipsTitle: 'ምክሮች',
+    tipHid: 'ስካነሩን ወደ Keyboard/HID ሁነታ ያቀዱ (Bluetooth LE / መተግበሪያ ሁነታ አይደለም)።',
+    tipChrome: 'በAndroid ላይ Google Chrome ይጠቀሙ ምርጥ ውጤት ያገኙ።',
+    tipIos: 'በiPhone ላይ የሃርድዌር ስካነሮች በSafari እና በመተግበሪያዎች ውስጥ ብቻ በተሻለ ሁኔታ ይሰሩ፣ ሁሉም PWA አይደግፉም።',
+    plain: 'መደበኛ ባርኮድ፦ {{code}}',
   },
 };

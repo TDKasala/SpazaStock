@@ -637,6 +637,7 @@ export const en = {
     packagesLabel: 'Number of packs ({{pack}})',
     equalsUnits: '= {{count}} units',
     addedPackages: '{{count}} × {{pack}} = {{units}} units',
+    lotOptional: 'Lot/batch number (optional)',
   },
   expiry: {
     alertsTitle: 'Expiry Alerts',
@@ -803,6 +804,19 @@ export const en = {
     generic: 'An unexpected error occurred.',
     networkOffline: 'You are offline. Everything you do is saved on this phone and will sync when you reconnect.',
     invalidNumber: 'Please enter a valid price amount.',
+  },
+  scannerTest: {
+    cardTitle: 'Test your scanner',
+    cardSubtitle: 'See what your scanner types and get setup tips',
+    open: 'Open',
+    title: 'Test your scanner',
+    subtitle: 'Put your scanner in keyboard (HID) mode and scan a code.',
+    rawInput: 'Raw input (invisible characters shown as <GS>):',
+    tipsTitle: 'Tips',
+    tipHid: 'Set the scanner to Keyboard/HID mode (not Bluetooth LE / app mode).',
+    tipChrome: 'Use Google Chrome on Android for the best results.',
+    tipIos: 'On iPhone, hardware scanners only work reliably inside Safari and apps, not all PWAs.',
+    plain: 'Plain barcode: {{code}}',
   },
 };
 

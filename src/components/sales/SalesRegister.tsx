@@ -12,6 +12,8 @@ import { getProducts } from '../../services/productService';
 import { getProductTotalStock } from '../../services/stockService';
 import { newId } from '../../lib/ids';
 import type { SaleRegister } from '../../hooks/useSaleRegister';
+import { ScanInput } from '../scanner/ScanInput';
+import { attachGlobalHidListener } from '../../lib/scanner/hid';
 
 export interface SalesRegisterProps {
   register: SaleRegister;
@@ -24,7 +26,7 @@ const PAGE_SIZE = 15;
 export const SalesRegister: React.FC<SalesRegisterProps> = ({ register, onOpenScanner, refreshTrigger }) => {
   const { t } = useLanguage();
   const shopId = useShopId();
-  const { lastSaleResult, error, isProcessing, sellProduct, clearError, syncStates } = register;
+  const { lastSaleResult, error, isProcessing, sellProduct, sellBarcode, clearError, syncStates } = register;
 
   const [recentSales, setRecentSales] = useState<Sale[]>([]);
   const [page, setPage] = useState(0);
@@ -37,6 +39,17 @@ export const SalesRegister: React.FC<SalesRegisterProps> = ({ register, onOpenSc
   const [adjustAvailableStock, setAdjustAvailableStock] = useState(0);
   const [adjustKey, setAdjustKey] = useState('');
   const [adjustError, setAdjustError] = useState<string | null>(null);
+
+  // Page-level HID listener: treat a fast burst ending in Enter as a scan even without focus.
+  useEffect(() => {
+    return attachGlobalHidListener(
+      (code) => {
+        void sellBarcode(code);
+      },
+      { active: true, feedback: false }
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [register]);
 
   useEffect(() => {
     let cancelled = false;
@@ -106,6 +119,16 @@ export const SalesRegister: React.FC<SalesRegisterProps> = ({ register, onOpenSc
       <div>
         <h2 className="text-lg font-bold text-zinc-100">{t('sales.title')}</h2>
         <p className="text-xs text-zinc-400">{t('sales.subtitle')}</p>
+      </div>
+
+      <div className="p-4 bg-zinc-900/60 rounded-2xl border border-zinc-800 space-y-2">
+        <ScanInput
+          onScan={(code) => {
+            void sellBarcode(code);
+          }}
+          label={t('sales.scanToSell')}
+          placeholder={t('scanner.manualEntryPlaceholder')}
+        />
       </div>
 
       <div className="p-5 bg-gradient-to-br from-zinc-900 via-zinc-950 to-zinc-900 rounded-3xl border border-zinc-800 shadow-xl space-y-4">

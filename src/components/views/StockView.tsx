@@ -9,6 +9,8 @@ import { getAllProductsStockSummary } from '../../services/stockService';
 import { getArchivedProducts, setProductArchived } from '../../services/productService';
 import { can } from '../../lib/permissions';
 import { StockProductCard } from '../stock/StockProductCard';
+import { ScanInput } from '../scanner/ScanInput';
+import { attachGlobalHidListener } from '../../lib/scanner/hid';
 
 const PAGE_SIZE = 15;
 
@@ -16,6 +18,8 @@ export interface StockViewProps {
   onOpenScanner: () => void;
   onSelectProduct: (product: Product) => void;
   onQuickStockIn: (product: Product) => void;
+  /** Called when a hardware scanner burst is detected (GS1 element string or plain EAN/UPC). */
+  onHardwareScan?: (barcode: string) => void;
   refreshTrigger?: number;
 }
 
@@ -23,6 +27,7 @@ export const StockView: React.FC<StockViewProps> = ({
   onOpenScanner,
   onSelectProduct,
   onQuickStockIn,
+  onHardwareScan,
   refreshTrigger,
 }) => {
   const { t } = useLanguage();
@@ -35,6 +40,12 @@ export const StockView: React.FC<StockViewProps> = ({
   const [showArchived, setShowArchived] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [page, setPage] = useState(0);
+
+  // Page-level HID listener in Stock view.
+  useEffect(() => {
+    if (!onHardwareScan) return;
+    return attachGlobalHidListener((code) => onHardwareScan(code), { active: true, feedback: false });
+  }, [onHardwareScan]);
 
   useEffect(() => {
     let cancelled = false;
@@ -83,6 +94,13 @@ export const StockView: React.FC<StockViewProps> = ({
       </div>
 
       <div className="flex items-center gap-2">
+        {onHardwareScan && (
+          <ScanInput
+            onScan={(code) => onHardwareScan(code)}
+            label={t('scanner.manualEntryTitle')}
+            placeholder={t('scanner.manualEntryPlaceholder')}
+          />
+        )}
         <Input
           placeholder={t('stock.searchPlaceholder')}
           value={searchTerm}

@@ -651,6 +651,7 @@ export const zu: Translations = {
     packagesLabel: 'Inani lamaphakethe ({{pack}})',
     equalsUnits: '= izingcezu ezingu-{{count}}',
     addedPackages: '{{count}} × {{pack}} = izingcezu ezingu-{{units}}',
+    lotOptional: 'Inombolo ye-lot/ibhetshi (ngokuzithandela)',
   },
   expiry: {
     alertsTitle: 'Izexwayiso Zokuphelelwa Isikhathi',
@@ -818,5 +819,18 @@ export const zu: Translations = {
     networkOffline:
       'Awuxhumekile ku-inthanethi. Konke okwenzayo kugcinwa kule foni futhi kuzoxhunyaniswa uma usuxhumekile.',
     invalidNumber: 'Sicela ufake inani lentengo elifanele.',
+  },
+  scannerTest: {
+    cardTitle: 'Hlola isikena sakho',
+    cardSubtitle: 'Bona ukuthi isikena sakho sithayipha ini futhi uthole amathiphu',
+    open: 'Vula',
+    title: 'Hlola isikena',
+    subtitle: 'Beka isikena ku-Keyboard/HID bese uskena ikhodi.',
+    rawInput: 'Okokufaka okumsulwa (izinhlamvu ezingabonakali ziboniswa njenge <GS>):',
+    tipsTitle: 'Amathiphu',
+    tipHid: 'Setha isikena ku-Keyboard/HID (hhayi i-Bluetooth LE / imodi yohlelo).',
+    tipChrome: 'Sebenzisa i-Google Chrome ku-Android ukuze uthole umphumela ongcono.',
+    tipIos: 'Ku-iPhone, izikena zehadiwe zisebenza kahle eSafari nasezinhlelweni kuphela, hhayi kuzo zonke i-PWA.',
+    plain: 'Ibhakhodi elijwayelekile: {{code}}',
   },
 };

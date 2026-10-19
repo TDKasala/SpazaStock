@@ -635,6 +635,7 @@ export const bn: Translations = {
     packagesLabel: 'প্যাকের সংখ্যা ({{pack}})',
     equalsUnits: '= {{count}} ইউনিট',
     addedPackages: '{{count}} × {{pack}} = {{units}} ইউনিট',
+    lotOptional: 'লট/ব্যাচ নম্বর (ঐচ্ছিক)',
   },
   expiry: {
     alertsTitle: 'মেয়াদ সতর্কতা',
@@ -801,5 +802,18 @@ export const bn: Translations = {
     generic: 'অপ্রত্যাশিত ত্রুটি হয়েছে।',
     networkOffline: 'আপনি অফলাইন। সব কাজ এই ফোনে সংরক্ষিত; পুনরায় সংযুক্ত হলে সিঙ্ক হবে।',
     invalidNumber: 'সঠিক মূল্য লিখুন।',
+  },
+  scannerTest: {
+    cardTitle: 'আপনার স্ক্যানার পরীক্ষা করুন',
+    cardSubtitle: 'স্ক্যানার কী টাইপ করে দেখুন এবং সেটআপ টিপস নিন',
+    open: 'খুলুন',
+    title: 'স্ক্যানার পরীক্ষা',
+    subtitle: 'স্ক্যানারকে Keyboard/HID মোডে দিয়ে একটি কোড স্ক্যান করুন।',
+    rawInput: 'কাঁচা ইনপুট (অদৃশ্য অক্ষরগুলো <GS> হিসেবে দেখানো):',
+    tipsTitle: 'টিপস',
+    tipHid: 'স্ক্যানারকে Keyboard/HID মোডে দিন (Bluetooth LE / অ্যাপ মোড নয়)।',
+    tipChrome: 'Android-এ Google Chrome ব্যবহার করুন ভালো ফলাফলের জন্য।',
+    tipIos: 'iPhone-এ হার্ডওয়্যার স্ক্যানার Safari ও অ্যাপের ভিতরে ভালো কাজ করে; সব PWA-তে নয়।',
+    plain: 'সাধারণ বারকোড: {{code}}',
   },
 };

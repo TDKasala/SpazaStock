@@ -641,6 +641,7 @@ export const so: Translations = {
     packagesLabel: 'Tirada xirmooyinka ({{pack}})',
     equalsUnits: '= {{count}} xabbo',
     addedPackages: '{{count}} × {{pack}} = {{units}} xabbo',
+    lotOptional: 'Lambarka dufcadda/batch (ikhtiyaari)',
   },
   expiry: {
     alertsTitle: 'Digniinaha dhicitaanka',
@@ -807,5 +808,18 @@ export const so: Translations = {
     generic: 'Khalad aan la filayn ayaa dhacay.',
     networkOffline: 'Internet ma haysid. Wax kasta oo aad samayso waxay ku kaydsamayaan taleefankan, waana la isku waafajin doonaa marka aad dib u xirmato.',
     invalidNumber: 'Fadlan geli qiime sax ah.',
+  },
+  scannerTest: {
+    cardTitle: 'Tijaabi iskaankaaga',
+    cardSubtitle: 'Eeg waxa iskaankaagu qoro oo hel talooyin dejin',
+    open: 'Fur',
+    title: 'Tijaabada iskaanka',
+    subtitle: 'Geli habka Keyboard/HID oo iskaani kood.',
+    rawInput: 'Qoraalka saafi ah (xarfaha qarsoon waxaa loo muujiyaa <GS>):',
+    tipsTitle: 'Talooyin',
+    tipHid: 'Deji iskaanka habka Keyboard/HID (ma aha Bluetooth LE / hab app).',
+    tipChrome: 'Adeegso Google Chrome ee Android si aad u hesho natiijooyin fiican.',
+    tipIos: 'iPhone, iskaannada qalabka waxay si wanaagsan uga shaqeeyaan Safari iyo app-yada, dhammaan PWA-yadu ma taageeraan.',
+    plain: 'Barcode caadi ah: {{code}}',
   },
 };

@@ -13,6 +13,8 @@ import { getPackagings } from '../../services/barcodeLinkService';
 import { addDaysLocal } from '../../lib/dates';
 import { newId } from '../../lib/ids';
 import { packagingLabel } from './packagingLabel';
+import { ScanInput } from '../scanner/ScanInput';
+import { playScanBeep, vibrateScan } from '../../lib/barcode/feedback';
 
 export interface QuickStockInModalProps {
   isOpen: boolean;
@@ -21,6 +23,10 @@ export interface QuickStockInModalProps {
   packagingId?: string | null;
   /** The alias that was scanned, recorded on the delivery. */
   barcodeId?: string | null;
+  /** Prefill from GS1 AI 17 (YYYY-MM-DD), when available. */
+  prefillExpiryDate?: string | null;
+  /** Prefill from GS1 AI 10 (lot/batch), when available. */
+  prefillLotNumber?: string | null;
   onClose: () => void;
   onStockInSuccess?: (result: StockInResult) => void;
   onStockInAnother?: () => void;
@@ -33,6 +39,8 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
   product,
   packagingId = null,
   barcodeId = null,
+  prefillExpiryDate = null,
+  prefillLotNumber = null,
   onClose,
   onStockInSuccess,
   onStockInAnother,
@@ -44,6 +52,7 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
   const [quantityInput, setQuantityInput] = useState<string>('1');
   const [hasExpiry, setHasExpiry] = useState<boolean>(true);
   const [expiryDate, setExpiryDate] = useState<string>('');
+  const [lotNumber, setLotNumber] = useState<string>('');
   const [scannedBarcode, setScannedBarcode] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -62,20 +71,27 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
       setIdempotencyKey(newId());
       setPackagings([]);
       setSelectedPackagingId(null);
+      setLotNumber(prefillLotNumber ?? '');
 
       // Perishables default to expiry enabled with a sensible preset
       const isPerishable = ['bakery', 'dairy', 'groceries', 'beverages', 'snacks'].includes(
         product.category
       );
-      setHasExpiry(isPerishable);
-      if (product.category === 'bakery') {
-        setExpiryDate(getPresetDate(5)); // e.g. bread ~5 days
-      } else if (product.category === 'dairy') {
-        setExpiryDate(getPresetDate(10)); // milk ~10 days
-      } else if (isPerishable) {
-        setExpiryDate(getPresetDate(30)); // 1 month
+      // Honour GS1 prefill first, else category defaults.
+      if (prefillExpiryDate) {
+        setHasExpiry(true);
+        setExpiryDate(prefillExpiryDate);
       } else {
+        setHasExpiry(isPerishable);
+        if (product.category === 'bakery') {
+        setExpiryDate(getPresetDate(5)); // e.g. bread ~5 days
+        } else if (product.category === 'dairy') {
+        setExpiryDate(getPresetDate(10)); // milk ~10 days
+        } else if (isPerishable) {
+        setExpiryDate(getPresetDate(30)); // 1 month
+        } else {
         setExpiryDate('');
+        }
       }
 
       setScannedBarcode(null);
@@ -153,6 +169,7 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
           productId: product.id,
           quantity: qty,
           expiryDate: finalExpiry,
+          lotNumber: lotNumber.trim() || null,
           idempotencyKey,
           packagingId: selectedPackaging?.id ?? null,
           barcodeId,
@@ -257,6 +274,20 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
             </span>
           </div>
         </div>
+
+        {/* Hidden scan field for hardware scanners: quick repeat scans add +1 */}
+        <ScanInput
+          onScan={(code) => {
+            const match = (code.trim() === (scannedBarcode ?? product.barcode));
+            if (match) {
+              setQuantityInput(String((parseInt(quantityInput, 10) || 0) + 1));
+              playScanBeep();
+              vibrateScan(40);
+            }
+          }}
+          label={t('scanner.manualEntryTitle')}
+          placeholder={t('scanner.manualEntryPlaceholder')}
+        />
 
         {/* Success Confirmation Card (Instant Available Stock Feedback) */}
         {successResult ? (
@@ -460,6 +491,14 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
                     }}
                     leftIcon={<Calendar className="w-4 h-4 text-amber-500" />}
                     required={hasExpiry}
+                  />
+                  {/* Optional lot/batch number (GS1 AI 10) */}
+                  <Input
+                    type="text"
+                    value={lotNumber}
+                    onChange={(e) => setLotNumber(e.target.value)}
+                    placeholder={t('stockIn.lotOptional')}
+                    leftIcon={<Barcode className="w-4 h-4 text-zinc-400" />}
                   />
 
                   {/* Expiry Presets (+5 days, +7 days, +30 days, +90 days) */}
