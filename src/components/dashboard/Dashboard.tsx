@@ -1,5 +1,5 @@
 import React from 'react';
-import { PackagePlus, ScanLine, CalendarClock, PackageSearch, ScanBarcode } from 'lucide-react';
+import { PackagePlus, ScanLine, CalendarClock, PackageSearch } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { ActionTile } from '../ui/ActionTile';
 import { ExpiryAlertsCard } from '../expiry/ExpiryAlertsCard';
@@ -87,22 +87,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
         onViewAll={() => onNavigateTab('alerts')}
         onSelectProduct={onSelectProduct}
       />
-
-      <button
-        onClick={() => onOpenScanner('lookup')}
-        className="w-full p-4 rounded-2xl bg-gradient-to-r from-emerald-950/40 via-zinc-900 to-zinc-950 border border-emerald-500/30 flex items-center justify-between gap-3 text-left transition-all active:scale-[0.98] group cursor-pointer shadow-lg"
-      >
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30 group-hover:scale-105 transition-transform">
-            <ScanBarcode className="w-5 h-5" />
-          </div>
-          <div>
-            <h4 className="text-sm font-bold text-zinc-100">{t('dashboard.lookupTitle')}</h4>
-            <p className="text-xs text-zinc-400 mt-0.5">{t('dashboard.lookupDescription')}</p>
-          </div>
-        </div>
-        <span className="text-emerald-400 font-bold text-sm hidden sm:inline">&rarr;</span>
-      </button>
     </div>
   );
 };

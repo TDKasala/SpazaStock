@@ -270,10 +270,6 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
             {t('product.linkExistingProduct')}
           </Button>
         )}
-
-        <div className="p-3 bg-zinc-950/80 rounded-xl border border-zinc-800/80 text-[11px] text-zinc-400 leading-relaxed">
-          {t('product.priceNotice')}
-        </div>
       </form>
     </Dialog>
   );
