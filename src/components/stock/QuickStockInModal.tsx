@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, CheckCircle2, Plus, Minus, Barcode, ArrowRight } from 'lucide-react';
-import type { Product, ProductPackaging, StockInResult } from '../../types';
+import type { Product, ProductPackaging, StockBatch, StockInResult } from '../../types';
 import { useLanguage } from '../../context/LanguageContext';
 import { useShopId } from '../../context/ShopContext';
 import { Dialog } from '../ui/Dialog';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { ErrorMessage } from '../ui/ErrorMessage';
-import { stockIn, getProductTotalStock, isValidDateFormat } from '../../services/stockService';
+import { addStockToBatch, stockIn, getProductBatches, getProductTotalStock, isValidDateFormat } from '../../services/stockService';
 import { db } from '../../lib/db';
 import { getPackagings } from '../../services/barcodeLinkService';
 import { addDaysLocal } from '../../lib/dates';
@@ -27,6 +27,15 @@ export interface QuickStockInModalProps {
 }
 
 const getPresetDate = (daysAhead: number): string => addDaysLocal(daysAhead);
+
+const TRACKED_CATEGORIES = ['bakery', 'dairy', 'groceries', 'beverages', 'snacks'];
+
+function todayLocal(): string {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${now.getFullYear()}-${month}-${day}`;
+}
 
 export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
   isOpen,
@@ -51,6 +60,13 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
   const [idempotencyKey, setIdempotencyKey] = useState<string>('');
   const [packagings, setPackagings] = useState<ProductPackaging[]>([]);
   const [selectedPackagingId, setSelectedPackagingId] = useState<string | null>(null);
+  const [openBatches, setOpenBatches] = useState<StockBatch[]>([]);
+  const [mode, setMode] = useState<'new' | 'existing'>('new');
+  const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
+  const [lotNumber, setLotNumber] = useState('');
+  const [supplierName, setSupplierName] = useState('');
+  const [costInput, setCostInput] = useState('');
+  const [receivedDate, setReceivedDate] = useState('');
 
   // Reset modal state when product or openness changes
   useEffect(() => {
@@ -62,11 +78,16 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
       setIdempotencyKey(newId());
       setPackagings([]);
       setSelectedPackagingId(null);
+      setOpenBatches([]);
+      setMode('new');
+      setSelectedBatchId(null);
+      setLotNumber('');
+      setSupplierName('');
+      setCostInput('');
+      setReceivedDate(todayLocal());
 
       // Perishables default to expiry enabled with a sensible preset
-      const isPerishable = ['bakery', 'dairy', 'groceries', 'beverages', 'snacks'].includes(
-        product.category
-      );
+      const isPerishable = TRACKED_CATEGORIES.includes(product.category);
       setHasExpiry(isPerishable);
       if (product.category === 'bakery') {
         setExpiryDate(getPresetDate(5)); // e.g. bread ~5 days
@@ -86,6 +107,11 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
       }
 
       void getProductTotalStock(product.id, shopId).then(setCurrentStock);
+      void getProductBatches(product.id, shopId).then((found) => {
+        setOpenBatches(found);
+        setSelectedBatchId(found[0]?.id ?? null);
+        if (found.some((batch) => batch.expiryDate)) setHasExpiry(true);
+      });
       void getPackagings(product.id, shopId).then((found) => {
         setPackagings(found);
         const scanned = found.find((p) => p.id === packagingId);
@@ -96,8 +122,11 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
 
   if (!isOpen || !product) return null;
 
-  const selectedPackaging = packagings.find((p) => p.id === selectedPackagingId) ?? null;
+  const selectedPackaging = mode === 'new' ? (packagings.find((p) => p.id === selectedPackagingId) ?? null) : null;
   const unitsPerPackage = selectedPackaging?.unitsPerPackage ?? 1;
+  const expiryRequired = TRACKED_CATEGORIES.includes(product.category) || openBatches.some((batch) => batch.expiryDate);
+  const showExpiry = expiryRequired || hasExpiry;
+  const sameDateBatch = showExpiry && mode === 'new' && openBatches.some((batch) => batch.expiryDate === expiryDate);
   const enteredQuantity = Number(quantityInput);
   const unitsToAdd = Number.isInteger(enteredQuantity) && enteredQuantity > 0 ? enteredQuantity * unitsPerPackage : 0;
 
@@ -134,15 +163,59 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
       return;
     }
 
+    if (mode === 'existing') {
+      if (!selectedBatchId) {
+        setErrorMsg(t('stockIn.chooseBatch'));
+        return;
+      }
+      setIsSubmitting(true);
+      try {
+        const res = await addStockToBatch(
+          { batchId: selectedBatchId, quantity: qty, idempotencyKey },
+          shopId
+        );
+        if (res.error) {
+          setErrorMsg(res.error);
+          return;
+        }
+        if (res.result) {
+          setSuccessResult(res.result);
+          setCurrentStock(res.result.resultingTotalQuantity);
+          onStockInSuccess?.(res.result);
+        }
+      } catch (err) {
+        setErrorMsg(err instanceof Error ? err.message : t('errors.generic'));
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
+
     // Validate Expiry Date if enabled
     let finalExpiry: string | null = null;
-    if (hasExpiry) {
+    if (showExpiry) {
       const trimmedDate = expiryDate.trim();
       if (!trimmedDate || !isValidDateFormat(trimmedDate)) {
-        setErrorMsg(t('stockIn.invalidDate'));
+        setErrorMsg(t(expiryRequired ? 'stockIn.expiryRequired' : 'stockIn.invalidDate'));
         return;
       }
       finalExpiry = trimmedDate;
+    }
+
+    const trimmedReceived = receivedDate.trim();
+    if (trimmedReceived && !isValidDateFormat(trimmedReceived)) {
+      setErrorMsg(t('stockIn.invalidDate'));
+      return;
+    }
+    const trimmedCost = costInput.trim();
+    let costPricePerUnit: number | undefined;
+    if (trimmedCost) {
+      const cost = Number(trimmedCost);
+      if (!Number.isFinite(cost) || cost < 0) {
+        setErrorMsg(t('stockIn.invalidCost'));
+        return;
+      }
+      costPricePerUnit = cost;
     }
 
     setIsSubmitting(true);
@@ -156,6 +229,10 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
           idempotencyKey,
           packagingId: selectedPackaging?.id ?? null,
           barcodeId,
+          lotNumber: lotNumber.trim() || null,
+          supplierName: supplierName.trim() || null,
+          costPricePerUnit,
+          receivedAt: trimmedReceived || null,
         },
         shopId
       );
@@ -287,7 +364,7 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
               <div>
                 <span className="text-[10px] text-zinc-400 block">{t('stockIn.addedAmount')}</span>
                 <span className="text-sm font-bold text-emerald-400">
-                  +{successResult.batch.quantity}
+                  +{successResult.movement.quantityDelta}
                 </span>
               </div>
               <ArrowRight className="w-4 h-4 text-emerald-500" />
@@ -338,7 +415,67 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
               />
             )}
 
-            {packagings.length > 0 && (
+            {openBatches.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={t('stockIn.newBatch')}>
+                  {(['new', 'existing'] as const).map((choice) => {
+                    const active = mode === choice;
+                    return (
+                      <button
+                        key={choice}
+                        type="button"
+                        role="radio"
+                        aria-checked={active}
+                        onClick={() => {
+                          setMode(choice);
+                          setErrorMsg(null);
+                        }}
+                        className={`px-3 py-2 rounded-xl text-xs font-semibold border transition-colors ${
+                          active
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50'
+                            : 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:bg-zinc-800'
+                        }`}
+                      >
+                        {t(choice === 'new' ? 'stockIn.newBatch' : 'stockIn.existingBatch')}
+                      </button>
+                    );
+                  })}
+                </div>
+                <ul className="space-y-1">
+                  {openBatches.map((batch) => (
+                    <li key={batch.id} className="text-xs text-zinc-400">
+                      {batch.expiryDate
+                        ? t('stockIn.batchOption', { date: batch.expiryDate, count: batch.quantity })
+                        : t('stockIn.noDateBatch', { count: batch.quantity })}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {mode === 'existing' && (
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-zinc-300 block" htmlFor="stock-in-batch">
+                  {t('stockIn.chooseBatch')}
+                </label>
+                <select
+                  id="stock-in-batch"
+                  value={selectedBatchId ?? ''}
+                  onChange={(e) => setSelectedBatchId(e.target.value)}
+                  className="w-full h-12 bg-zinc-900 border border-zinc-800 rounded-xl px-3 text-sm text-zinc-100"
+                >
+                  {openBatches.map((batch) => (
+                    <option key={batch.id} value={batch.id}>
+                      {batch.expiryDate
+                        ? t('stockIn.batchOption', { date: batch.expiryDate, count: batch.quantity })
+                        : t('stockIn.noDateBatch', { count: batch.quantity })}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {mode === 'new' && packagings.length > 0 && (
               <div className="space-y-2">
                 <span className="text-xs font-semibold text-zinc-300 block">{t('stockIn.receivingAs')}</span>
                 <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={t('stockIn.receivingAs')}>
@@ -431,25 +568,32 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
             </div>
 
             {/* Batch Expiry Date Section */}
+            {mode === 'new' && (
             <div className="p-3.5 bg-zinc-900/50 rounded-2xl border border-zinc-800/80 space-y-3">
               <div className="flex items-center justify-between">
-                <label className="flex items-center gap-2 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={hasExpiry}
-                    onChange={(e) => setHasExpiry(e.target.checked)}
-                    className="w-4 h-4 rounded text-emerald-600 bg-zinc-800 border-zinc-700 focus:ring-emerald-500 focus:ring-offset-zinc-900"
-                  />
+                {expiryRequired ? (
                   <span className="text-xs font-semibold text-zinc-200">
-                    {t('stockIn.hasExpiryToggle')}
+                    {t('stockIn.hasExpiryToggle')} <span className="text-emerald-400">*</span>
                   </span>
-                </label>
+                ) : (
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={hasExpiry}
+                      onChange={(e) => setHasExpiry(e.target.checked)}
+                      className="w-4 h-4 rounded text-emerald-600 bg-zinc-800 border-zinc-700 focus:ring-emerald-500 focus:ring-offset-zinc-900"
+                    />
+                    <span className="text-xs font-semibold text-zinc-200">
+                      {t('stockIn.hasExpiryToggle')}
+                    </span>
+                  </label>
+                )}
                 <span className="text-[10px] text-zinc-400">
-                  {hasExpiry ? t('stockIn.perishable') : t('stockIn.nonPerishable')}
+                  {showExpiry ? t('stockIn.perishable') : t('stockIn.nonPerishable')}
                 </span>
               </div>
 
-              {hasExpiry && (
+              {showExpiry && (
                 <div className="space-y-2 pt-1 animate-in fade-in">
                   <Input
                     type="date"
@@ -459,7 +603,7 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
                       if (errorMsg) setErrorMsg(null);
                     }}
                     leftIcon={<Calendar className="w-4 h-4 text-amber-500" />}
-                    required={hasExpiry}
+                    required
                   />
 
                   {/* Expiry Presets (+5 days, +7 days, +30 days, +90 days) */}
@@ -487,11 +631,49 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
                   </div>
 
                   <p className="text-[11px] text-zinc-400 leading-tight">
-                    {t('stockIn.expiryHelp')}
+                    {sameDateBatch ? t('stockIn.sameDateSeparate') : t('stockIn.expiryHelp')}
                   </p>
                 </div>
               )}
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-zinc-300 block" htmlFor="stock-in-lot">
+                  {t('stockIn.lotLabel')}
+                </label>
+                <Input id="stock-in-lot" value={lotNumber} onChange={(e) => setLotNumber(e.target.value)} maxLength={40} />
+                <label className="text-xs font-semibold text-zinc-300 block" htmlFor="stock-in-supplier">
+                  {t('stockIn.supplierLabel')}
+                </label>
+                <Input
+                  id="stock-in-supplier"
+                  value={supplierName}
+                  onChange={(e) => setSupplierName(e.target.value)}
+                  maxLength={80}
+                />
+                <label className="text-xs font-semibold text-zinc-300 block" htmlFor="stock-in-cost">
+                  {t('stockIn.costLabel')}
+                </label>
+                <Input
+                  id="stock-in-cost"
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  step="0.01"
+                  value={costInput}
+                  onChange={(e) => setCostInput(e.target.value)}
+                />
+                <label className="text-xs font-semibold text-zinc-300 block" htmlFor="stock-in-received">
+                  {t('stockIn.receivedLabel')}
+                </label>
+                <Input
+                  id="stock-in-received"
+                  type="date"
+                  value={receivedDate}
+                  onChange={(e) => setReceivedDate(e.target.value)}
+                />
+              </div>
             </div>
+            )}
           </form>
         )}
       </div>

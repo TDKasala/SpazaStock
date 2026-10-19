@@ -6,7 +6,7 @@ import { QuickStockInModal } from '../components/stock/QuickStockInModal';
 import { UnknownBarcodeDialog } from '../components/stock/UnknownBarcodeDialog';
 import { LanguageProvider } from '../context/LanguageContext';
 import { createProduct, resolveBarcode } from '../services/productService';
-import { getProductBatches, getProductTotalStock } from '../services/stockService';
+import { getProductBatches, getProductTotalStock, stockIn } from '../services/stockService';
 import { saveShopSettings } from '../lib/shopSettings';
 import { resetLocalDatabase } from '../lib/db';
 import type { Product, ResolvedBarcode } from '../types';
@@ -165,5 +165,35 @@ describe('linking a case barcode and receiving it', () => {
     await click(byTestId('confirm-link'));
     await waitFor(() => container.textContent?.includes('already used by') ?? false);
     expect(container.textContent).toContain('This barcode is already used by "Fanta Orange".');
+  });
+});
+
+describe('choosing a new batch or an existing one', () => {
+  it('keeps a matching expiry as its own delivery, and can add units to the saved batch', async () => {
+    const product = await makeProducts();
+    await stockIn({ productId: product.id, quantity: 12, expiryDate: '2026-12-15' }, SHOP_ID);
+
+    await render(<QuickStockInModal isOpen product={product} onClose={() => undefined} />);
+    await waitFor(() => buttonNamed('New batch') !== undefined);
+    expect(buttonNamed('New batch')?.getAttribute('aria-checked')).toBe('true');
+    expect(container.textContent).toContain('Coke Can');
+    expect(container.textContent).toContain('12');
+
+    const expiry = container.querySelector<HTMLInputElement>('input[type="date"]');
+    await typeInto(expiry, '2026-12-15');
+    expect(container.textContent).toContain('This date already has a batch. This delivery stays separate.');
+    expect(buttonNamed('New batch')?.getAttribute('aria-checked')).toBe('true');
+
+    await click(buttonNamed('Add to existing batch'));
+    expect(container.querySelector('#stock-in-lot')).toBeNull();
+    const quantity = container.querySelector<HTMLInputElement>('input[type="number"]');
+    await typeInto(quantity, '8');
+    await click(buttonNamed('Confirm & Increase Stock'));
+    await waitFor(() => container.textContent?.includes('Stock Added Successfully') ?? false);
+
+    const batches = await getProductBatches(product.id, SHOP_ID);
+    expect(batches).toHaveLength(1);
+    expect(batches[0]).toMatchObject({ quantity: 20, expiryDate: '2026-12-15' });
+    expect(await getProductTotalStock(product.id, SHOP_ID)).toBe(20);
   });
 });

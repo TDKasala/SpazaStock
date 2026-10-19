@@ -37,6 +37,10 @@ export type OutboxOperation =
       type: 'stock_in';
       payload: { batch: StockBatch; movementId: string; idempotencyKey?: string };
     }
+  | {
+      type: 'stock_add';
+      payload: { batchId: string; quantity: number; idempotencyKey: string };
+    }
   | { type: 'sale'; payload: { sale: Sale; movementId?: string } }
   | {
       type: 'sale_void';

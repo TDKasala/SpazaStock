@@ -68,6 +68,15 @@ export async function stockIn(
   if (lotNumber && lotNumber.length > 40) return { error: 'Lot number can be at most 40 characters.' };
   if (supplierName && supplierName.length > 80) return { error: 'Supplier name can be at most 80 characters.' };
 
+  let receivedAt: string | null = null;
+  if (input.receivedAt && input.receivedAt.trim()) {
+    const received = input.receivedAt.trim();
+    if (!isValidDateFormat(received)) {
+      return { error: 'Invalid received date format. Please use YYYY-MM-DD.' };
+    }
+    receivedAt = `${received}T00:00:00.000Z`;
+  }
+
   const idempotencyKey = input.idempotencyKey?.trim() || undefined;
 
   const outcome = await withWriteLock(() =>
@@ -116,7 +125,7 @@ export async function stockIn(
         initialQuantity: quantity,
         expiryDate,
         costPricePerUnit: input.costPricePerUnit ?? product.buyingPrice ?? null,
-        receivedAt: now,
+        receivedAt: receivedAt ?? now,
         packagingId,
         packageQuantity: packagingId ? input.quantity : null,
         unitsPerPackage,
@@ -145,6 +154,78 @@ export async function stockIn(
       });
 
       return { result: { batch, movement, previousTotalQuantity, resultingTotalQuantity } };
+    })
+  );
+
+  if (outcome.result) emitDataChanged('local');
+  return outcome;
+}
+
+/**
+ * Adds units to a batch that is already saved. Expiry, lot, supplier, cost, and received date
+ * stay as they are. The same idempotency key does not add the units twice.
+ */
+export async function addStockToBatch(
+  input: { batchId: string; quantity: number; idempotencyKey: string },
+  shopId: string
+): Promise<{ result?: StockInResult; error?: string }> {
+  const batchId = input.batchId?.trim();
+  if (!batchId) return { error: 'Batch ID is required.' };
+  if (typeof input.quantity !== 'number' || !Number.isInteger(input.quantity) || input.quantity <= 0) {
+    return { error: 'Quantity must be a positive whole integer greater than zero.' };
+  }
+  if (input.quantity > MAX_STOCK_IN_UNITS) {
+    return { error: 'A delivery can add at most 1,000,000 units.' };
+  }
+  const idempotencyKey = input.idempotencyKey?.trim() ?? '';
+  if (!idempotencyKey || idempotencyKey.length > 200) {
+    return { error: 'Idempotency key is required.' };
+  }
+
+  const outcome = await withWriteLock(() =>
+    db.transaction('rw', [db.batches, db.movements, db.outbox], async () => {
+      const batch = await db.batches.get(batchId);
+      if (!batch || batch.shopId !== shopId) {
+        return { error: 'Batch not found in this shop.' };
+      }
+      if (batch.quantity + input.quantity > MAX_STOCK_IN_UNITS) {
+        return { error: 'A batch can hold at most 1,000,000 units.' };
+      }
+
+      const seen = await db.movements.where('[shopId+idempotencyKey]').equals([shopId, idempotencyKey]).first();
+      if (seen) {
+        return { error: 'Duplicate submission rejected: This stock delivery was already processed.' };
+      }
+
+      const existing = await db.batches.where('[shopId+productId]').equals([shopId, batch.productId]).toArray();
+      const previousTotalQuantity = sumQuantity(existing);
+      const resultingTotalQuantity = previousTotalQuantity + input.quantity;
+      const now = new Date().toISOString();
+      const updated: StockBatch = {
+        ...batch,
+        quantity: batch.quantity + input.quantity,
+        initialQuantity: batch.initialQuantity + input.quantity,
+      };
+      const movement: StockMovement = {
+        id: newId(),
+        shopId,
+        productId: batch.productId,
+        batchId: batch.id,
+        type: 'stock_in',
+        quantityDelta: input.quantity,
+        resultingTotalQuantity,
+        idempotencyKey,
+        createdAt: now,
+      };
+
+      await db.batches.put(updated);
+      await db.movements.add(movement);
+      await enqueue(shopId, {
+        type: 'stock_add',
+        payload: { batchId: batch.id, quantity: input.quantity, idempotencyKey },
+      });
+
+      return { result: { batch: updated, movement, previousTotalQuantity, resultingTotalQuantity } };
     })
   );
 

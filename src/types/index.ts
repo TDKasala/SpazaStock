@@ -212,6 +212,8 @@ export interface StockInInput {
   barcodeId?: string | null;
   lotNumber?: string | null;
   supplierName?: string | null;
+  /** Calendar date the delivery arrived. Empty means the time it was saved. */
+  receivedAt?: string | null;
 }
 
 export interface StockInResult {

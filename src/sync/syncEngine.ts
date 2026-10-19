@@ -688,6 +688,24 @@ async function sendItem(client: SupabaseClient, item: OutboxItem): Promise<SendO
       return outcomeFromError(error);
     }
 
+    case 'stock_add': {
+      const { batchId, quantity, idempotencyKey } = item.payload;
+      const { data, error } = await client.rpc('add_stock_to_batch', {
+        p_shop_id: item.shopId,
+        p_batch_id: batchId,
+        p_quantity: quantity,
+        p_idempotency_key: idempotencyKey,
+      });
+      if (error) return outcomeFromError(error);
+      const result = data as { batch?: Row } | null;
+      return {
+        kind: 'ok',
+        apply: async () => {
+          if (result?.batch) await db.batches.put(mapBatchRow(result.batch));
+        },
+      };
+    }
+
     case 'sale': {
       // Each local sale is a one-line server sale; the line reuses the sale id so pulled
       // sale_items rows map back onto the same local record.

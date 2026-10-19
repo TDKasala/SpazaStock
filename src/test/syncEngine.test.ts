@@ -4,7 +4,7 @@ import { createProduct, resolveBarcode, setProductArchived, updateProduct } from
 import { createPackaging, linkBarcode, unlinkBarcode } from '../services/barcodeLinkService';
 import { removeProductImage, saveProductImage } from '../services/productImageService';
 import { saveShopSettings } from '../lib/shopSettings';
-import { stockIn, getProductTotalStock } from '../services/stockService';
+import { addStockToBatch, stockIn, getProductTotalStock } from '../services/stockService';
 import { recordSale, voidSale } from '../services/salesService';
 import { db, getMeta, resetLocalDatabase } from '../lib/db';
 import type { Product } from '../types';
@@ -720,6 +720,59 @@ describe('packagings and barcode links', () => {
     expect(Object.keys(stockArgs).filter((k) => /packag|barcode_id/.test(k))).toEqual([]);
     const editArgs = fake.rpc.mock.calls.find(([name]) => name === 'update_product')![1];
     expect(editArgs).not.toHaveProperty('p_brand');
+  });
+
+  it('retries adding units to a batch with the same key, so they are sent once', async () => {
+    const product = await makeProduct();
+    const first = await stockIn(
+      { productId: product.id, quantity: 12, expiryDate: '2026-12-15', lotNumber: 'LOT-A' },
+      SHOP_ID
+    );
+    await addStockToBatch({ batchId: first.result!.batch.id, quantity: 8, idempotencyKey: 'add-1' }, SHOP_ID);
+    let failAdd = true;
+    const fake = createFakeSupabase({
+      rpc: (name, args) => {
+        if (name === 'add_stock_to_batch' && failAdd) {
+          failAdd = false;
+          throw new TypeError('Failed to fetch');
+        }
+        if (name === 'add_stock_to_batch') {
+          return {
+            data: {
+              duplicate: true,
+              batch: {
+                id: args.p_batch_id,
+                shop_id: SHOP_ID,
+                product_id: product.id,
+                quantity: 20,
+                initial_quantity: 20,
+                expiry_date: '2026-12-15',
+                cost_price_per_unit: null,
+                received_at: first.result!.batch.receivedAt,
+                lot_number: 'LOT-A',
+                supplier_name: null,
+              },
+            },
+            error: null,
+          };
+        }
+        return acceptAll(name, args);
+      },
+    });
+
+    await pushOutbox(fake.client, SHOP_ID, 0);
+    await pushOutbox(fake.client, SHOP_ID, 60_000);
+    const addCalls = fake.rpc.mock.calls.filter(([name]) => name === 'add_stock_to_batch').map(([, args]) => args);
+    expect(addCalls).toHaveLength(2);
+    expect(addCalls[1]).toEqual(addCalls[0]);
+    expect(addCalls[0]).toMatchObject({
+      p_batch_id: first.result!.batch.id,
+      p_quantity: 8,
+      p_idempotency_key: 'add-1',
+    });
+    expect(await db.outbox.count()).toBe(0);
+    const batch = await db.batches.get(first.result!.batch.id);
+    expect(batch).toMatchObject({ quantity: 20, expiryDate: '2026-12-15', lotNumber: 'LOT-A' });
   });
 
   it('remaps queued packagings and links when the product is remapped', async () => {

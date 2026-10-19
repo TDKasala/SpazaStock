@@ -381,4 +381,91 @@ describe('restock traceability', () => {
       p_selling_price: -1,
     }))).toBe('22023');
   });
+
+  it('keeps two expiry dates on one barcode and does not add the same units twice', async () => {
+    const barcode = code();
+    const product = await rpc<{ id: string }>(pg, owner, 'upsert_product', {
+      p_id: randomUUID(),
+      p_shop_id: shop,
+      p_barcode: barcode,
+      p_name: 'Maize meal',
+      p_category: 'groceries',
+      p_buying_price: 4,
+      p_selling_price: 8,
+      p_created_at: new Date().toISOString(),
+    });
+    const first = await stockIn(pg, staff, shop, product.id, 12, {
+      expiry: '2026-12-15',
+      lot: 'LOT-A',
+      supplier: 'Mill',
+      cost: 4,
+    });
+    const second = await stockIn(pg, staff, shop, product.id, 24, { expiry: '2027-02-20' });
+    expect(first.batch.id).not.toBe(second.batch.id);
+
+    const rows = await query<{ n: number }>(
+      pg,
+      owner,
+      'select count(*)::int as n from public.products where shop_id = $1 and barcode = $2',
+      [shop, barcode]
+    );
+    expect(rows[0].n).toBe(1);
+    expect(await stockOf(product.id)).toBe(36);
+
+    const sale = await sell(pg, staff, shop, [{ product_id: product.id, quantity: 1 }]);
+    expect(sale.items[0].allocations[0]).toMatchObject({
+      batchId: first.batch.id,
+      quantityDeducted: 1,
+    });
+
+    const key = randomUUID();
+    const added = await rpc<{ duplicate: boolean; total_quantity: number }>(pg, staff, 'add_stock_to_batch', {
+      p_shop_id: shop,
+      p_batch_id: first.batch.id,
+      p_quantity: 8,
+      p_idempotency_key: key,
+    });
+    expect(added.duplicate).toBe(false);
+    expect(added.total_quantity).toBe(43);
+
+    const batch = await query<{
+      quantity: number;
+      expiry_date: string;
+      lot_number: string;
+      supplier_name: string;
+      cost_price_per_unit: string;
+    }>(
+      pg,
+      owner,
+      `select quantity, expiry_date::text, lot_number, supplier_name, cost_price_per_unit::text
+       from public.stock_batches where id = $1`,
+      [first.batch.id]
+    );
+    expect(batch[0]).toMatchObject({
+      quantity: 19,
+      expiry_date: '2026-12-15',
+      lot_number: 'LOT-A',
+      supplier_name: 'Mill',
+    });
+    expect(Number(batch[0].cost_price_per_unit)).toBe(4);
+    expect((await query<{ quantity: number }>(pg, owner, 'select quantity from public.stock_batches where id = $1', [second.batch.id]))[0].quantity).toBe(24);
+
+    const replay = await rpc<{ duplicate: boolean; total_quantity: number }>(pg, staff, 'add_stock_to_batch', {
+      p_shop_id: shop,
+      p_batch_id: first.batch.id,
+      p_quantity: 8,
+      p_idempotency_key: key,
+    });
+    expect(replay.duplicate).toBe(true);
+    expect(replay.total_quantity).toBe(43);
+    expect(await stockOf(product.id)).toBe(43);
+
+    expect(await errorCode(rpc(pg, outsider, 'add_stock_to_batch', {
+      p_shop_id: shop,
+      p_batch_id: first.batch.id,
+      p_quantity: 1,
+      p_idempotency_key: randomUUID(),
+    }))).toBe('42501');
+    expect(await stockOf(product.id)).toBe(43);
+  });
 });

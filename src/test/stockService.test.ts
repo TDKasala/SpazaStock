@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import {
+  addStockToBatch,
   stockIn,
   getProductTotalStock,
   getProductBatches,
@@ -42,6 +43,48 @@ describe('stockService', () => {
 
     const ops = (await db.outbox.orderBy('seq').toArray()).map((i) => i.type);
     expect(ops).toEqual(['product_upsert', 'stock_in', 'stock_in']);
+  });
+
+  it('adds units onto a saved batch without changing its expiry, and ignores a repeated key', async () => {
+    const product = await makeProduct();
+    const first = await stockIn(
+      {
+        productId: product.id,
+        quantity: 12,
+        expiryDate: '2026-12-15',
+        lotNumber: 'LOT-A',
+        supplierName: 'Mill',
+        costPricePerUnit: 4,
+        receivedAt: '2026-10-01',
+      },
+      SHOP_ID
+    );
+    await stockIn({ productId: product.id, quantity: 24, expiryDate: '2027-02-20' }, SHOP_ID);
+    expect(await db.products.count()).toBe(1);
+    expect(await getProductTotalStock(product.id, SHOP_ID)).toBe(36);
+
+    const added = await addStockToBatch(
+      { batchId: first.result!.batch.id, quantity: 8, idempotencyKey: 'add-1' },
+      SHOP_ID
+    );
+    expect(added.result?.batch).toMatchObject({
+      quantity: 20,
+      expiryDate: '2026-12-15',
+      lotNumber: 'LOT-A',
+      supplierName: 'Mill',
+      costPricePerUnit: 4,
+      receivedAt: '2026-10-01T00:00:00.000Z',
+    });
+    expect(await getProductBatches(product.id, SHOP_ID)).toHaveLength(2);
+    expect(await getProductTotalStock(product.id, SHOP_ID)).toBe(44);
+
+    const again = await addStockToBatch(
+      { batchId: first.result!.batch.id, quantity: 8, idempotencyKey: 'add-1' },
+      SHOP_ID
+    );
+    expect(again.error).toMatch(/Duplicate/);
+    expect(await getProductTotalStock(product.id, SHOP_ID)).toBe(44);
+    expect((await db.outbox.toArray()).filter((item) => item.type === 'stock_add')).toHaveLength(1);
   });
 
   it('rejects a repeated idempotency key, even after a reload', async () => {
