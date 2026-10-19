@@ -88,3 +88,12 @@
     top: 50%;
   }
 }
+
+/* 16px keeps iOS Safari from zooming the page when a dialog field is focused. */
+@media (max-width: 639px) {
+  [role='dialog'] input,
+  [role='dialog'] textarea,
+  [role='dialog'] select {
+    font-size: 16px;
+  }
+}

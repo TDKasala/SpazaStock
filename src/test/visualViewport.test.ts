@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { readVisualViewport } from '../hooks/useVisualViewport';
 
-const fakeWindow = (visualViewport: unknown) => ({ visualViewport }) as unknown as Window;
+const fakeWindow = (visualViewport: unknown, innerHeight = 0) =>
+  ({ visualViewport, innerHeight }) as unknown as Window;
 
 describe('visual viewport', () => {
   it('reports the visible height and offset in whole pixels', () => {
@@ -12,5 +13,10 @@ describe('visual viewport', () => {
     expect(readVisualViewport(fakeWindow(undefined))).toBeNull();
     expect(readVisualViewport(fakeWindow(null))).toBeNull();
     expect(readVisualViewport(fakeWindow({ height: 0, offsetTop: 0 }))).toBeNull();
+  });
+
+  it('falls back to the window height when the visual viewport API is missing', () => {
+    expect(readVisualViewport(fakeWindow(undefined, 640.4))).toEqual({ height: 640, offsetTop: 0 });
+    expect(readVisualViewport(fakeWindow(null, 480))).toEqual({ height: 480, offsetTop: 0 });
   });
 });

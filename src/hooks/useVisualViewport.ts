@@ -8,24 +8,29 @@ export interface ViewportBox {
 /** The part of the page the user can actually see: excludes the on-screen keyboard and browser bars. */
 export function readVisualViewport(win: Window = window): ViewportBox | null {
   const vv = win.visualViewport;
-  if (!vv || !(vv.height > 0)) return null;
-  return { height: Math.round(vv.height), offsetTop: Math.round(vv.offsetTop) };
+  if (vv && vv.height > 0) {
+    return { height: Math.round(vv.height), offsetTop: Math.round(vv.offsetTop) };
+  }
+  // Android Chrome and iOS Safari expose visualViewport. Older browsers only resize the window.
+  if (win.innerHeight > 0) return { height: Math.round(win.innerHeight), offsetTop: 0 };
+  return null;
 }
 
 /**
  * Tracks the visual viewport while `enabled`. Android Chrome and iOS Safari open the keyboard over
  * the page without resizing it, so a full-screen overlay sized from this stays above the keyboard.
- * Returns null when disabled or when the browser has no visual viewport API.
+ * Without the Visual Viewport API, falls back to the window height and its resize event.
+ * Returns null when disabled.
  */
 export function useVisualViewport(enabled: boolean): ViewportBox | null {
   const [box, setBox] = useState<ViewportBox | null>(null);
 
   useEffect(() => {
-    const vv = window.visualViewport;
-    if (!enabled || !vv) {
+    if (!enabled) {
       setBox(null);
       return;
     }
+    const vv = window.visualViewport;
     const update = () => {
       const next = readVisualViewport();
       setBox((prev) =>
@@ -33,11 +38,16 @@ export function useVisualViewport(enabled: boolean): ViewportBox | null {
       );
     };
     update();
-    vv.addEventListener('resize', update);
-    vv.addEventListener('scroll', update);
+    if (vv) {
+      vv.addEventListener('resize', update);
+      vv.addEventListener('scroll', update);
+    } else {
+      window.addEventListener('resize', update);
+    }
     return () => {
-      vv.removeEventListener('resize', update);
-      vv.removeEventListener('scroll', update);
+      vv?.removeEventListener('resize', update);
+      vv?.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
     };
   }, [enabled]);
 
