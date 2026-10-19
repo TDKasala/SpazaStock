@@ -63,9 +63,6 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
   const [openBatches, setOpenBatches] = useState<StockBatch[]>([]);
   const [mode, setMode] = useState<'new' | 'existing'>('new');
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
-  const [lotNumber, setLotNumber] = useState('');
-  const [supplierName, setSupplierName] = useState('');
-  const [costInput, setCostInput] = useState('');
   const [receivedDate, setReceivedDate] = useState('');
 
   // Reset modal state when product or openness changes
@@ -81,9 +78,6 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
       setOpenBatches([]);
       setMode('new');
       setSelectedBatchId(null);
-      setLotNumber('');
-      setSupplierName('');
-      setCostInput('');
       setReceivedDate(todayLocal());
 
       // Perishables default to expiry enabled with a sensible preset
@@ -207,16 +201,6 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
       setErrorMsg(t('stockIn.invalidDate'));
       return;
     }
-    const trimmedCost = costInput.trim();
-    let costPricePerUnit: number | undefined;
-    if (trimmedCost) {
-      const cost = Number(trimmedCost);
-      if (!Number.isFinite(cost) || cost < 0) {
-        setErrorMsg(t('stockIn.invalidCost'));
-        return;
-      }
-      costPricePerUnit = cost;
-    }
 
     setIsSubmitting(true);
 
@@ -229,9 +213,6 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
           idempotencyKey,
           packagingId: selectedPackaging?.id ?? null,
           barcodeId,
-          lotNumber: lotNumber.trim() || null,
-          supplierName: supplierName.trim() || null,
-          costPricePerUnit,
           receivedAt: trimmedReceived || null,
         },
         shopId
@@ -637,31 +618,6 @@ export const QuickStockInModal: React.FC<QuickStockInModalProps> = ({
               )}
 
               <div className="space-y-2">
-                <label className="text-xs font-semibold text-zinc-300 block" htmlFor="stock-in-lot">
-                  {t('stockIn.lotLabel')}
-                </label>
-                <Input id="stock-in-lot" value={lotNumber} onChange={(e) => setLotNumber(e.target.value)} maxLength={40} />
-                <label className="text-xs font-semibold text-zinc-300 block" htmlFor="stock-in-supplier">
-                  {t('stockIn.supplierLabel')}
-                </label>
-                <Input
-                  id="stock-in-supplier"
-                  value={supplierName}
-                  onChange={(e) => setSupplierName(e.target.value)}
-                  maxLength={80}
-                />
-                <label className="text-xs font-semibold text-zinc-300 block" htmlFor="stock-in-cost">
-                  {t('stockIn.costLabel')}
-                </label>
-                <Input
-                  id="stock-in-cost"
-                  type="number"
-                  inputMode="decimal"
-                  min="0"
-                  step="0.01"
-                  value={costInput}
-                  onChange={(e) => setCostInput(e.target.value)}
-                />
                 <label className="text-xs font-semibold text-zinc-300 block" htmlFor="stock-in-received">
                   {t('stockIn.receivedLabel')}
                 </label>
