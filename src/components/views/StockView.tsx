@@ -93,23 +93,28 @@ export const StockView: React.FC<StockViewProps> = ({
         </Button>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
         {onHardwareScan && (
-          <ScanInput
-            onScan={(code) => onHardwareScan(code)}
-            label={t('scanner.manualEntryTitle')}
-            placeholder={t('scanner.manualEntryPlaceholder')}
-          />
+          <div className="w-full sm:flex-1">
+            <ScanInput
+              onScan={(code) => onHardwareScan(code)}
+              label={t('scanner.scanLabel')}
+              placeholder={t('scanner.manualEntryPlaceholder')}
+              className="w-full"
+            />
+          </div>
         )}
-        <Input
-          placeholder={t('stock.searchPlaceholder')}
-          value={searchTerm}
-          onChange={(e) => {
-            setSearchTerm(e.target.value);
-            setPage(0);
-          }}
-          leftIcon={<Search className="w-4 h-4" />}
-        />
+        <div className="w-full sm:flex-1">
+          <Input
+            placeholder={t('stock.searchPlaceholder')}
+            value={searchTerm}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+              setPage(0);
+            }}
+            leftIcon={<Search className="w-4 h-4" />}
+          />
+        </div>
       </div>
 
       {isLoading ? (

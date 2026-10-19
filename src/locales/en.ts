@@ -363,6 +363,7 @@ export const en = {
   scanner: {
     title: 'Barcode Scanner',
     scanAction: 'Scan Barcode',
+    scanLabel: 'Scan barcode',
     instruction: 'Point camera at product barcode',
     searching: 'Searching your shop...',
     connecting: 'Connecting camera...',

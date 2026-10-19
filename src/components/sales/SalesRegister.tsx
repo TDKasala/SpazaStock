@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { ScanBarcode, ShoppingCart, Plus, Minus, Layers, CloudOff, ChevronLeft, ChevronRight } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ScanBarcode, ShoppingCart, Plus, Minus, Layers, CloudOff, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import type { Product, Sale } from '../../types';
 import { useLanguage } from '../../context/LanguageContext';
 import { useShopId } from '../../context/ShopContext';
@@ -8,12 +8,13 @@ import { ErrorMessage } from '../ui/ErrorMessage';
 import { Dialog } from '../ui/Dialog';
 import { getSales, getTodaySales, saleNetAmount, saleNetQuantity } from '../../services/salesService';
 import { SyncChip } from './RapidSellPanel';
-import { getProducts } from '../../services/productService';
+import { getProducts, resolveBarcode, isArchived } from '../../services/productService';
 import { getProductTotalStock } from '../../services/stockService';
 import { newId } from '../../lib/ids';
 import type { SaleRegister } from '../../hooks/useSaleRegister';
 import { ScanInput } from '../scanner/ScanInput';
 import { attachGlobalHidListener } from '../../lib/scanner/hid';
+import { playScanBeep, vibrateScan } from '../../lib/barcode/feedback';
 
 export interface SalesRegisterProps {
   register: SaleRegister;
@@ -26,7 +27,7 @@ const PAGE_SIZE = 15;
 export const SalesRegister: React.FC<SalesRegisterProps> = ({ register, onOpenScanner, refreshTrigger }) => {
   const { t } = useLanguage();
   const shopId = useShopId();
-  const { lastSaleResult, error, isProcessing, sellProduct, sellBarcode, clearError, syncStates } = register;
+  const { lastSaleResult, error, isProcessing, sellProduct, stageBarcode, clearError, syncStates } = register;
 
   const [recentSales, setRecentSales] = useState<Sale[]>([]);
   const [page, setPage] = useState(0);
@@ -39,12 +40,15 @@ export const SalesRegister: React.FC<SalesRegisterProps> = ({ register, onOpenSc
   const [adjustAvailableStock, setAdjustAvailableStock] = useState(0);
   const [adjustKey, setAdjustKey] = useState('');
   const [adjustError, setAdjustError] = useState<string | null>(null);
+  const [cart, setCart] = useState<Map<string, { product: Product; quantity: number }>>(() => new Map());
+  const [cartError, setCartError] = useState<string | null>(null);
+  const [checkingOut, setCheckingOut] = useState(false);
 
   // Page-level HID listener: treat a fast burst ending in Enter as a scan even without focus.
   useEffect(() => {
     return attachGlobalHidListener(
       (code) => {
-        void sellBarcode(code);
+        void addScanToCart(code);
       },
       { active: true, feedback: false }
     );
@@ -80,6 +84,94 @@ export const SalesRegister: React.FC<SalesRegisterProps> = ({ register, onOpenSc
     clearError();
     setAdjustKey(newId());
     setAdjustModalProduct(product);
+  };
+
+  const cartLines = useMemo(() => Array.from(cart.values()), [cart]);
+  const cartTotal = cartLines.reduce(
+    (sum, l) => sum + (Number(l.product.sellingPrice ?? 0) * l.quantity),
+    0
+  );
+
+  const addProductToCart = (product: Product, qty: number = 1) => {
+    setCartError(null);
+    setCart((cur) => {
+      const next = new Map(cur);
+      const entry = next.get(product.id);
+      next.set(product.id, { product, quantity: (entry?.quantity ?? 0) + qty });
+      return next;
+    });
+    playScanBeep();
+    vibrateScan(40);
+  };
+
+  async function addScanToCart(barcode: string): Promise<void> {
+    const clean = barcode.trim();
+    if (!clean) return;
+    const resolved = await resolveBarcode(clean, shopId);
+    if (!resolved) {
+      // Reuse existing unknown-barcode path without recording a sale.
+      await stageBarcode(clean);
+      return;
+    }
+    const { product } = resolved;
+    if (isArchived(product)) {
+      setCartError(t('product.archivedNotice', { name: product.name }));
+      vibrateScan([70, 40, 40]);
+      return;
+    }
+    addProductToCart(product, 1);
+  }
+
+  const changeQty = (productId: string, delta: number) => {
+    setCart((cur) => {
+      const entry = cur.get(productId);
+      if (!entry) return cur;
+      const nextQty = Math.max(1, entry.quantity + delta);
+      const next = new Map(cur);
+      next.set(productId, { ...entry, quantity: nextQty });
+      return next;
+    });
+  };
+
+  const setQty = (productId: string, qty: number) => {
+    if (!Number.isInteger(qty) || qty <= 0) return;
+    setCart((cur) => {
+      const entry = cur.get(productId);
+      if (!entry) return cur;
+      const next = new Map(cur);
+      next.set(productId, { ...entry, quantity: qty });
+      return next;
+    });
+  };
+
+  const removeLine = (productId: string) => {
+    setCart((cur) => {
+      const next = new Map(cur);
+      next.delete(productId);
+      return next;
+    });
+  };
+
+  const checkout = async (): Promise<void> => {
+    setCartError(null);
+    if (cart.size === 0) return;
+    setCheckingOut(true);
+    try {
+      for (const { product, quantity } of cart.values()) {
+        // recordSale will do FEFO deduction and enforce expired batch blocking.
+        const ok = await sellProduct(product, quantity, newId());
+        if (!ok) {
+          // Leave remaining items; user can resolve and retry.
+          setCheckingOut(false);
+          return;
+        }
+      }
+      setCart(new Map());
+      playScanBeep();
+      vibrateScan([60, 40, 60]);
+    } finally {
+      setCheckingOut(false);
+    }
   };
 
   const handleAdjustSubmit = async (e?: React.FormEvent) => {
@@ -124,11 +216,96 @@ export const SalesRegister: React.FC<SalesRegisterProps> = ({ register, onOpenSc
       <div className="p-4 bg-zinc-900/60 rounded-2xl border border-zinc-800 space-y-2">
         <ScanInput
           onScan={(code) => {
-            void sellBarcode(code);
+            void addScanToCart(code);
           }}
-          label={t('sales.scanToSell')}
+          label={t('scanner.scanLabel')}
           placeholder={t('scanner.manualEntryPlaceholder')}
         />
+      </div>
+
+      {/* Cart */}
+      <div className="p-4 bg-zinc-900/80 rounded-2xl border border-zinc-800 space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-bold text-zinc-100">{t('sales.scanToSell')}</h3>
+          {cart.size > 0 && (
+            <button
+              type="button"
+              className="text-xs text-zinc-400 hover:text-zinc-200"
+              onClick={() => setCart(new Map())}
+            >
+              {t('common.cancel')}
+            </button>
+          )}
+        </div>
+        {cartError && <ErrorMessage variant="error" message={cartError} onDismiss={() => setCartError(null)} />}
+        {cartLines.length === 0 ? (
+          <p className="text-xs text-zinc-400">{t('rapid.keepScanning')}</p>
+        ) : (
+          <div className="space-y-2">
+            {cartLines.map(({ product, quantity }) => (
+              <div
+                key={product.id}
+                className="px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl flex items-center justify-between gap-2 text-xs"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-zinc-100 truncate">{product.name}</span>
+                    <button
+                      className="text-zinc-500 hover:text-zinc-300"
+                      aria-label="Remove"
+                      onClick={() => removeLine(product.id)}
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <button
+                      type="button"
+                      onClick={() => changeQty(product.id, -1)}
+                      className="w-8 h-8 bg-zinc-900 rounded-lg border border-zinc-800 flex items-center justify-center text-zinc-200"
+                      aria-label="-"
+                    >
+                      <Minus className="w-4 h-4" />
+                    </button>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min="1"
+                      value={quantity}
+                      onChange={(e) => setQty(product.id, Math.max(1, parseInt(e.target.value, 10) || 1))}
+                      className="w-16 h-8 bg-zinc-900 border border-zinc-800 rounded-lg text-center font-bold text-zinc-100 focus:outline-none focus:border-emerald-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => changeQty(product.id, 1)}
+                      className="w-8 h-8 bg-emerald-700 rounded-lg border border-emerald-600 flex items-center justify-center text-white"
+                      aria-label="+"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+                    <span className="ml-auto text-emerald-400 font-semibold">
+                      R {(Number(product.sellingPrice ?? 0) * quantity).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-sm font-semibold text-zinc-200">
+                Total: <span className="text-emerald-400">R {cartTotal.toFixed(2)}</span>
+              </span>
+              <Button
+                onClick={() => void checkout()}
+                variant="primary"
+                size="md"
+                disabled={checkingOut}
+                isLoading={checkingOut}
+              >
+                Checkout
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="p-5 bg-gradient-to-br from-zinc-900 via-zinc-950 to-zinc-900 rounded-3xl border border-zinc-800 shadow-xl space-y-4">

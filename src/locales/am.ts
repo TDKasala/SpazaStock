@@ -365,6 +365,7 @@ export const am: Translations = {
   scanner: {
     title: 'የባርኮድ ስካነር',
     scanAction: 'ባርኮድ ስካን አድርግ',
+    scanLabel: 'ባርኮድ ስካን አድርግ',
     instruction: 'ካሜራውን ወደ ዕቃው ባርኮድ ያዙሩ',
     searching: 'ሱቅዎን በመፈለግ ላይ...',
     connecting: 'ካሜራውን በማገናኘት ላይ...',

@@ -365,6 +365,7 @@ export const so: Translations = {
   scanner: {
     title: 'Iskaanka barcode-ka',
     scanAction: 'Iskaan barcode',
+    scanLabel: 'Iskaan barcode',
     instruction: 'Kaamerada u jeedi barcode-ka alaabta',
     searching: 'Waa la raadinayaa dukaankaaga...',
     connecting: 'Kaamerada waa la xirayaa...',

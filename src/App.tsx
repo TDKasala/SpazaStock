@@ -502,7 +502,16 @@ function AuthGate() {
   );
   const [, setSignInChecked] = useState(0);
   const handleStay = useCallback(() => setSignInChecked((n) => n + 1), []);
-  if (mode === 'device') return <LandingPage notConfigured />;
+  
+  // TESTING: Bypass auth for device mode
+  if (mode === 'device') {
+    return (
+      <ShopProvider>
+        <ShopGate />
+      </ShopProvider>
+    );
+  }
+  
   if (isLoading) return <FullScreenLoading />;
   if (user && isRecoveringPassword) return <NewPasswordScreen />;
   if (inviteToken) {

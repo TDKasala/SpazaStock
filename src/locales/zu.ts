@@ -368,6 +368,7 @@ export const zu: Translations = {
   scanner: {
     title: 'Iskena Samabhakhodi',
     scanAction: 'Skena Ibhakhodi',
+    scanLabel: 'Skena ibhakhodi',
     instruction: 'Khomba ikhamera ebhakhodini yomkhiqizo',
     searching: 'Iyasesha esitolo sakho...',
     connecting: 'Ixhuma ikhamera...',

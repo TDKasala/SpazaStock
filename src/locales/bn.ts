@@ -366,6 +366,7 @@ export const bn: Translations = {
   scanner: {
     title: 'বারকোড স্ক্যানার',
     scanAction: 'বারকোড স্ক্যান',
+    scanLabel: 'বারকোড স্ক্যান',
     instruction: 'ক্যামেরা পণ্যের বারকোডে ধরুন',
     searching: 'দোকানে খোঁজা হচ্ছে...',
     connecting: 'ক্যামেরা সংযোগ হচ্ছে...',
