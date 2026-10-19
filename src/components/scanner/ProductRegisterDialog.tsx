@@ -102,14 +102,6 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
   const sharedImagePath = catalog?.imagePath || null;
   const remoteImageUrl =
     !sharedImagePath && suggestedImageUrl?.startsWith('https://') ? suggestedImageUrl : null;
-  const sourceKey =
-    origin === 'catalog'
-      ? 'product.lookupSourceCatalog'
-      : origin === 'open_food_facts'
-        ? 'product.lookupSourceOff'
-        : origin === 'failed'
-          ? 'product.lookupSourceFailed'
-          : 'product.lookupSourceManual';
   const missing = suggestion
     ? [
         !suggestion.name.value ? t('product.name') : '',
@@ -224,9 +216,6 @@ export const ProductRegisterDialog: React.FC<ProductRegisterDialogProps> = ({
           />
         )}
 
-        <p data-testid="lookup-source" className="text-[11px] text-emerald-400/90 leading-relaxed px-0.5">
-          {t(sourceKey)}
-        </p>
         {missing.length > 0 && (
           <p className="text-[11px] text-amber-300/90 leading-relaxed px-0.5">
             {t('product.lookupMissing', { fields: missing.join(', ') })}

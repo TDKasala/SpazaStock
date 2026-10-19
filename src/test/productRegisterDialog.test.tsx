@@ -50,10 +50,6 @@ afterEach(() => {
   container.remove();
 });
 
-function sourceText(): string {
-  return container.querySelector('[data-testid="lookup-source"]')?.textContent ?? '';
-}
-
 function labelled(label: string): HTMLInputElement | null {
   const text = [...container.querySelectorAll('label')].find((node) => node.textContent?.includes(label));
   const id = text?.getAttribute('for');
@@ -72,7 +68,6 @@ describe('ProductRegisterDialog lookup sources', () => {
         onProductRegistered={() => undefined}
       />
     );
-    expect(sourceText()).toContain('Open Food Facts');
     expect(container.textContent).toContain('Still missing');
     expect(labelled('Product Name')?.value).toBe('Coke');
     expect(labelled('Selling Price')?.value).toBe('');
@@ -119,7 +114,6 @@ describe('ProductRegisterDialog lookup sources', () => {
         onProductRegistered={() => undefined}
       />
     );
-    expect(sourceText()).toContain('SpazaStock catalog');
     expect(container.textContent).toContain('Add this product');
   });
 
@@ -152,7 +146,7 @@ describe('ProductRegisterDialog lookup sources', () => {
     expect(container.querySelector('input[capture="environment"]')).toBeTruthy();
   });
 
-  it('explains a manual entry when lookup did not find a product', async () => {
+  it('leaves the form empty when lookup did not find a product', async () => {
     await render(
       <ProductRegisterDialog
         isOpen
@@ -162,7 +156,6 @@ describe('ProductRegisterDialog lookup sources', () => {
         onProductRegistered={() => undefined}
       />
     );
-    expect(sourceText()).toContain('not in the catalog');
     expect(labelled('Product Name')?.value).toBe('');
     expect(labelled('Selling Price')?.value).toBe('');
   });
