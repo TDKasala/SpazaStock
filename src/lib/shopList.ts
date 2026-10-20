@@ -14,6 +14,8 @@ export interface ShopRow {
   address?: string | null;
   city?: string | null;
   province?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 function entitlementsFromRow(row: ShopRow['entitlements']): ShopEntitlements | undefined {
@@ -39,6 +41,8 @@ export function shopFromRow(row: ShopRow): Shop {
     address: row.address ?? undefined,
     city: row.city ?? undefined,
     province: row.province ?? undefined,
+    latitude: row.latitude ?? null,
+    longitude: row.longitude ?? null,
   };
 }
 

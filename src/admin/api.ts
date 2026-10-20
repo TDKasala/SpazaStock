@@ -126,6 +126,8 @@ export const adminApi = {
       p_address: shop.address,
       p_city: shop.city,
       p_province: shop.province,
+      p_latitude: shop.latitude,
+      p_longitude: shop.longitude,
     }),
 
   exportTenants: (filters: TenantFilters, reason: string) =>

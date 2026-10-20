@@ -204,7 +204,16 @@ describe('shop list', () => {
   it('maps database rows', () => {
     expect(
       shopFromRow({ id: 'a', name: 'A', timezone: 'Africa/Johannesburg', expiry_reminder_days: [7], role: 'manager', is_account_owner: false })
-    ).toEqual({ id: 'a', name: 'A', timezone: 'Africa/Johannesburg', reminderDays: [7], role: 'manager', isAccountOwner: false });
+    ).toEqual({
+      id: 'a',
+      name: 'A',
+      timezone: 'Africa/Johannesburg',
+      reminderDays: [7],
+      role: 'manager',
+      isAccountOwner: false,
+      latitude: null,
+      longitude: null,
+    });
     expect(
       shopFromRow({ id: 'a', name: 'A', phone: '+27821234567', address: '12 Main Road', city: 'Soweto', province: 'GP' })
     ).toMatchObject({ phone: '+27821234567', address: '12 Main Road', city: 'Soweto', province: 'GP' });

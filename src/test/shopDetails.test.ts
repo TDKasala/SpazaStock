@@ -1,7 +1,24 @@
 import { describe, it, expect } from 'vitest';
 import { emptyShopForm, normalizePhone, parseShopForm, provinceName } from '../lib/shopDetails';
+import { locationFailure, parseCoordinates } from '../lib/geolocation';
 
 const t = (key: string) => key;
+
+describe('GPS coordinates', () => {
+  it('rounds a reading and rejects anything outside the earth', () => {
+    expect(parseCoordinates(-26.2041034, 28.0473056)).toEqual({ latitude: -26.204103, longitude: 28.047306 });
+    expect(parseCoordinates(91, 0)).toBeNull();
+    expect(parseCoordinates(0, 181)).toBeNull();
+    expect(parseCoordinates(Number.NaN, 1)).toBeNull();
+  });
+
+  it('names a permission refusal, a timeout, and a missing GPS', () => {
+    expect(locationFailure({ code: 1 })).toBe('denied');
+    expect(locationFailure({ code: 3 })).toBe('timeout');
+    expect(locationFailure(new Error('unsupported'))).toBe('unsupported');
+    expect(locationFailure({ code: 2 })).toBe('unavailable');
+  });
+});
 
 describe('normalizePhone', () => {
   it('turns South African numbers into international form', () => {
@@ -27,22 +44,30 @@ describe('normalizePhone', () => {
 describe('parseShopForm', () => {
   it('needs only a name', () => {
     expect(parseShopForm({ ...emptyShopForm(), name: ' Spaza ' }, t)).toEqual({
-      input: { name: 'Spaza', phone: null, address: null, city: null, province: null },
+      input: { name: 'Spaza', phone: null, address: null, city: null, province: null, latitude: null, longitude: null },
       errors: {},
     });
   });
 
   it('cleans the details', () => {
     const { input } = parseShopForm(
-      { name: 'Spaza', phone: '082 123 4567', address: ' 12  Main Road ', city: ' Soweto ', province: 'GP' },
+      { ...emptyShopForm(), name: 'Spaza', phone: '082 123 4567', address: ' 12  Main Road ', city: ' Soweto ', province: 'GP' },
       t
     );
-    expect(input).toEqual({ name: 'Spaza', phone: '+27821234567', address: '12 Main Road', city: 'Soweto', province: 'GP' });
+    expect(input).toEqual({
+      name: 'Spaza',
+      phone: '+27821234567',
+      address: '12 Main Road',
+      city: 'Soweto',
+      province: 'GP',
+      latitude: null,
+      longitude: null,
+    });
   });
 
   it('reports each invalid field', () => {
     const { input, errors } = parseShopForm(
-      { name: '', phone: '123', address: 'x'.repeat(201), city: 'x'.repeat(101), province: 'XX' },
+      { ...emptyShopForm(), name: '', phone: '123', address: 'x'.repeat(201), city: 'x'.repeat(101), province: 'XX' },
       t
     );
     expect(input).toBeUndefined();
@@ -53,6 +78,11 @@ describe('parseShopForm', () => {
       city: 'onboarding.cityTooLong',
       province: 'onboarding.provinceInvalid',
     });
+  });
+
+  it('keeps a GPS point with the shop', () => {
+    const { input } = parseShopForm({ ...emptyShopForm(), name: 'Spaza', latitude: -26.204103, longitude: 28.047305 }, t);
+    expect(input).toMatchObject({ latitude: -26.204103, longitude: 28.047305 });
   });
 
   it('names provinces by code', () => {

@@ -329,6 +329,8 @@ const CreateShopDialog: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ 
           address: address.replace(/\s+/g, ' ').trim() || null,
           city: city.replace(/\s+/g, ' ').trim() || null,
           province: province || null,
+          latitude: null,
+          longitude: null,
         };
         const result = await adminApi.createShop(email.trim(), shop, reason);
         onClose();

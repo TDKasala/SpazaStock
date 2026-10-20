@@ -205,6 +205,8 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
         p_address: input.address,
         p_city: input.city,
         p_province: input.province,
+        p_latitude: input.latitude,
+        p_longitude: input.longitude,
       });
       if (rpcError || !data) return { error: rpcError?.message ?? 'Could not create shop.' };
 

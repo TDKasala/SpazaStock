@@ -212,6 +212,7 @@ export const adminEn = {
     createdAt: 'Created',
     phone: 'Phone',
     address: 'Address',
+    location: 'GPS location',
     timezone: 'Time zone',
     reminders: 'Expiry reminders (days before)',
     owner: 'Owner',

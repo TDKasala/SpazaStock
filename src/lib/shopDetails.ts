@@ -41,6 +41,8 @@ export interface NewShopInput {
   address: string | null;
   city: string | null;
   province: ProvinceCode | null;
+  latitude: number | null;
+  longitude: number | null;
 }
 
 /** Form state, as typed. */
@@ -50,12 +52,14 @@ export interface ShopFormValues {
   address: string;
   city: string;
   province: string;
+  latitude: number | null;
+  longitude: number | null;
 }
 
 export type ShopFormErrors = Partial<Record<keyof ShopFormValues, string>>;
 
 export function emptyShopForm(): ShopFormValues {
-  return { name: '', phone: '', address: '', city: '', province: '' };
+  return { name: '', phone: '', address: '', city: '', province: '', latitude: null, longitude: null };
 }
 
 const collapse = (text: string) => text.replace(/\s+/g, ' ').trim();
@@ -81,7 +85,15 @@ export function parseShopForm(
 
   if (Object.keys(errors).length > 0 || phone === 'invalid') return { errors };
   return {
-    input: { name, phone, address: address || null, city: city || null, province },
+    input: {
+      name,
+      phone,
+      address: address || null,
+      city: city || null,
+      province,
+      latitude: values.latitude ?? null,
+      longitude: values.longitude ?? null,
+    },
     errors,
   };
 }

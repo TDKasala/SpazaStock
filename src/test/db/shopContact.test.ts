@@ -68,6 +68,24 @@ describe('shop contact details', () => {
     expect(await query(pg, outsider, 'select phone from public.shops where id = $1', [shop.id])).toEqual([]);
   });
 
+  it('stores the GPS point from the phone and refuses a half or impossible location', async () => {
+    const shop = await rpc<ShopResult & { latitude: number; longitude: number }>(pg, owner, 'create_shop', {
+      p_name: 'GPS Spaza',
+      p_latitude: -26.2041034,
+      p_longitude: 28.0473056,
+    });
+    expect(shop.latitude).toBeCloseTo(-26.204103, 6);
+    expect(shop.longitude).toBeCloseTo(28.047306, 6);
+
+    const listed = await rpc<Array<{ id: string; latitude: number; longitude: number }>>(pg, owner, 'my_shops');
+    expect(listed.find((s) => s.id === shop.id)).toMatchObject({ latitude: shop.latitude, longitude: shop.longitude });
+
+    const create = (details: Record<string, unknown>) => rpc(pg, owner, 'create_shop', { p_name: 'Bad GPS', ...details });
+    expect(await errorCode(create({ p_latitude: -26.2 }))).toBe('22023');
+    expect(await errorCode(create({ p_latitude: 91, p_longitude: 0 }))).toBe('22023');
+    expect(await errorCode(create({ p_latitude: 0, p_longitude: 181 }))).toBe('22023');
+  });
+
   it('keeps every detail optional, so the name alone still works', async () => {
     const shop = await rpc<ShopResult>(pg, owner, 'create_shop', { p_name: 'Name only' });
     expect(shop).toMatchObject({ phone: null, address: null, city: null, province: null });

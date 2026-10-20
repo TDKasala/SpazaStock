@@ -214,6 +214,7 @@ export const adminZu: AdminTranslations = {
     createdAt: 'Kwakhiwe',
     phone: 'Ucingo',
     address: 'Ikheli',
+    location: 'Indawo ye-GPS',
     timezone: 'Isikhathi sendawo',
     reminders: 'Izikhumbuzo zokuphelelwa yisikhathi (izinsuku ngaphambili)',
     owner: 'Umnikazi',

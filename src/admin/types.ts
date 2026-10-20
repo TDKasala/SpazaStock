@@ -123,6 +123,8 @@ export interface TenantDetail {
     address: string | null;
     city: string | null;
     province: string | null;
+    latitude: number | null;
+    longitude: number | null;
   };
   owner: {
     id: string;

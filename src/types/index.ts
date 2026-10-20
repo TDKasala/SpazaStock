@@ -46,6 +46,10 @@ export interface Shop {
   city?: string | null;
   /** South African province code, e.g. GP. */
   province?: string | null;
+  /** GPS latitude in decimal degrees, when captured at creation. */
+  latitude?: number | null;
+  /** GPS longitude in decimal degrees, when captured at creation. */
+  longitude?: number | null;
 }
 
 export type ShopStatus = 'active' | 'suspended';

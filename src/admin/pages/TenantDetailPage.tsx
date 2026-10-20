@@ -137,6 +137,12 @@ export const TenantDetailPage: React.FC<{ shopId: string }> = ({ shopId }) => {
                 at('tenant.address'),
                 [shop.address, shop.city, provinceName(shop.province)].filter(Boolean).join(', ') || at('common.none'),
               ],
+              [
+                at('tenant.location'),
+                shop.latitude != null && shop.longitude != null
+                  ? `${shop.latitude.toFixed(6)}, ${shop.longitude.toFixed(6)}`
+                  : at('common.none'),
+              ],
               [at('tenant.timezone'), shop.timezone],
               [at('tenant.reminders'), (shop.expiry_reminder_days ?? []).join(', ') || at('common.none')],
             ]}

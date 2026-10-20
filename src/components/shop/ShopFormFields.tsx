@@ -1,7 +1,9 @@
-import React from 'react';
-import { MapPin, Phone, Store } from 'lucide-react';
+import React, { useState } from 'react';
+import { LocateFixed, MapPin, Phone, Store } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { Input } from '../ui/Input';
+import { Button } from '../ui/Button';
+import { locationFailure, readDeviceLocation } from '../../lib/geolocation';
 import {
   MAX_ADDRESS_LENGTH,
   MAX_CITY_LENGTH,
@@ -21,8 +23,30 @@ export interface ShopFormFieldsProps {
 /** Name plus the optional contact details of a new shop. */
 export const ShopFormFields: React.FC<ShopFormFieldsProps> = ({ values, errors, onChange, autoFocusName }) => {
   const { t } = useLanguage();
+  const [locating, setLocating] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
   const set = <K extends keyof ShopFormValues>(key: K, value: ShopFormValues[K]) =>
     onChange({ ...values, [key]: value });
+
+  const useMyLocation = async () => {
+    setLocating(true);
+    setLocationError(null);
+    try {
+      const point = await readDeviceLocation();
+      onChange({ ...values, latitude: point.latitude, longitude: point.longitude });
+    } catch (error) {
+      const failure = locationFailure(error);
+      const key =
+        failure === 'unsupported'
+          ? 'onboarding.locationUnsupported'
+          : failure === 'denied'
+            ? 'onboarding.locationDenied'
+            : 'onboarding.locationUnavailable';
+      setLocationError(t(key));
+    } finally {
+      setLocating(false);
+    }
+  };
 
   return (
     <>
@@ -98,6 +122,29 @@ export const ShopFormFields: React.FC<ShopFormFieldsProps> = ({ values, errors, 
           </select>
           {errors.province && <span className="text-xs text-rose-400">{errors.province}</span>}
         </div>
+      </div>
+
+      <div className="space-y-2">
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          fullWidth
+          isLoading={locating}
+          leftIcon={<LocateFixed className="w-4 h-4" />}
+          onClick={() => void useMyLocation()}
+        >
+          {locating ? t('onboarding.locating') : t('onboarding.useLocation')}
+        </Button>
+        {values.latitude != null && values.longitude != null && (
+          <p className="text-xs text-emerald-300">
+            {t('onboarding.locationFound', {
+              latitude: values.latitude.toFixed(6),
+              longitude: values.longitude.toFixed(6),
+            })}
+          </p>
+        )}
+        {locationError && <p className="text-xs text-rose-400">{locationError}</p>}
       </div>
     </>
   );
