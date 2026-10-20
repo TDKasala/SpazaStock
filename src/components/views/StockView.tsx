@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Package, Search, Barcode, Archive, ArchiveRestore, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Package, Search, Barcode, Archive, ArchiveRestore, BookOpen, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { useShop, useShopId } from '../../context/ShopContext';
 import { Button } from '../ui/Button';
@@ -9,6 +9,7 @@ import { getAllProductsStockSummary } from '../../services/stockService';
 import { getArchivedProducts, setProductArchived } from '../../services/productService';
 import { can } from '../../lib/permissions';
 import { StockProductCard } from '../stock/StockProductCard';
+import { CatalogAdoptDialog } from '../stock/CatalogAdoptDialog';
 
 const PAGE_SIZE = 15;
 
@@ -35,6 +36,7 @@ export const StockView: React.FC<StockViewProps> = ({
   const [showArchived, setShowArchived] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [page, setPage] = useState(0);
+  const [catalogOpen, setCatalogOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -72,14 +74,19 @@ export const StockView: React.FC<StockViewProps> = ({
 
   return (
     <div className="space-y-5 pb-24">
-      <div className="flex items-center justify-between gap-3">
+      <div className="space-y-3">
         <div>
           <h2 className="text-lg font-bold text-zinc-100">{t('navigation.stock')}</h2>
           <p className="text-xs text-zinc-400">{t('stock.registeredCount', { count: summaries.length })}</p>
         </div>
-        <Button onClick={onOpenScanner} variant="primary" size="sm" leftIcon={<Barcode className="w-4 h-4" />}>
-          {t('scanner.scanAction')}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={() => setCatalogOpen(true)} variant="secondary" size="sm" leftIcon={<BookOpen className="w-4 h-4" />}>
+            {t('catalog.find')}
+          </Button>
+          <Button onClick={onOpenScanner} variant="primary" size="sm" leftIcon={<Barcode className="w-4 h-4" />}>
+            {t('scanner.scanAction')}
+          </Button>
+        </div>
       </div>
 
       <div className="flex items-center gap-2">
@@ -154,6 +161,8 @@ export const StockView: React.FC<StockViewProps> = ({
           </Button>
         </div>
       )}
+
+      <CatalogAdoptDialog isOpen={catalogOpen} onClose={() => setCatalogOpen(false)} />
 
       {!isLoading && archived.length > 0 && (
         <div className="space-y-2">
