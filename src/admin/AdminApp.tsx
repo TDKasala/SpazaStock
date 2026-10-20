@@ -8,6 +8,8 @@ import { canOpenSection } from './permissions';
 import { useAdminRoute } from './router';
 import { OverviewPage } from './pages/OverviewPage';
 import { TenantsPage } from './pages/TenantsPage';
+import { CatalogPage } from './pages/CatalogPage';
+import { CatalogEditorPage } from './pages/CatalogEditorPage';
 import { TenantDetailPage } from './pages/TenantDetailPage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
 import { BillingPage } from './pages/BillingPage';
@@ -34,6 +36,12 @@ function CurrentPage() {
       return <OverviewPage />;
     case 'tenants':
       return route.tenantId ? <TenantDetailPage key={route.tenantId} shopId={route.tenantId} /> : <TenantsPage />;
+    case 'catalog':
+      return route.catalogId ? (
+        <CatalogEditorPage key={route.catalogId} catalogId={route.catalogId} />
+      ) : (
+        <CatalogPage />
+      );
     case 'analytics':
       return <AnalyticsPage />;
     case 'billing':

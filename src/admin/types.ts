@@ -287,3 +287,41 @@ export interface AuditPage {
   offset: number;
   rows: AuditEntry[];
 }
+
+export type CatalogVerification = 'external' | 'user_submitted' | 'verified';
+export type CatalogBarcodeKind = 'unit' | 'alternate' | 'pack';
+
+export interface CatalogBarcode {
+  barcode: string;
+  kind: CatalogBarcodeKind;
+  units_per_package: number | null;
+}
+
+export interface CatalogAdminProduct {
+  id: string;
+  name: string;
+  brand: string | null;
+  category: string;
+  package_size: string | null;
+  package_quantity: number | null;
+  package_unit: string | null;
+  image_url: string | null;
+  image_path: string | null;
+  verification_status: CatalogVerification;
+  source?: string;
+  barcodes?: CatalogBarcode[];
+}
+
+export interface CatalogSearchPage {
+  ok: true;
+  total: number;
+  limit: number;
+  offset: number;
+  rows: CatalogAdminProduct[];
+}
+
+export interface CatalogProductDetail {
+  ok: true;
+  product: CatalogAdminProduct;
+  barcodes: CatalogBarcode[];
+}

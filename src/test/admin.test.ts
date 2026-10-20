@@ -89,13 +89,14 @@ describe('admin API errors', () => {
     expect(unwrapAdminResult({ ok: true, rows: [] })).toEqual({ ok: true, rows: [] });
     expect(() => unwrapAdminResult({ ok: false, code: 'forbidden' })).toThrow(expect.objectContaining({ kind: 'forbidden' }));
     expect(() => unwrapAdminResult({ ok: false, code: 'not_found' })).toThrow(expect.objectContaining({ kind: 'not_found' }));
+    expect(() => unwrapAdminResult({ ok: false, code: 'conflict' })).toThrow(expect.objectContaining({ kind: 'conflict' }));
     expect(() => unwrapAdminResult(null)).toThrow(expect.objectContaining({ kind: 'forbidden' }));
     expect(() => unwrapAdminResult({ rows: [] })).toThrow(expect.objectContaining({ kind: 'forbidden' }));
   });
 
   it('explains each error in the chosen language', () => {
     const at = (key: string, vars?: Record<string, string | number>) => translateAdmin('zu', key, vars);
-    for (const kind of ['forbidden', 'not_found', 'network', 'unknown'] as const) {
+    for (const kind of ['forbidden', 'not_found', 'conflict', 'network', 'unknown'] as const) {
       const message = adminErrorMessage(new AdminError(kind), at);
       expect(message).not.toMatch(/^errors\./);
     }
@@ -111,13 +112,21 @@ describe('admin routes', () => {
     expect(parseAdminLocation('/admin/audit', '?action=tenant.&offset=50').params.get('action')).toBe('tenant.');
     expect(parseAdminLocation(`/admin/tenants/${SHOP_ID.toUpperCase()}`, '')).toMatchObject({ section: 'tenants', tenantId: SHOP_ID });
     expect(parseAdminLocation('/admin/tenants/not-a-uuid', '')).toMatchObject({ section: 'tenants', tenantId: null });
-    expect(parseAdminLocation(`/admin/billing/${SHOP_ID}`, '')).toMatchObject({ section: 'billing', tenantId: null });
+    expect(parseAdminLocation(`/admin/billing/${SHOP_ID}`, '')).toMatchObject({ section: 'billing', tenantId: null, catalogId: null });
+    expect(parseAdminLocation(`/admin/catalog/${SHOP_ID.toUpperCase()}`, '')).toMatchObject({
+      section: 'catalog',
+      tenantId: null,
+      catalogId: SHOP_ID,
+    });
+    expect(parseAdminLocation('/admin/catalog/new', '').catalogId).toBe('new');
+    expect(parseAdminLocation('/admin/catalog/not-a-uuid', '').catalogId).toBeNull();
     expect(parseAdminLocation('/admin/secret', '').section).toBe('overview');
   });
 
   it('builds links that round-trip, dropping empty filters', () => {
     expect(adminHref('overview')).toBe('/admin');
     expect(adminHref('tenants', { tenantId: SHOP_ID })).toBe(`/admin/tenants/${SHOP_ID}`);
+    expect(adminHref('catalog', { catalogId: 'new' })).toBe('/admin/catalog/new');
     const href = adminHref('tenants', { params: { q: 'Thandi & Sons', status: 'suspended', plan: '', sort: null } });
     expect(href).toBe('/admin/tenants?q=Thandi+%26+Sons&status=suspended');
     const [path, search] = href.split('?');

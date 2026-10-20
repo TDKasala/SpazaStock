@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  Package,
   ScrollText,
   Search,
   ShieldCheck,
@@ -23,6 +24,7 @@ import { AdminLink } from './components/AdminLink';
 const ICONS: Record<AdminSection, React.ComponentType<{ className?: string }>> = {
   overview: LayoutDashboard,
   tenants: Store,
+  catalog: Package,
   analytics: BarChart3,
   billing: CreditCard,
   admins: UserCog,

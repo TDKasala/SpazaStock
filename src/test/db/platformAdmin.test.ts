@@ -66,6 +66,36 @@ function adminCalls(): [string, string, Record<string, unknown>][] {
     ['feature.change', 'admin_set_feature', { p_key: 'expiry_push', p_enabled: false, p_reason: REASON }],
     ['operations.view', 'admin_operations_health', {}],
     ['audit.view', 'admin_list_audit', {}],
+    ['catalog.search', 'admin_search_catalog', {}],
+    ['catalog.view', 'admin_get_catalog_product', { p_id: shop }],
+    [
+      'catalog.save',
+      'admin_save_catalog_product',
+      {
+        p_id: null,
+        p_name: 'Catalogue item',
+        p_brand: null,
+        p_category: 'other',
+        p_package_size: null,
+        p_package_quantity: null,
+        p_package_unit: null,
+        p_verification_status: 'verified',
+        p_reason: REASON,
+      },
+    ],
+    [
+      'catalog.barcode',
+      'admin_link_catalog_barcode',
+      {
+        p_catalog_product_id: shop,
+        p_barcode: '6001000000001',
+        p_kind: 'unit',
+        p_units_per_package: null,
+        p_reason: REASON,
+      },
+    ],
+    ['catalog.barcode_remove', 'admin_unlink_catalog_barcode', { p_barcode: '6001000000001', p_reason: REASON }],
+    ['catalog.image', 'admin_set_catalog_image', { p_id: shop, p_image_path: null, p_reason: REASON }],
   ];
 }
 

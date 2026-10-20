@@ -89,6 +89,26 @@ describe('admin translations', () => {
     expect(missing).toEqual([]);
   });
 
+  it('labels every catalogue action recorded by the admin catalogue migration', () => {
+    const migration = readFileSync(
+      join(__dirname, '..', '..', 'supabase', 'migrations', '20261020195616_admin_catalog.sql'),
+      'utf8'
+    );
+    const actions = new Set<string>();
+    for (const match of migration.matchAll(/private\.audit\(\s*'([a-z_.]+)'/g)) actions.add(match[1]);
+    for (const match of migration.matchAll(/platform_denied\('([a-z_.]+)'/g)) actions.add(match[1]);
+    expect([...actions].sort()).toEqual([
+      'catalog.barcode',
+      'catalog.barcode_remove',
+      'catalog.image',
+      'catalog.save',
+      'catalog.search',
+      'catalog.view',
+    ]);
+    const missing = [...actions].filter((action) => !hasAdminKey(`actions.${action.replace(/\./g, '_')}`));
+    expect(missing).toEqual([]);
+  });
+
   it('falls back to English for other shop languages, then to the key', () => {
     expect(adminLocale('zu')).toBe('zu');
     expect(adminLocale('am')).toBe('en');

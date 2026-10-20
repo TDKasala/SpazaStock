@@ -5,12 +5,15 @@ export interface AdminRoute {
   section: AdminSection;
   /** Set on /admin/tenants/:id. */
   tenantId: string | null;
+  /** Set on /admin/catalog/:id, including the literal `new`. */
+  catalogId: string | null;
   params: URLSearchParams;
 }
 
 const SECTION_PATHS: Record<string, AdminSection> = {
   '': 'overview',
   tenants: 'tenants',
+  catalog: 'catalog',
   analytics: 'analytics',
   billing: 'billing',
   admins: 'admins',
@@ -24,15 +27,19 @@ export function parseAdminLocation(pathname: string, search: string): AdminRoute
   const parts = pathname.replace(/^\/admin\/?/, '').split('/').filter(Boolean);
   const section = SECTION_PATHS[parts[0] ?? ''] ?? 'overview';
   const tenantId = section === 'tenants' && parts[1] && UUID.test(parts[1]) ? parts[1].toLowerCase() : null;
-  return { section, tenantId, params: new URLSearchParams(search) };
+  const catalogPart = section === 'catalog' ? parts[1] : undefined;
+  const catalogId =
+    catalogPart === 'new' ? 'new' : catalogPart && UUID.test(catalogPart) ? catalogPart.toLowerCase() : null;
+  return { section, tenantId, catalogId, params: new URLSearchParams(search) };
 }
 
 export function adminHref(
   section: AdminSection,
-  options: { tenantId?: string; params?: Record<string, string | null | undefined> } = {}
+  options: { tenantId?: string; catalogId?: string; params?: Record<string, string | null | undefined> } = {}
 ): string {
   let path = section === 'overview' ? '/admin' : `/admin/${section}`;
   if (options.tenantId) path += `/${options.tenantId}`;
+  if (options.catalogId) path += `/${options.catalogId}`;
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(options.params ?? {})) {
     if (value) query.set(key, value);

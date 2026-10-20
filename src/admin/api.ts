@@ -4,6 +4,8 @@ import type {
   AnalyticsReport,
   AuditFilters,
   AuditPage,
+  CatalogProductDetail,
+  CatalogSearchPage,
   GrowthBucket,
   GrowthMetric,
   GrowthSeries,
@@ -20,7 +22,9 @@ import type { PlatformRole } from './permissions';
 import type { NewShopInput } from '../lib/shopDetails';
 import type { AdminTranslate } from './i18n';
 
-export type AdminErrorKind = 'forbidden' | 'not_found' | 'invalid' | 'network' | 'unknown';
+const PRODUCT_IMAGE_BUCKET = 'product-images';
+
+export type AdminErrorKind = 'forbidden' | 'not_found' | 'conflict' | 'invalid' | 'network' | 'unknown';
 
 export class AdminError extends Error {
   readonly kind: AdminErrorKind;
@@ -47,7 +51,9 @@ export function errorFromPostgrest(error: PostgrestLikeError): AdminError {
 export function unwrapAdminResult<T>(data: unknown): T {
   const body = data as { ok?: unknown; code?: unknown } | null;
   if (body && body.ok === true) return data as T;
-  throw new AdminError(body?.code === 'not_found' ? 'not_found' : 'forbidden');
+  if (body?.code === 'not_found') throw new AdminError('not_found');
+  if (body?.code === 'conflict') throw new AdminError('conflict');
+  throw new AdminError('forbidden');
 }
 
 async function adminRpc<T>(fn: string, args?: Record<string, unknown>): Promise<T> {
@@ -70,6 +76,8 @@ export function adminErrorMessage(error: unknown, at: AdminTranslate): string {
       return at('errors.forbidden');
     case 'not_found':
       return at('errors.notFound');
+    case 'conflict':
+      return at('errors.conflict');
     case 'invalid':
       return at('errors.invalid', { message: (error as AdminError).message });
     case 'network':
@@ -208,6 +216,65 @@ export const adminApi = {
 
   operationsHealth: () => adminRpc<OperationsHealth>('admin_operations_health'),
 
+  searchCatalog: (query: string, limit: number, offset: number) =>
+    adminRpc<CatalogSearchPage>('admin_search_catalog', {
+      p_query: query,
+      p_limit: limit,
+      p_offset: offset,
+    }),
+
+  getCatalogProduct: (id: string) => adminRpc<CatalogProductDetail>('admin_get_catalog_product', { p_id: id }),
+
+  saveCatalogProduct: (
+    input: {
+      id: string | null;
+      name: string;
+      brand: string;
+      category: string;
+      packageSize: string;
+      packageQuantity: number | null;
+      packageUnit: string;
+      verificationStatus: string;
+    },
+    reason: string
+  ) =>
+    adminRpc<{ ok: true; created: boolean; id: string }>('admin_save_catalog_product', {
+      p_id: input.id,
+      p_name: input.name,
+      p_brand: input.brand,
+      p_category: input.category,
+      p_package_size: input.packageSize,
+      p_package_quantity: input.packageQuantity,
+      p_package_unit: input.packageUnit,
+      p_verification_status: input.verificationStatus,
+      p_reason: reason,
+    }),
+
+  linkCatalogBarcode: (
+    catalogId: string,
+    barcode: string,
+    kind: string,
+    unitsPerPackage: number | null,
+    reason: string
+  ) =>
+    adminRpc<{ ok: true; unchanged: boolean }>('admin_link_catalog_barcode', {
+      p_catalog_product_id: catalogId,
+      p_barcode: barcode,
+      p_kind: kind,
+      p_units_per_package: unitsPerPackage,
+      p_reason: reason,
+    }),
+
+  unlinkCatalogBarcode: (barcode: string, reason: string) =>
+    adminRpc<{ ok: true }>('admin_unlink_catalog_barcode', { p_barcode: barcode, p_reason: reason }),
+
+  setCatalogImage: (id: string, imagePath: string | null, reason: string) =>
+    adminRpc<{ ok: true; image_path: string | null }>('admin_set_catalog_image', {
+      p_id: id,
+      p_image_path: imagePath,
+      p_reason: reason,
+    }),
+
   listAudit: (filters: AuditFilters, limit: number, offset: number) =>
     adminRpc<AuditPage>('admin_list_audit', {
       p_action: filters.action || null,
@@ -220,3 +287,20 @@ export const adminApi = {
       p_offset: offset,
     }),
 };
+
+/** Uploads a compressed picture to `catalog/<id>.webp` (or `.jpg`) and returns that path. */
+export async function uploadCatalogImage(
+  catalogId: string,
+  image: { bytes: ArrayBuffer; mimeType: 'image/webp' | 'image/jpeg' }
+): Promise<string> {
+  const supabase = getSupabase();
+  if (!supabase) throw new AdminError('network');
+  const path = `catalog/${catalogId}.${image.mimeType === 'image/jpeg' ? 'jpg' : 'webp'}`;
+  const { error } = await supabase.storage.from(PRODUCT_IMAGE_BUCKET).upload(path, image.bytes, {
+    contentType: image.mimeType,
+    upsert: true,
+    cacheControl: '31536000',
+  });
+  if (error) throw new AdminError('network');
+  return path;
+}

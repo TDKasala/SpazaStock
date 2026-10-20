@@ -47,11 +47,12 @@ export function canAdmin(role: PlatformRole | null | undefined, permission: Plat
   return role ? PLATFORM_ROLE_PERMISSIONS[role].includes(permission) : false;
 }
 
-export type AdminSection = 'overview' | 'tenants' | 'analytics' | 'billing' | 'admins' | 'operations' | 'audit';
+export type AdminSection = 'overview' | 'tenants' | 'catalog' | 'analytics' | 'billing' | 'admins' | 'operations' | 'audit';
 
 export const ADMIN_SECTIONS: readonly AdminSection[] = [
   'overview',
   'tenants',
+  'catalog',
   'analytics',
   'billing',
   'admins',
@@ -67,6 +68,8 @@ export function canOpenSection(role: PlatformRole | null | undefined, section: A
       return true;
     case 'tenants':
       return canAdmin(role, 'tenants.view');
+    case 'catalog':
+      return canAdmin(role, 'catalog.verify');
     case 'analytics':
       return canAdmin(role, 'analytics.view');
     case 'billing':
