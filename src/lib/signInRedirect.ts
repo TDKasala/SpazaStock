@@ -11,6 +11,11 @@ export function isLoginPath(pathname: string): boolean {
   return /^\/login\/?$/.test(pathname);
 }
 
+/** Where a signed-out visit should go. Already on the login page means stay put. */
+export function loggedOutRedirect(pathname: string): string | null {
+  return isLoginPath(pathname) ? null : loginHref();
+}
+
 export function loginInitialView(search: string): 'password' | 'register' {
   return new URLSearchParams(search).get('view') === 'register' ? 'register' : 'password';
 }

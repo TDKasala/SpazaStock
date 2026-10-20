@@ -40,7 +40,7 @@ import { refreshPushSubscription } from './lib/push';
 import { captureInviteFromUrl } from './lib/invite';
 import { can } from './lib/permissions';
 import { clearFreshSignIn, hasFreshSignIn, postSignInDestination } from './lib/platformAdmin';
-import { isLoginPath } from './lib/signInRedirect';
+import { loggedOutRedirect } from './lib/signInRedirect';
 import { markSuspendedSignInDenied } from './lib/suspendedSignIn';
 import type { CatalogMatch, Product, ProductLookupResult, ProductLookupSuggestion, ResolvedBarcode, ScanMode } from './types';
 
@@ -457,6 +457,16 @@ function PostSignInCheck({ onStay }: { onStay: () => void }) {
   return <FullScreenLoading />;
 }
 
+/** Signed-out people always land on the login page, including a visit to the overview. */
+function SignedOutScreen() {
+  const destination = loggedOutRedirect(window.location.pathname);
+  if (destination) {
+    window.location.replace(destination);
+    return <FullScreenLoading />;
+  }
+  return <LoginPage />;
+}
+
 function AuthGate() {
   const { mode, isLoading, user, isRecoveringPassword } = useAuth();
   const [inviteToken, setInviteToken] = useState<string | null>(() =>
@@ -470,7 +480,7 @@ function AuthGate() {
   if (inviteToken) {
     return <InviteAcceptScreen token={inviteToken} onDone={() => setInviteToken(null)} />;
   }
-  if (!user) return isLoginPath(window.location.pathname) ? <LoginPage /> : <LandingPage />;
+  if (!user) return <SignedOutScreen />;
   if (hasFreshSignIn()) return <PostSignInCheck onStay={handleStay} />;
   return (
     <ShopProvider>
@@ -487,7 +497,7 @@ function AdminGate() {
   }, [user]);
   if (mode === 'device') return <LandingPage notConfigured />;
   if (isLoading) return <FullScreenLoading />;
-  if (!user) return <LoginPage />;
+  if (!user) return <SignedOutScreen />;
   return (
     <Suspense fallback={<FullScreenLoading />}>
       <AdminApp />

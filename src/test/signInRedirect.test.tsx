@@ -4,7 +4,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { LandingPage } from '../components/auth/LandingPage';
 import { LoginPage } from '../components/auth/LoginPage';
 import { LanguageProvider } from '../context/LanguageContext';
-import { isLoginPath, loginHref, loginInitialView, requestSignInScreen, takeSignInScreenRequest } from '../lib/signInRedirect';
+import {
+  isLoginPath,
+  loggedOutRedirect,
+  loginHref,
+  loginInitialView,
+  requestSignInScreen,
+  takeSignInScreenRequest,
+} from '../lib/signInRedirect';
 import { markSuspendedSignInDenied } from '../lib/suspendedSignIn';
 
 vi.mock('../context/AuthContext', () => ({
@@ -72,7 +79,7 @@ describe('sign-in redirect', () => {
     });
     expect(container.textContent).toContain('Password');
     expect(container.querySelector('input[autocomplete="current-password"]')).toBeTruthy();
-    expect(container.querySelector('a[href="/"]')?.textContent).toContain('Back to overview');
+    expect(container.querySelector('a[href="/"]')).toBeNull();
     expect(takeSignInScreenRequest()).toBe(false);
   });
 
@@ -106,6 +113,10 @@ describe('sign-in redirect', () => {
     expect(isLoginPath('/login')).toBe(true);
     expect(isLoginPath('/login/')).toBe(true);
     expect(isLoginPath('/')).toBe(false);
+    expect(loggedOutRedirect('/')).toBe('/login');
+    expect(loggedOutRedirect('/admin')).toBe('/login');
+    expect(loggedOutRedirect('/login')).toBeNull();
+    expect(loggedOutRedirect('/login/')).toBeNull();
     expect(loginInitialView('')).toBe('password');
     expect(loginInitialView('?view=register')).toBe('register');
   });
