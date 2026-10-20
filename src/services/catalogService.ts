@@ -136,3 +136,98 @@ export async function adoptCatalogProduct(
   emitDataChanged('local');
   return { data: { created: body.created === true, product, packagings, barcodes } };
 }
+
+export interface CommonCatalogItem {
+  id: string;
+  name: string;
+  brand: string | null;
+  category: ProductCategory;
+  packageSize: string | null;
+  shopProductId: string | null;
+  barcodes: CatalogBarcodeHit[];
+}
+
+export interface CatalogSelection {
+  catalogProductId: string;
+  buyingPrice: number | null;
+  sellingPrice: number | null;
+}
+
+function mapCommonItem(row: Record<string, unknown>): CommonCatalogItem {
+  const barcodes = Array.isArray(row.barcodes) ? row.barcodes : [];
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    brand: row.brand == null ? null : String(row.brand),
+    category: String(row.category) as ProductCategory,
+    packageSize: row.package_size == null ? null : String(row.package_size),
+    shopProductId: row.shop_product_id == null ? null : String(row.shop_product_id),
+    barcodes: barcodes.map((entry) => {
+      const barcode = asRecord(entry);
+      return {
+        barcode: String(barcode.barcode),
+        kind: barcode.kind as CatalogBarcodeHit['kind'],
+        unitsPerPackage: barcode.units_per_package == null ? null : Number(barcode.units_per_package),
+      };
+    }),
+  };
+}
+
+/** Common catalogue rows for a new shop. Prices from other shops are not included. */
+export async function listCommonCatalog(shopId: string): Promise<Result<CommonCatalogItem[]>> {
+  const supabase = getSupabase();
+  if (!supabase) return { error: NOT_CONFIGURED };
+  const { data, error } = await supabase.rpc('list_common_catalog', { p_shop_id: shopId });
+  if (error) return { error: { code: error.code ?? 'error', message: error.message } };
+  const items = asRecord(data).items;
+  return { data: (Array.isArray(items) ? items : []).map((row) => mapCommonItem(asRecord(row))) };
+}
+
+/**
+ * Creates one shop product for each confirmed common catalogue row.
+ * A second call returns the existing row and does not change its prices.
+ * An empty selection skips setup and adds nothing.
+ */
+export async function confirmShopCatalog(
+  shopId: string,
+  selections: CatalogSelection[]
+): Promise<Result<{ products: AdoptedCatalogProduct[] }>> {
+  const supabase = getSupabase();
+  if (!supabase) return { error: NOT_CONFIGURED };
+  const { data, error } = await supabase.rpc('confirm_shop_catalog', {
+    p_shop_id: shopId,
+    p_selections: selections.map((item) => ({
+      catalog_product_id: item.catalogProductId,
+      buying_price: item.buyingPrice,
+      selling_price: item.sellingPrice,
+    })),
+  });
+  if (error) return { error: { code: error.code ?? 'error', message: error.message } };
+
+  const rows = asRecord(data).products;
+  const products = (Array.isArray(rows) ? rows : []).map((entry) => {
+    const body = asRecord(entry);
+    return {
+      created: body.created === true,
+      product: mapProductRow(asRecord(body.product)),
+      packagings: (Array.isArray(body.packagings) ? body.packagings : []).map((row) =>
+        mapPackagingRow(asRecord(row))
+      ),
+      barcodes: (Array.isArray(body.barcodes) ? body.barcodes : []).map((row) => mapBarcodeRow(asRecord(row))),
+    };
+  });
+
+  if (products.length > 0) {
+    await withWriteLock(() =>
+      db.transaction('rw', [db.products, db.packagings, db.barcodes], async () => {
+        for (const row of products) {
+          await db.products.put(row.product);
+          if (row.packagings.length > 0) await db.packagings.bulkPut(row.packagings);
+          if (row.barcodes.length > 0) await db.barcodes.bulkPut(row.barcodes);
+        }
+      })
+    );
+    emitDataChanged('local');
+  }
+  return { data: { products } };
+}

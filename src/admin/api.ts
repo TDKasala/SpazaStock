@@ -275,6 +275,13 @@ export const adminApi = {
       p_reason: reason,
     }),
 
+  setCatalogCommon: (id: string, common: boolean, reason: string) =>
+    adminRpc<{ ok: true; common: boolean }>('admin_set_catalog_common', {
+      p_id: id,
+      p_common: common,
+      p_reason: reason,
+    }),
+
   listAudit: (filters: AuditFilters, limit: number, offset: number) =>
     adminRpc<AuditPage>('admin_list_audit', {
       p_action: filters.action || null,

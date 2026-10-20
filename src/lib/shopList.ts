@@ -16,6 +16,7 @@ export interface ShopRow {
   province?: string | null;
   latitude?: number | null;
   longitude?: number | null;
+  catalog_prompt_pending?: boolean | null;
 }
 
 function entitlementsFromRow(row: ShopRow['entitlements']): ShopEntitlements | undefined {
@@ -43,6 +44,7 @@ export function shopFromRow(row: ShopRow): Shop {
     province: row.province ?? undefined,
     latitude: row.latitude ?? null,
     longitude: row.longitude ?? null,
+    catalogPromptPending: row.catalog_prompt_pending === true,
   };
 }
 

@@ -50,6 +50,8 @@ export interface Shop {
   latitude?: number | null;
   /** GPS longitude in decimal degrees, when captured at creation. */
   longitude?: number | null;
+  /** True until the owner confirms or skips the common catalogue. Existing shops stay false. */
+  catalogPromptPending?: boolean;
 }
 
 export type ShopStatus = 'active' | 'suspended';

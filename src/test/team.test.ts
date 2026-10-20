@@ -213,6 +213,7 @@ describe('shop list', () => {
       isAccountOwner: false,
       latitude: null,
       longitude: null,
+      catalogPromptPending: false,
     });
     expect(
       shopFromRow({ id: 'a', name: 'A', phone: '+27821234567', address: '12 Main Road', city: 'Soweto', province: 'GP' })

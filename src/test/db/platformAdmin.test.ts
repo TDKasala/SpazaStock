@@ -96,6 +96,7 @@ function adminCalls(): [string, string, Record<string, unknown>][] {
     ],
     ['catalog.barcode_remove', 'admin_unlink_catalog_barcode', { p_barcode: '6001000000001', p_reason: REASON }],
     ['catalog.image', 'admin_set_catalog_image', { p_id: shop, p_image_path: null, p_reason: REASON }],
+    ['catalog.common', 'admin_set_catalog_common', { p_id: shop, p_common: true, p_reason: REASON }],
   ];
 }
 

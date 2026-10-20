@@ -309,6 +309,7 @@ export interface CatalogAdminProduct {
   image_path: string | null;
   verification_status: CatalogVerification;
   source?: string;
+  common?: boolean;
   barcodes?: CatalogBarcode[];
 }
 

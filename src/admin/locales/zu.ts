@@ -551,6 +551,7 @@ export const adminZu: AdminTranslations = {
     catalog_barcode: 'Kuxhunywe ikhodi yohlu',
     catalog_barcode_remove: 'Kususwe ikhodi yohlu',
     catalog_image: 'Kushintshiwe isithombe sohlu',
+    catalog_common: 'Phawula umkhiqizo wengosi njengovamile',
   },
   categories: {
     groceries: 'Ukudla okugciniwe',
@@ -595,6 +596,10 @@ export const adminZu: AdminTranslations = {
     packageQuantity: 'Inani lephakheji',
     packageUnit: 'Iyunithi yephakheji',
     verification: 'Ukuqinisekiswa',
+    common: 'Bonisa lo mkhiqizo ezitolo ezintsha',
+    commonHint: 'Isitolo esisha singasikhetha. Asikopishwa baze baqinisekise.',
+    commonOn: 'Kuphawulwe njengokuvamile.',
+    commonOff: 'Kususiwe ohlwini lwesitolo esisha.',
     nameRequired: 'Faka igama lomkhiqizo.',
     quantityInvalid: 'Inani lephakheji kumele libe ngaphezu kuka-zero, noma lishiywe lingenalutho.',
     save: 'Gcina umkhiqizo',

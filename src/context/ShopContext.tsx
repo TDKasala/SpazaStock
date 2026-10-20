@@ -30,6 +30,8 @@ interface ShopContextValue {
   createShop: (input: NewShopInput) => Promise<{ error?: string }>;
   switchShop: (shopId: string) => void;
   updateAlertSettings: (reminderDays: number[], timezone: string) => Promise<{ error?: string }>;
+  /** Clears the new-shop catalogue prompt on this phone after the server accepts confirm or skip. */
+  completeCatalogPrompt: () => void;
   reload: () => void;
 }
 
@@ -253,6 +255,16 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const reload = useCallback(() => setReloadToken((n) => n + 1), []);
   const dismissRevoked = useCallback(() => setRevokedShopNames([]), []);
+  const completeCatalogPrompt = useCallback(() => {
+    if (!userId || !selectedId) return;
+    setShops((current) => {
+      const next = current.map((item) =>
+        item.id === selectedId ? { ...item, catalogPromptPending: false } : item
+      );
+      writeCachedShops(userId, next);
+      return next;
+    });
+  }, [selectedId, userId]);
 
   const value = useMemo(
     () => ({
@@ -267,6 +279,7 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
       createShop,
       switchShop,
       updateAlertSettings,
+      completeCatalogPrompt,
       reload,
     }),
     [
@@ -281,6 +294,7 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
       createShop,
       switchShop,
       updateAlertSettings,
+      completeCatalogPrompt,
       reload,
     ]
   );

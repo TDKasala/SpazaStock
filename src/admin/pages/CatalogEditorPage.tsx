@@ -59,7 +59,8 @@ type Pending =
   | { kind: 'barcode' }
   | { kind: 'unlink'; barcode: string }
   | { kind: 'image'; image: CompressedImage }
-  | { kind: 'clear-image' };
+  | { kind: 'clear-image' }
+  | { kind: 'common'; value: boolean };
 
 function useStoredImage(path: string | null) {
   const [url, setUrl] = useState<string | null>(null);
@@ -101,6 +102,7 @@ export const CatalogEditorPage: React.FC<{ catalogId: string }> = ({ catalogId }
   const [scanning, setScanning] = useState(false);
   const [pending, setPending] = useState<Pending | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [common, setCommon] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
   const [localPreview, setLocalPreview] = useState<string | null>(null);
@@ -121,6 +123,7 @@ export const CatalogEditorPage: React.FC<{ catalogId: string }> = ({ catalogId }
       packageUnit: product.package_unit ?? '',
       verification: product.verification_status,
     });
+    setCommon(product.common === true);
   }, [loaded.data]);
 
   useEffect(() => {
@@ -170,6 +173,13 @@ export const CatalogEditorPage: React.FC<{ catalogId: string }> = ({ catalogId }
       setNotice(at('catalog.saved'));
       if (isNew) navigateAdmin(adminHref('catalog', { catalogId: saved.id }), { replace: true });
       else loaded.reload();
+      return;
+    }
+    if (pending.kind === 'common') {
+      await adminApi.setCatalogCommon(catalogId, pending.value, reason);
+      setCommon(pending.value);
+      setPending(null);
+      setNotice(pending.value ? at('catalog.commonOn') : at('catalog.commonOff'));
       return;
     }
     if (pending.kind === 'barcode') {
@@ -281,6 +291,21 @@ export const CatalogEditorPage: React.FC<{ catalogId: string }> = ({ catalogId }
                   ))}
                 </select>
               </Field>
+              {!isNew && (
+                <label className="sm:col-span-2 flex items-start gap-3 text-sm text-zinc-200">
+                  <input
+                    id="catalog-common"
+                    type="checkbox"
+                    checked={common}
+                    onChange={(event) => setPending({ kind: 'common', value: event.target.checked })}
+                    className="mt-1"
+                  />
+                  <span>
+                    <span className="block">{at('catalog.common')}</span>
+                    <span className="block text-zinc-400">{at('catalog.commonHint')}</span>
+                  </span>
+                </label>
+              )}
               <Field id="catalog-verification" label={at('catalog.verification')}>
                 <select
                   id="catalog-verification"

@@ -549,6 +549,7 @@ export const adminEn = {
     catalog_barcode: 'Linked a catalogue barcode',
     catalog_barcode_remove: 'Removed a catalogue barcode',
     catalog_image: 'Changed a catalogue picture',
+    catalog_common: 'Mark a catalogue product as common',
   },
   categories: {
     groceries: 'Groceries',
@@ -593,6 +594,10 @@ export const adminEn = {
     packageQuantity: 'Pack quantity',
     packageUnit: 'Pack unit',
     verification: 'Verification',
+    common: 'Show this product to new shops',
+    commonHint: 'A new shop can choose it. It is not copied until they confirm.',
+    commonOn: 'Marked as common.',
+    commonOff: 'Removed from the new-shop list.',
     nameRequired: 'Enter a product name.',
     quantityInvalid: 'Pack quantity must be greater than zero, or left blank.',
     save: 'Save product',

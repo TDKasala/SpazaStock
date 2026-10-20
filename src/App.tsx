@@ -23,6 +23,7 @@ import { LinkBarcodeDialog } from './components/stock/LinkBarcodeDialog';
 import { LandingPage } from './components/auth/LandingPage';
 import { LoginPage } from './components/auth/LoginPage';
 import { ShopOnboarding } from './components/auth/ShopOnboarding';
+import { CommonCatalogSetup } from './components/auth/CommonCatalogSetup';
 import { InviteAcceptScreen } from './components/auth/InviteAcceptScreen';
 import { NewPasswordScreen } from './components/auth/ResetPasswordScreen';
 import { TeamView } from './components/team/TeamView';
@@ -420,7 +421,7 @@ function FullScreenLoading() {
 }
 
 function ShopGate() {
-  const { shop, isLoading, accessDenied } = useShop();
+  const { shop, isLoading, accessDenied, completeCatalogPrompt } = useShop();
   const { signOut } = useAuth();
   const signingOut = useRef(false);
 
@@ -433,6 +434,9 @@ function ShopGate() {
 
   if (isLoading || accessDenied) return <FullScreenLoading />;
   if (!shop) return <ShopOnboarding />;
+  if (shop.catalogPromptPending && (shop.role === 'owner' || shop.role === 'manager')) {
+    return <CommonCatalogSetup shopId={shop.id} onDone={completeCatalogPrompt} />;
+  }
   // Keyed by shop so switching shops restarts sync and resets every screen.
   return (
     <SyncProvider key={shop.id}>
