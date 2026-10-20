@@ -627,3 +627,148 @@ describe('catalog membership helper', () => {
     expect(refused).toMatchObject({ ok: false, code: 'forbidden' });
   });
 });
+
+describe('shop listing visibility', () => {
+  it('keeps each shop’s listing separate from the master, prices and expiry batches', async () => {
+    const catalog = await submit(owner, shop, '6002220000008', {
+      p_name: 'Listed Rice',
+      p_category: 'groceries',
+      p_package_size: '1kg',
+    });
+    const first = await rpc<{ created: boolean; product: { id: string; listed: boolean; selling_price: number } }>(
+      pg,
+      owner,
+      'adopt_catalog_product',
+      {
+        p_id: randomUUID(),
+        p_shop_id: shop,
+        p_catalog_product_id: catalog.product.id,
+        p_buying_price: 10,
+        p_selling_price: 15,
+      }
+    );
+    expect(first.created).toBe(true);
+    expect(first.product.listed).toBe(true);
+
+    const stored = await query<{ listed: boolean }>(
+      pg,
+      owner,
+      `select listed from products where id = $1`,
+      [first.product.id]
+    );
+    expect(stored[0].listed).toBe(true);
+
+    await stockIn(pg, owner, shop, first.product.id, 6, { expiry: '2027-03-01' });
+    const hidden = await rpc<{ listed: boolean; selling_price: number; buying_price: number }>(
+      pg,
+      owner,
+      'set_product_listed',
+      { p_shop_id: shop, p_product_id: first.product.id, p_listed: false }
+    );
+    expect(hidden.listed).toBe(false);
+    expect(Number(hidden.selling_price)).toBe(15);
+    expect(Number(hidden.buying_price)).toBe(10);
+
+    const secondOwner = await createUser(pg);
+    const secondShop = await createShop(pg, secondOwner, 'Other listing shop');
+    const second = await rpc<{ product: { id: string; listed: boolean; selling_price: number } }>(
+      pg,
+      secondOwner,
+      'adopt_catalog_product',
+      {
+        p_id: randomUUID(),
+        p_shop_id: secondShop,
+        p_catalog_product_id: catalog.product.id,
+        p_buying_price: 8,
+        p_selling_price: 11,
+      }
+    );
+    expect(second.product.listed).toBe(true);
+    expect(Number(second.product.selling_price)).toBe(11);
+    await stockIn(pg, secondOwner, secondShop, second.product.id, 3, { expiry: '2027-11-01' });
+
+    const found = await rpc<{ items: Array<{ id: string; shop_listed: boolean | null; shop_product_id: string | null }> }>(
+      pg,
+      owner,
+      'search_catalog',
+      { p_shop_id: shop, p_query: 'Listed Rice' }
+    );
+    const hit = found.items.find((item) => item.id === catalog.product.id);
+    expect(hit?.shop_product_id).toBe(first.product.id);
+    expect(hit?.shop_listed).toBe(false);
+    const otherHit = await rpc<{ items: Array<{ id: string; shop_listed: boolean | null }> }>(
+      pg,
+      secondOwner,
+      'search_catalog',
+      { p_shop_id: secondShop, p_query: 'Listed Rice' }
+    );
+    expect(otherHit.items.find((item) => item.id === catalog.product.id)?.shop_listed).toBe(true);
+
+    const batches = await query<{ shop_id: string; quantity: number; expiry_date: string }>(
+      pg,
+      'service',
+      `select shop_id, quantity, expiry_date::text as expiry_date
+       from stock_batches where product_id in ($1, $2) order by quantity desc`,
+      [first.product.id, second.product.id]
+    );
+    expect(batches.map((row) => ({ quantity: Number(row.quantity), expiry_date: row.expiry_date }))).toEqual([
+      { quantity: 6, expiry_date: '2027-03-01' },
+      { quantity: 3, expiry_date: '2027-11-01' },
+    ]);
+    expect(
+      await query(
+        pg,
+        'service',
+        `select column_name from information_schema.columns
+         where table_schema = 'public' and table_name = 'catalog_products'
+           and column_name in ('listed', 'buying_price', 'quantity', 'expiry_date')`
+      )
+    ).toEqual([]);
+
+    const staff = await createUser(pg);
+    await addMember(pg, owner, shop, staff, 'staff');
+    expect(
+      await errorCode(
+        rpc(pg, staff, 'set_product_listed', {
+          p_shop_id: shop,
+          p_product_id: first.product.id,
+          p_listed: true,
+        })
+      )
+    ).toBe('42501');
+    expect(
+      await errorCode(
+        rpc(pg, outsider, 'set_product_listed', {
+          p_shop_id: shop,
+          p_product_id: first.product.id,
+          p_listed: true,
+        })
+      )
+    ).toBe('42501');
+
+    const pausedOwner = await createUser(pg);
+    const paused = await createShop(pg, pausedOwner, 'Paused listing shop');
+    const pausedProduct = await rpc<{ product: { id: string } }>(pg, pausedOwner, 'adopt_catalog_product', {
+      p_id: randomUUID(),
+      p_shop_id: paused,
+      p_catalog_product_id: catalog.product.id,
+      p_buying_price: 1,
+      p_selling_price: 2,
+    });
+    await rpc(pg, admin, 'admin_set_shop_status', { p_shop_id: paused, p_status: 'suspended', p_reason: REASON });
+    expect(
+      await errorCode(
+        rpc(pg, pausedOwner, 'set_product_listed', {
+          p_shop_id: paused,
+          p_product_id: pausedProduct.product.id,
+          p_listed: false,
+        })
+      )
+    ).toBe('SP001');
+    expect(
+      (await query<{ listed: boolean }>(pg, pausedOwner, `select listed from products where id = $1`, [
+        pausedProduct.product.id,
+      ]))[0].listed
+    ).toBe(true);
+  });
+});
