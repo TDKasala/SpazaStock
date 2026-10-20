@@ -5,7 +5,14 @@ import { authErrorKey } from '../lib/authErrors';
 import { normalizeDisplayName, normalizeEmail } from '../lib/authValidation';
 import { clearFreshSignIn, markFreshSignIn } from '../lib/platformAdmin';
 import { onDataChanged } from '../lib/events';
-import { createIdleClock, IDLE_CHECK_MS, markIdleSignOut } from '../lib/idleSignOut';
+import {
+  countsAsUserActivity,
+  createIdleClock,
+  IDLE_CHECK_MS,
+  markIdleSignOut,
+  readLastActivity,
+  writeLastActivity,
+} from '../lib/idleSignOut';
 import { requestSignInScreen } from '../lib/signInRedirect';
 
 /** 'device' = Supabase not configured, data stays on this device; 'cloud' = signed-in sync. */
@@ -127,6 +134,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (event === 'PASSWORD_RECOVERY') setRecovering(true);
       if (session) {
         const next = { id: session.user.id, email: session.user.email ?? null };
+        if (event === 'SIGNED_IN') writeLastActivity(next.id, Date.now());
         writeCachedUser(next);
         setUser(next);
         setIsOfflineSession(false);
@@ -278,30 +286,49 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signOutRef = useRef(signOut);
   signOutRef.current = signOut;
 
+  const userId = user?.id ?? null;
+
   useEffect(() => {
-    if (!user) return;
-    const clock = createIdleClock(Date.now());
+    if (!userId) return;
+    const stored = readLastActivity(userId);
+    const startedAt = stored ?? Date.now();
+    if (stored === null) writeLastActivity(userId, startedAt);
+    const clock = createIdleClock(startedAt);
     let signingOut = false;
-    const mark = () => clock.mark(Date.now());
+    let lastPersisted = startedAt;
+    const mark = () => {
+      const now = Date.now();
+      clock.mark(now);
+      if (now - lastPersisted < 5_000) return;
+      lastPersisted = now;
+      writeLastActivity(userId, now);
+    };
     const check = () => {
       if (signingOut || !clock.isIdle(Date.now())) return;
       signingOut = true;
       markIdleSignOut();
-      void signOutRef.current();
+      void signOutRef.current().catch(() => {
+        window.location.replace('/');
+      });
     };
     const options: AddEventListenerOptions = { capture: true, passive: true };
     const events = ['pointerdown', 'keydown', 'scroll'] as const;
     for (const event of events) window.addEventListener(event, mark, options);
-    const stopData = onDataChanged(mark);
+    const stopData = onDataChanged((source) => {
+      if (countsAsUserActivity(source)) mark();
+    });
     document.addEventListener('visibilitychange', check);
+    window.addEventListener('focus', check);
+    check();
     const timer = window.setInterval(check, IDLE_CHECK_MS);
     return () => {
       for (const event of events) window.removeEventListener(event, mark, options);
       stopData();
       document.removeEventListener('visibilitychange', check);
+      window.removeEventListener('focus', check);
       window.clearInterval(timer);
     };
-  }, [user]);
+  }, [userId]);
 
   const value = useMemo(
     () => ({

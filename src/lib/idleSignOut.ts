@@ -5,6 +5,34 @@ export const IDLE_LIMIT_MS = 30 * 60 * 1000;
 export const IDLE_CHECK_MS = 10_000;
 
 const IDLE_NOTICE_KEY = 'spazastock_idle_sign_out';
+const LAST_ACTIVITY_KEY = 'spazastock_last_activity';
+
+/** A sale or other save on this device resets the clock. A sync from the server does not. */
+export function countsAsUserActivity(source: 'local' | 'remote'): boolean {
+  return source === 'local';
+}
+
+function activityKey(userId: string): string {
+  return `${LAST_ACTIVITY_KEY}:${userId}`;
+}
+
+/** Last tap, key, scroll, or save for this account. Survives a reload so a fresh page does not grant another 30 minutes. */
+export function readLastActivity(userId: string): number | null {
+  try {
+    const value = Number(localStorage.getItem(activityKey(userId)));
+    return Number.isFinite(value) && value > 0 ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeLastActivity(userId: string, at: number): void {
+  try {
+    localStorage.setItem(activityKey(userId), String(at));
+  } catch {
+    // Storage can be blocked; the in-memory clock still signs out this open session.
+  }
+}
 
 export function isIdle(lastActivity: number, now: number, limitMs = IDLE_LIMIT_MS): boolean {
   return now - lastActivity >= limitMs;
