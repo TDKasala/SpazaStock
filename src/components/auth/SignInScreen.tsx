@@ -25,7 +25,7 @@ interface SignInPanelProps {
   /** Pre-filled, read-only email (an invite is for one address). */
   lockedEmail?: string;
   initialView?: 'password' | 'register';
-  /** Controls the view from outside, e.g. the landing page's "Create account" button. */
+  /** Controls the view from outside, e.g. the login page opened for account creation. */
   view?: SignInView;
   onViewChange?: (view: SignInView) => void;
   /** Wraps each view with its title; called as a function so forms keep their state. */

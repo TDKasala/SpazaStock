@@ -1,6 +1,21 @@
 const OPEN_SIGN_IN_KEY = 'spazastock_open_sign_in';
 
-/** Asks the next page load to open the sign-in form. */
+export const LOGIN_PATH = '/login';
+
+/** The dedicated sign-in page. `register` opens account creation. */
+export function loginHref(view: 'password' | 'register' = 'password'): string {
+  return view === 'register' ? `${LOGIN_PATH}?view=register` : LOGIN_PATH;
+}
+
+export function isLoginPath(pathname: string): boolean {
+  return /^\/login\/?$/.test(pathname);
+}
+
+export function loginInitialView(search: string): 'password' | 'register' {
+  return new URLSearchParams(search).get('view') === 'register' ? 'register' : 'password';
+}
+
+/** Asks the next page load to open the sign-in page. */
 export function requestSignInScreen(): void {
   try {
     sessionStorage.setItem(OPEN_SIGN_IN_KEY, '1');
@@ -9,7 +24,7 @@ export function requestSignInScreen(): void {
   }
 }
 
-/** Reads the sign-in request once, then clears it so a refresh shows the overview again. */
+/** Reads the sign-in request once, then clears it so a later visit stays on the overview. */
 export function takeSignInScreenRequest(): boolean {
   try {
     if (sessionStorage.getItem(OPEN_SIGN_IN_KEY) !== '1') return false;

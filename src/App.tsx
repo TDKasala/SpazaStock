@@ -21,6 +21,7 @@ import { ProductStockDetailDialog } from './components/stock/ProductStockDetailD
 import { UnknownBarcodeDialog } from './components/stock/UnknownBarcodeDialog';
 import { LinkBarcodeDialog } from './components/stock/LinkBarcodeDialog';
 import { LandingPage } from './components/auth/LandingPage';
+import { LoginPage } from './components/auth/LoginPage';
 import { ShopOnboarding } from './components/auth/ShopOnboarding';
 import { InviteAcceptScreen } from './components/auth/InviteAcceptScreen';
 import { NewPasswordScreen } from './components/auth/ResetPasswordScreen';
@@ -39,6 +40,7 @@ import { refreshPushSubscription } from './lib/push';
 import { captureInviteFromUrl } from './lib/invite';
 import { can } from './lib/permissions';
 import { clearFreshSignIn, hasFreshSignIn, postSignInDestination } from './lib/platformAdmin';
+import { isLoginPath } from './lib/signInRedirect';
 import { markSuspendedSignInDenied } from './lib/suspendedSignIn';
 import type { CatalogMatch, Product, ProductLookupResult, ProductLookupSuggestion, ResolvedBarcode, ScanMode } from './types';
 
@@ -468,7 +470,7 @@ function AuthGate() {
   if (inviteToken) {
     return <InviteAcceptScreen token={inviteToken} onDone={() => setInviteToken(null)} />;
   }
-  if (!user) return <LandingPage />;
+  if (!user) return isLoginPath(window.location.pathname) ? <LoginPage /> : <LandingPage />;
   if (hasFreshSignIn()) return <PostSignInCheck onStay={handleStay} />;
   return (
     <ShopProvider>
@@ -485,7 +487,7 @@ function AdminGate() {
   }, [user]);
   if (mode === 'device') return <LandingPage notConfigured />;
   if (isLoading) return <FullScreenLoading />;
-  if (!user) return <LandingPage />;
+  if (!user) return <LoginPage />;
   return (
     <Suspense fallback={<FullScreenLoading />}>
       <AdminApp />

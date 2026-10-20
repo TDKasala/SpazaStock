@@ -107,6 +107,7 @@
   border: 0;
   background: transparent;
   color: var(--spaza-muted);
+  text-decoration: none;
   font-size: 13px;
   font-weight: 600;
   line-height: 1.2;
@@ -201,6 +202,7 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
+  text-decoration: none;
   min-height: 44px;
   padding: 0 18px;
   border: 1px solid transparent;
@@ -265,20 +267,6 @@
   font-weight: 650;
   letter-spacing: -0.02em;
   line-height: 1.35;
-}
-
-.landing-auth {
-  max-width: 32rem;
-  margin: 0 auto 40px;
-  text-align: left;
-  padding: 20px;
-  border: 1px solid var(--spaza-border);
-  border-radius: 16px;
-  background: var(--spaza-card);
-}
-
-.landing-auth > * + * {
-  margin-top: 16px;
 }
 
 .landing-features {

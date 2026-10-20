@@ -13,7 +13,7 @@ import {
   readLastActivity,
   writeLastActivity,
 } from '../lib/idleSignOut';
-import { requestSignInScreen } from '../lib/signInRedirect';
+import { loginHref, requestSignInScreen } from '../lib/signInRedirect';
 
 /** 'device' = Supabase not configured, data stays on this device; 'cloud' = signed-in sync. */
 export type AuthMode = 'device' | 'cloud';
@@ -280,7 +280,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsOfflineSession(false);
     setRecovering(false);
     requestSignInScreen();
-    window.location.replace('/');
+    window.location.replace(loginHref());
   }, [supabase, setRecovering]);
 
   const signOutRef = useRef(signOut);
@@ -308,7 +308,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       signingOut = true;
       markIdleSignOut();
       void signOutRef.current().catch(() => {
-        window.location.replace('/');
+        window.location.replace(loginHref());
       });
     };
     const options: AddEventListenerOptions = { capture: true, passive: true };

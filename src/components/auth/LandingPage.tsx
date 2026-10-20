@@ -1,8 +1,7 @@
-import React, { useRef, useState } from 'react';
+import React from 'react';
 import {
   ArrowRight,
   BellRing,
-  ChevronLeft,
   Cloud,
   Package,
   ScanBarcode,
@@ -14,13 +13,10 @@ import {
 import { useLanguage } from '../../context/LanguageContext';
 import { LanguagePicker } from '../ui/LanguagePicker';
 import { ErrorMessage } from '../ui/ErrorMessage';
-import { SignInPanel, type PanelFrame, type SignInView } from './SignInScreen';
 import { PWAInstallBanner } from '../pwa/PWAInstallBanner';
 import { AppWhatsAppInvite } from '../pwa/AppWhatsAppInvite';
 import { usePWAInstall } from '../../hooks/usePWAInstall';
-import { takeIdleSignOutNotice } from '../../lib/idleSignOut';
-import { takeSuspendedSignInNotice } from '../../lib/suspendedSignIn';
-import { takeSignInScreenRequest } from '../../lib/signInRedirect';
+import { loginHref } from '../../lib/signInRedirect';
 import { FeatureGlyph, LandingMark, type FeatureArtKind } from './LandingArt';
 import './styles/landing-page.css';
 
@@ -59,40 +55,6 @@ function AccentHeadline({ text, accent }: { text: string; accent: string }) {
 export const LandingPage: React.FC<LandingPageProps> = ({ notConfigured = false }) => {
   const { t } = useLanguage();
   const { needsInstallPrompt } = usePWAInstall();
-  const [idleNotice] = useState(takeIdleSignOutNotice);
-  const [shopSuspended] = useState(takeSuspendedSignInNotice);
-  const [view, setView] = useState<SignInView>('password');
-  const [authPanelOpen, setAuthPanelOpen] = useState(takeSignInScreenRequest);
-  const cardRef = useRef<HTMLDivElement>(null);
-
-  const openAuthPanel = (next: SignInView) => {
-    setView(next);
-    setAuthPanelOpen(true);
-    window.requestAnimationFrame(() => {
-      cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
-  };
-
-  const frame = ({ title, subtitle, children }: PanelFrame) => (
-    <>
-      <div className="flex items-start gap-2">
-        <button
-          type="button"
-          onClick={() => setAuthPanelOpen(false)}
-          className="shrink-0 w-9 h-9 -ml-1 flex items-center justify-center rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
-          aria-label={t('landing.backToOverview')}
-        >
-          <ChevronLeft className="w-5 h-5" />
-        </button>
-        <div className="min-w-0 flex-1">
-          <h2 className="text-lg font-bold text-zinc-100">{title ?? t('auth.signIn')}</h2>
-          {subtitle && <p className="text-xs text-zinc-400 mt-1 leading-relaxed">{subtitle}</p>}
-        </div>
-      </div>
-      {shopSuspended && <ErrorMessage variant="error" message={t('auth.shopSuspended')} />}
-      {children}
-    </>
-  );
 
   return (
     <div className="landing-page" style={needsInstallPrompt ? { paddingBottom: '11rem' } : undefined}>
@@ -109,9 +71,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ notConfigured = false 
           </div>
           <div className="landing-header-actions">
             {!notConfigured && (
-              <button type="button" className="landing-header-signin" onClick={() => openAuthPanel('password')}>
+              <a className="landing-header-signin" href={loginHref()}>
                 {t('landing.haveAccount')}
-              </button>
+              </a>
             )}
             <LanguagePicker unstyled compact className="landing-language" />
           </div>
@@ -127,9 +89,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({ notConfigured = false 
             </h1>
             <p className="landing-description">{t('landing.intro')}</p>
 
-            {idleNotice && <ErrorMessage variant="info" message={t('auth.idleSignedOut')} />}
-            {shopSuspended && !authPanelOpen && <ErrorMessage variant="error" message={t('auth.shopSuspended')} />}
-
             {notConfigured ? (
               <ErrorMessage
                 variant="warning"
@@ -137,15 +96,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({ notConfigured = false 
                 message={t('landing.notConfiguredBody')}
               />
             ) : (
-              !authPanelOpen && (
-                <div className="landing-actions">
-                  <button type="button" className="landing-button landing-button-primary" onClick={() => openAuthPanel('register')}>
-                    <UserPlus className="w-4 h-4" aria-hidden />
-                    {t('landing.createAccount')}
-                    <ArrowRight className="w-4 h-4" aria-hidden />
-                  </button>
-                </div>
-              )
+              <div className="landing-actions">
+                <a className="landing-button landing-button-primary" href={loginHref('register')}>
+                  <UserPlus className="w-4 h-4" aria-hidden />
+                  {t('landing.createAccount')}
+                  <ArrowRight className="w-4 h-4" aria-hidden />
+                </a>
+              </div>
             )}
           </div>
 
@@ -158,12 +115,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({ notConfigured = false 
             ))}
           </div>
         </section>
-
-        {authPanelOpen && !notConfigured && (
-          <div ref={cardRef} className="landing-auth scroll-mt-20">
-            <SignInPanel view={view} onViewChange={setView} frame={frame} />
-          </div>
-        )}
 
         <ul className="landing-features">
           {FEATURES.map(({ icon: Icon, key }) => (
