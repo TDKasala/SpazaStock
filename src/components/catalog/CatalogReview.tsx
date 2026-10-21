@@ -12,6 +12,7 @@ import {
   type CatalogReviewItem,
   type CatalogReviewProgress,
   type CatalogServiceError,
+  type CatalogStockLevel,
 } from '../../services/catalogService';
 
 const BarcodeScannerModal = lazy(() =>
@@ -19,6 +20,17 @@ const BarcodeScannerModal = lazy(() =>
 );
 
 const PAGE_SIZE = 20;
+
+const STOCK_LEVELS: CatalogStockLevel[] = ['in', 'out', 'low', 'expiring'];
+
+const STOCK_LEVEL_LABEL: Record<CatalogStockLevel, string> = {
+  in: 'stock.inStock',
+  out: 'stock.outOfStock',
+  low: 'stock.lowStock',
+  expiring: 'stock.expiring',
+};
+
+const filterSelectClass = 'w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-3 text-sm text-zinc-100';
 
 interface Props {
   shopId: string;
@@ -51,6 +63,7 @@ export const CatalogReview: React.FC<Props> = ({ shopId, canEdit, onFinishLater,
   const [term, setTerm] = useState('');
   const [status, setStatus] = useState<'' | 'open' | 'selling' | 'hidden'>('');
   const [category, setCategory] = useState('');
+  const [stock, setStock] = useState<CatalogStockLevel | ''>('');
   const [page, setPage] = useState(0);
   const [items, setItems] = useState<CatalogReviewItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -99,6 +112,7 @@ export const CatalogReview: React.FC<Props> = ({ shopId, canEdit, onFinishLater,
       query: term,
       status: status || null,
       category: category || null,
+      stock: stock || null,
       limit: PAGE_SIZE,
       offset: page * PAGE_SIZE,
     }).then((result) => {
@@ -117,7 +131,7 @@ export const CatalogReview: React.FC<Props> = ({ shopId, canEdit, onFinishLater,
     return () => {
       active = false;
     };
-  }, [shopId, term, status, category, page, reloadKey, t]);
+  }, [shopId, term, status, category, stock, page, reloadKey, t]);
 
   const draftPrices = (item: CatalogReviewItem): { buyingPrice: number | null; sellingPrice: number | null } | undefined => {
     if (item.shopProductId) return { buyingPrice: null, sellingPrice: null };
@@ -242,28 +256,55 @@ export const CatalogReview: React.FC<Props> = ({ shopId, canEdit, onFinishLater,
           ))}
         </div>
 
-        <div className="flex gap-2">
-          <select
-            aria-label={t('product.category')}
-            value={category}
-            onChange={(event) => {
-              setCategory(event.target.value);
-              setPage(0);
-              setSelected({});
-            }}
-            className="min-w-0 flex-1 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-3 text-sm"
-          >
-            <option value="">{t('catalog.review.allCategories')}</option>
-            {PRODUCT_CATEGORIES.map((item) => (
-              <option key={item} value={item}>
-                {t(`product.categories.${item}`)}
-              </option>
-            ))}
-          </select>
-          <Button variant="outline" onClick={() => setScanning(true)} leftIcon={<ScanLine className="h-4 w-4" />}>
-            {t('catalog.review.scan')}
-          </Button>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block min-w-0">
+            <span className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-zinc-500">
+              {t('stock.categoryFilters')}
+            </span>
+            <select
+              aria-label={t('stock.categoryFilters')}
+              value={category}
+              onChange={(event) => {
+                setCategory(event.target.value);
+                setPage(0);
+                setSelected({});
+              }}
+              className={filterSelectClass}
+            >
+              <option value="">{t('stock.allCategories')}</option>
+              {PRODUCT_CATEGORIES.map((item) => (
+                <option key={item} value={item}>
+                  {t(`product.categories.${item}`)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block min-w-0">
+            <span className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-zinc-500">
+              {t('stock.availabilityFilters')}
+            </span>
+            <select
+              aria-label={t('stock.availabilityFilters')}
+              value={stock}
+              onChange={(event) => {
+                setStock(event.target.value as CatalogStockLevel | '');
+                setPage(0);
+                setSelected({});
+              }}
+              className={filterSelectClass}
+            >
+              <option value="">{t('stock.allLevels')}</option>
+              {STOCK_LEVELS.map((level) => (
+                <option key={level} value={level}>
+                  {t(STOCK_LEVEL_LABEL[level])}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
+        <Button variant="outline" onClick={() => setScanning(true)} leftIcon={<ScanLine className="h-4 w-4" />}>
+          {t('catalog.review.scan')}
+        </Button>
 
         {offline && <p className="text-sm text-zinc-400">{t('catalog.offline')}</p>}
         {(offline || error) && (

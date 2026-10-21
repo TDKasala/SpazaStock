@@ -8,12 +8,15 @@ import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { Input } from '../ui/Input';
 import { ProductThumbnail } from './ProductThumbnail';
+import { PRODUCT_CATEGORIES } from './ProductFormFields';
 import {
   adoptCatalogProduct,
   searchCatalog,
   type CatalogSearchHit,
   type CatalogServiceError,
+  type CatalogStockLevel,
 } from '../../services/catalogService';
+import type { ProductCategory } from '../../types';
 
 export interface CatalogAdoptDialogProps {
   isOpen: boolean;
@@ -39,11 +42,24 @@ function picturePreview(hit: CatalogSearchHit): string | null {
 
 const PAGE_SIZE = 20;
 
+const STOCK_LEVELS: CatalogStockLevel[] = ['in', 'out', 'low', 'expiring'];
+
+const STOCK_LEVEL_LABEL: Record<CatalogStockLevel, string> = {
+  in: 'stock.inStock',
+  out: 'stock.outOfStock',
+  low: 'stock.lowStock',
+  expiring: 'stock.expiring',
+};
+
+const filterSelectClass = 'w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-3 text-sm text-zinc-100';
+
 export const CatalogAdoptDialog: React.FC<CatalogAdoptDialogProps> = ({ isOpen, onClose }) => {
   const { t } = useLanguage();
   const shopId = useShopId();
   const [term, setTerm] = useState('');
   const [showAdded, setShowAdded] = useState(false);
+  const [category, setCategory] = useState<ProductCategory | ''>('');
+  const [stock, setStock] = useState<CatalogStockLevel | ''>('');
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
   const [reloadKey, setReloadKey] = useState(0);
@@ -63,6 +79,8 @@ export const CatalogAdoptDialog: React.FC<CatalogAdoptDialogProps> = ({ isOpen, 
     if (!isOpen) return;
     setTerm('');
     setShowAdded(false);
+    setCategory('');
+    setStock('');
     setPage(0);
     setTotal(0);
     setItems([]);
@@ -103,7 +121,13 @@ export const CatalogAdoptDialog: React.FC<CatalogAdoptDialogProps> = ({ isOpen, 
     const timer = window.setTimeout(() => {
       setSearching(true);
       setSearchError(null);
-      void searchCatalog(shopId, term.trim(), { inShop: showAdded, limit: PAGE_SIZE, offset: page * PAGE_SIZE }).then(
+      void searchCatalog(shopId, term.trim(), {
+        inShop: stock ? null : showAdded,
+        category: category || null,
+        stock: stock || null,
+        limit: PAGE_SIZE,
+        offset: page * PAGE_SIZE,
+      }).then(
         (result) => {
           if (cancelled) return;
           setSearching(false);
@@ -123,9 +147,11 @@ export const CatalogAdoptDialog: React.FC<CatalogAdoptDialogProps> = ({ isOpen, 
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [isOpen, shopId, term, showAdded, page, reloadKey, t]);
+  }, [isOpen, shopId, term, showAdded, category, stock, page, reloadKey, t]);
 
-  const visible = items.filter((hit) => (showAdded ? hit.shopProductId != null : hit.shopProductId == null));
+  const visible = stock
+    ? items
+    : items.filter((hit) => (showAdded ? hit.shopProductId != null : hit.shopProductId == null));
   const selectedCount = visible.filter((hit) => checked[hit.id]).length;
 
   const choose = (hit: CatalogSearchHit) => {
@@ -301,6 +327,7 @@ export const CatalogAdoptDialog: React.FC<CatalogAdoptDialogProps> = ({ isOpen, 
           <input
             type="checkbox"
             checked={showAdded}
+            disabled={Boolean(stock)}
             onChange={(event) => {
               setShowAdded(event.target.checked);
               setPage(0);
@@ -310,6 +337,54 @@ export const CatalogAdoptDialog: React.FC<CatalogAdoptDialogProps> = ({ isOpen, 
           />
           {t('catalog.showInShop')}
         </label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block min-w-0">
+            <span className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-zinc-400">
+              {t('stock.categoryFilters')}
+            </span>
+            <select
+              aria-label={t('stock.categoryFilters')}
+              value={category}
+              onChange={(event) => {
+                setCategory(event.target.value as ProductCategory | '');
+                setPage(0);
+                setChecked({});
+                setSelected(null);
+              }}
+              className={filterSelectClass}
+            >
+              <option value="">{t('stock.allCategories')}</option>
+              {PRODUCT_CATEGORIES.map((item) => (
+                <option key={item} value={item}>
+                  {t(`product.categories.${item}`)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block min-w-0">
+            <span className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-zinc-400">
+              {t('stock.availabilityFilters')}
+            </span>
+            <select
+              aria-label={t('stock.availabilityFilters')}
+              value={stock}
+              onChange={(event) => {
+                setStock(event.target.value as CatalogStockLevel | '');
+                setPage(0);
+                setChecked({});
+                setSelected(null);
+              }}
+              className={filterSelectClass}
+            >
+              <option value="">{t('stock.allLevels')}</option>
+              {STOCK_LEVELS.map((level) => (
+                <option key={level} value={level}>
+                  {t(STOCK_LEVEL_LABEL[level])}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
         {searching && <p className="text-xs text-zinc-400">{t('catalog.searching')}</p>}
         {searchError && (
           <div className="flex flex-wrap items-center gap-2">

@@ -116,14 +116,14 @@ describe('catalogue paging and retry', () => {
 
     await render(<CatalogAdoptDialog isOpen onClose={() => undefined} />);
     await settle();
-    expect(searchCatalog).toHaveBeenCalledWith(SHOP_ID, '', { inShop: false, limit: 20, offset: 0 });
+    expect(searchCatalog).toHaveBeenCalledWith(SHOP_ID, '', expect.objectContaining({ inShop: false, limit: 20, offset: 0 }));
     expect(container.textContent).toContain('First meal');
 
     await act(async () => {
       buttonNamed('Next')?.click();
     });
     await settle();
-    expect(searchCatalog).toHaveBeenCalledWith(SHOP_ID, '', { inShop: false, limit: 20, offset: 20 });
+    expect(searchCatalog).toHaveBeenCalledWith(SHOP_ID, '', expect.objectContaining({ inShop: false, limit: 20, offset: 20 }));
     expect(container.textContent).toContain('Third meal');
     expect(container.textContent).not.toContain('First meal');
 
@@ -152,7 +152,7 @@ describe('catalogue paging and retry', () => {
       buttonNamed('Retry')?.click();
     });
     await settle();
-    expect(searchCatalog).toHaveBeenCalledWith(SHOP_ID, '', { inShop: false, limit: 20, offset: 0 });
+    expect(searchCatalog).toHaveBeenCalledWith(SHOP_ID, '', expect.objectContaining({ inShop: false, limit: 20, offset: 0 }));
     expect(container.textContent).toContain('First meal');
   });
 });

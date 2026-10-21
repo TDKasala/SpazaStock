@@ -79,10 +79,18 @@ function mapHit(raw: unknown): CatalogSearchHit {
   };
 }
 
+export type CatalogStockLevel = 'in' | 'out' | 'low' | 'expiring';
+
 export async function searchCatalog(
   shopId: string,
   query: string,
-  options: { limit?: number; offset?: number; inShop?: boolean | null } = {}
+  options: {
+    limit?: number;
+    offset?: number;
+    inShop?: boolean | null;
+    category?: string | null;
+    stock?: CatalogStockLevel | null;
+  } = {}
 ): Promise<Result<CatalogSearchPage>> {
   const supabase = getSupabase();
   if (!supabase) return { error: NOT_CONFIGURED };
@@ -92,6 +100,8 @@ export async function searchCatalog(
     p_limit: options.limit ?? 20,
     p_offset: options.offset ?? 0,
     p_in_shop: options.inShop ?? null,
+    p_category: options.category ?? null,
+    p_stock: options.stock ?? null,
   });
   if (error) return { error: { code: error.code ?? 'error', message: error.message } };
   const page = asRecord(data);
@@ -297,7 +307,14 @@ async function storeReviewedProducts(data: unknown): Promise<AdoptedCatalogProdu
 /** One page of common products, plus progress for the whole common set. */
 export async function listShopCatalogReview(
   shopId: string,
-  options: { query?: string; status?: 'open' | 'selling' | 'hidden' | null; category?: string | null; limit?: number; offset?: number } = {}
+  options: {
+    query?: string;
+    status?: 'open' | 'selling' | 'hidden' | null;
+    category?: string | null;
+    stock?: CatalogStockLevel | null;
+    limit?: number;
+    offset?: number;
+  } = {}
 ): Promise<Result<CatalogReviewPage>> {
   const supabase = getSupabase();
   if (!supabase) return { error: NOT_CONFIGURED };
@@ -306,6 +323,7 @@ export async function listShopCatalogReview(
     p_query: options.query ?? '',
     p_status: options.status ?? null,
     p_category: options.category ?? null,
+    p_stock: options.stock ?? null,
     p_limit: options.limit ?? 20,
     p_offset: options.offset ?? 0,
   });
