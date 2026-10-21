@@ -4,12 +4,14 @@ import { useLanguage } from '../../context/LanguageContext';
 import { db } from '../../lib/db';
 import { onDataChanged } from '../../lib/events';
 import { isBatchExpired, todayInZone } from '../../lib/expiry';
+import { whatsappShareUrl } from '../../lib/invite';
 import { newId } from '../../lib/ids';
 import { parseMinStock } from '../../lib/lowStock';
-import { suggestedOrderLines } from '../../lib/wholesaleOrders';
+import { formatRand, lineTotal, orderSummaryText, parseEstimatedCost, suggestedOrderLines } from '../../lib/wholesaleOrders';
 import {
   archiveWholesaler,
   saveWholesaleOrder,
+  setWholesaleItemPurchased,
   setWholesaleOrderStatus,
   upsertWholesaler,
 } from '../../services/wholesaleService';
@@ -29,6 +31,9 @@ interface DraftLine {
   id: string;
   productId: string;
   quantity: string;
+  cost: string;
+  purchased: boolean;
+  purchasedAt: string | null;
 }
 
 interface EditorState {
@@ -139,7 +144,14 @@ export const WholesaleOrders: React.FC<WholesaleOrdersProps> = ({
       note: '',
       status: 'draft',
       createdAt: new Date().toISOString(),
-      lines: suggestions.map((line) => ({ id: newId(), productId: line.productId, quantity: String(line.quantity) })),
+      lines: suggestions.map((line) => ({
+        id: newId(),
+        productId: line.productId,
+        quantity: String(line.quantity),
+        cost: '',
+        purchased: false,
+        purchasedAt: null,
+      })),
     });
   };
 
@@ -152,7 +164,14 @@ export const WholesaleOrders: React.FC<WholesaleOrdersProps> = ({
       note: order.note ?? '',
       status: order.status,
       createdAt: order.createdAt,
-      lines: items.map((item) => ({ id: item.id, productId: item.productId, quantity: String(item.quantity) })),
+      lines: items.map((item) => ({
+        id: item.id,
+        productId: item.productId,
+        quantity: String(item.quantity),
+        cost: item.estimatedUnitCost == null ? '' : String(item.estimatedUnitCost),
+        purchased: item.purchasedAt != null,
+        purchasedAt: item.purchasedAt ?? null,
+      })),
     });
   };
 
@@ -187,17 +206,21 @@ export const WholesaleOrders: React.FC<WholesaleOrdersProps> = ({
     setWholesalers((current) => current.map((row) => (row.id === id ? result.value! : row)));
   };
 
-  const parsedLines = (lines: DraftLine[]): WholesaleOrderItem[] | 'invalid' => {
+  const parsedLines = (lines: DraftLine[]): WholesaleOrderItem[] | 'quantity' | 'cost' => {
     const items: WholesaleOrderItem[] = [];
     for (const line of lines) {
       const quantity = parseMinStock(line.quantity);
-      if (quantity === 'invalid' || quantity === null || quantity < 1) return 'invalid';
+      if (quantity === 'invalid' || quantity === null || quantity < 1) return 'quantity';
+      const cost = parseEstimatedCost(line.cost);
+      if (cost === 'invalid') return 'cost';
       items.push({
         id: line.id,
         shopId,
         orderId: editor!.id,
         productId: line.productId,
         quantity,
+        estimatedUnitCost: cost,
+        purchasedAt: line.purchased ? line.purchasedAt ?? new Date().toISOString() : null,
         updatedAt: new Date().toISOString(),
       });
     }
@@ -206,8 +229,8 @@ export const WholesaleOrders: React.FC<WholesaleOrdersProps> = ({
 
   const persistDraft = async (state: EditorState): Promise<WholesaleOrder | null> => {
     const items = parsedLines(state.lines);
-    if (items === 'invalid') {
-      setError(t('intelligence.minStockInvalid'));
+    if (items === 'quantity' || items === 'cost') {
+      setError(items === 'cost' ? t('wholesale.costInvalid') : t('intelligence.minStockInvalid'));
       return null;
     }
     const order: WholesaleOrder = {
@@ -236,7 +259,11 @@ export const WholesaleOrders: React.FC<WholesaleOrdersProps> = ({
       if (editor.status === 'draft') {
         if (status !== 'cancelled' && status !== 'draft') {
           const items = parsedLines(editor.lines);
-          if (!editor.wholesalerId || items === 'invalid' || items.length === 0) {
+          if (items === 'quantity' || items === 'cost') {
+            setError(items === 'cost' ? t('wholesale.costInvalid') : t('intelligence.minStockInvalid'));
+            return;
+          }
+          if (!editor.wholesalerId || items.length === 0) {
             setError(t('wholesale.needLines'));
             return;
           }
@@ -272,11 +299,56 @@ export const WholesaleOrders: React.FC<WholesaleOrdersProps> = ({
 
   const addProduct = (productId: string) => {
     if (!editor || !productId) return;
-    setEditor({ ...editor, lines: [...editor.lines, { id: newId(), productId, quantity: '1' }] });
+    setEditor({
+      ...editor,
+      lines: [...editor.lines, { id: newId(), productId, quantity: '1', cost: '', purchased: false, purchasedAt: null }],
+    });
+  };
+
+  const togglePurchased = async (line: DraftLine) => {
+    if (!editor || !canManage || editor.status === 'cancelled' || saving) return;
+    const next = !line.purchased;
+    const purchasedAt = next ? line.purchasedAt ?? new Date().toISOString() : null;
+    const lines = editor.lines.map((row) => (row.id === line.id ? { ...row, purchased: next, purchasedAt } : row));
+    setSaving(true);
+    setError(null);
+    try {
+      if (editor.status === 'draft') {
+        const saved = await persistDraft({ ...editor, lines });
+        if (!saved) return;
+      }
+      const result = await setWholesaleItemPurchased(shopId, line.id, next);
+      if (!result.value) {
+        setError(result.error ?? t('errors.generic'));
+        return;
+      }
+      setEditor({
+        ...editor,
+        lines: lines.map((row) => (row.id === line.id ? { ...row, purchasedAt: result.value?.purchasedAt ?? null, purchased: next } : row)),
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (editor) {
     const editable = canManage && editor.status === 'draft';
+    const summaryLines = editor.lines.flatMap((line) => {
+      const quantity = parseMinStock(line.quantity);
+      const cost = parseEstimatedCost(line.cost);
+      if (quantity === 'invalid' || quantity === null || quantity < 1) return [];
+      return [{
+        name: productName.get(line.productId) ?? line.productId,
+        quantity,
+        unitCost: cost === 'invalid' ? null : cost,
+        purchased: line.purchased,
+      }];
+    });
+    const wholesalerName = activeWholesalers.find((row) => row.id === editor.wholesalerId)?.name ?? t('wholesale.noWholesaler');
+    const summary = orderSummaryText(wholesalerName, summaryLines, {
+      purchased: t('wholesale.purchased'),
+      total: t('wholesale.estimatedTotal'),
+    });
     const available = products.filter(
       (product) => !product.archivedAt && product.listed !== false && !editor.lines.some((line) => line.productId === product.id)
     );
@@ -308,10 +380,15 @@ export const WholesaleOrders: React.FC<WholesaleOrdersProps> = ({
           </select>
         </label>
         <ul className="space-y-2">
-          {editor.lines.map((line) => (
+          {editor.lines.map((line) => {
+            const name = productName.get(line.productId) ?? line.productId;
+            const quantity = parseMinStock(line.quantity);
+            const cost = parseEstimatedCost(line.cost);
+            const total = typeof quantity === 'number' && cost !== 'invalid' ? lineTotal(quantity, cost) : null;
+            return (
             <li key={line.id} className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
               <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-semibold text-zinc-100">{productName.get(line.productId) ?? line.productId}</p>
+                <p className="text-sm font-semibold text-zinc-100">{name}</p>
                 {editable && (
                   <Button type="button" size="sm" variant="ghost" onClick={() => setEditor({ ...editor, lines: editor.lines.filter((row) => row.id !== line.id) })}>
                     {t('wholesale.remove')}
@@ -322,7 +399,7 @@ export const WholesaleOrders: React.FC<WholesaleOrdersProps> = ({
                 {t('wholesale.quantity')}
                 <input
                   inputMode="numeric"
-                  aria-label={`${productName.get(line.productId) ?? ''} ${t('wholesale.quantity')}`}
+                  aria-label={`${name} ${t('wholesale.quantity')}`}
                   value={line.quantity}
                   disabled={!editable}
                   onChange={(event) =>
@@ -334,9 +411,47 @@ export const WholesaleOrders: React.FC<WholesaleOrdersProps> = ({
                   className={`${fieldClass} mt-1`}
                 />
               </label>
+              <label className="mt-2 block text-xs text-zinc-400">
+                {t('wholesale.unitCost')}
+                <input
+                  inputMode="decimal"
+                  aria-label={`${name} ${t('wholesale.unitCost')}`}
+                  value={line.cost}
+                  disabled={!editable}
+                  onChange={(event) =>
+                    setEditor({
+                      ...editor,
+                      lines: editor.lines.map((row) => (row.id === line.id ? { ...row, cost: event.target.value } : row)),
+                    })
+                  }
+                  className={`${fieldClass} mt-1`}
+                />
+              </label>
+              {total != null && <p className="mt-1 text-xs text-zinc-300">= {formatRand(total)}</p>}
+              {editor.status !== 'cancelled' && (
+                <label className="mt-2 flex items-center gap-2 text-xs text-zinc-300">
+                  <input
+                    type="checkbox"
+                    aria-label={`${name} ${t('wholesale.purchased')}`}
+                    checked={line.purchased}
+                    disabled={!canManage || saving}
+                    onChange={() => void togglePurchased(line)}
+                  />
+                  {t('wholesale.purchased')}
+                </label>
+              )}
             </li>
-          ))}
+            );
+          })}
         </ul>
+        {summaryLines.length > 0 && (
+          <div className="space-y-2">
+            <p className="whitespace-pre-wrap text-sm text-zinc-200" data-testid="order-summary">{summary}</p>
+            <a href={whatsappShareUrl(summary)} target="_blank" rel="noopener noreferrer" className="inline-flex text-sm font-semibold text-emerald-300">
+              {t('intelligence.sendOrder')}
+            </a>
+          </div>
+        )}
         {editable && (
           <label className="block text-xs text-zinc-300">
             {t('wholesale.addProduct')}

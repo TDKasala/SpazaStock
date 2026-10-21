@@ -421,6 +421,10 @@ export const zu: Translations = {
     reopen: 'Buyela kokusalungiswa',
     nameInvalid: 'Faka igama.',
     noProducts: 'Awekho amanye amakhiqizo okufaka.',
+    unitCost: 'Izindleko zokulinganisa ngayinye',
+    estimatedTotal: 'Isamba esilinganisiwe',
+    purchased: 'Kuthengiwe',
+    costInvalid: 'Faka izindleko ezinguziwo noma ngaphezulu, noma ushiye kungenalutho.',
   },
   scanner: {
     title: 'Iskena Samabhakhodi',

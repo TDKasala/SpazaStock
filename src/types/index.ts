@@ -141,6 +141,10 @@ export interface WholesaleOrderItem {
   orderId: string;
   productId: string;
   quantity: number;
+  /** Estimated cost per unit. Null means this line has no estimate. */
+  estimatedUnitCost?: number | null;
+  /** Set when the line is marked purchased. It does not receive stock. */
+  purchasedAt?: string | null;
   updatedAt: string;
 }
 

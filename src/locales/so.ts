@@ -418,6 +418,10 @@ export const so: Translations = {
     reopen: 'Ku noqo qoraalka',
     nameInvalid: 'Geli magac.',
     noProducts: 'Alaab kale oo la daro ma jirto.',
+    unitCost: 'Qiimaha la qiyaasay midkiiba',
+    estimatedTotal: 'Wadarta la qiyaasay',
+    purchased: 'Waa la iibsaday',
+    costInvalid: 'Geli qiime eber ama ka badan, ama ka tag madhan.',
   },
   scanner: {
     title: 'Iskaanka barcode-ka',

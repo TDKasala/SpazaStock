@@ -115,7 +115,7 @@ export function mapProductRow(row: Row): Product {
 
 const WHOLESALER_COLUMNS = 'id, shop_id, name, phone, note, archived_at, created_at, updated_at';
 const WHOLESALE_ORDER_COLUMNS = 'id, shop_id, wholesaler_id, status, note, created_at, updated_at';
-const WHOLESALE_ITEM_COLUMNS = 'id, shop_id, order_id, product_id, quantity, removed_at, updated_at';
+const WHOLESALE_ITEM_COLUMNS = 'id, shop_id, order_id, product_id, quantity, estimated_unit_cost, purchased_at, removed_at, updated_at';
 
 export function mapWholesalerRow(row: Row): Wholesaler {
   return {
@@ -149,6 +149,8 @@ export function mapWholesaleOrderItemRow(row: Row): WholesaleOrderItem {
     orderId: String(row.order_id),
     productId: String(row.product_id),
     quantity: Number(row.quantity),
+    estimatedUnitCost: toNumberOrNull(row.estimated_unit_cost),
+    purchasedAt: row.purchased_at ? toIso(row.purchased_at) : null,
     updatedAt: toIso(row.updated_at),
   };
 }
@@ -1036,7 +1038,12 @@ async function sendItem(client: SupabaseClient, item: OutboxItem): Promise<SendO
         p_order_id: order.id,
         p_wholesaler_id: order.wholesalerId,
         p_note: order.note,
-        p_items: items.map((line) => ({ id: line.id, product_id: line.productId, quantity: line.quantity })),
+        p_items: items.map((line) => ({
+          id: line.id,
+          product_id: line.productId,
+          quantity: line.quantity,
+          estimated_unit_cost: line.estimatedUnitCost ?? null,
+        })),
       });
       if (error) return outcomeFromError(error);
       const body = (data ?? {}) as { order?: Row; items?: Row[] };
@@ -1049,6 +1056,17 @@ async function sendItem(client: SupabaseClient, item: OutboxItem): Promise<SendO
           if (active.length > 0) await db.wholesaleOrderItems.bulkPut(active.map(mapWholesaleOrderItemRow));
         },
       };
+    }
+
+    case 'wholesale_item_purchased': {
+      const { itemId, purchased } = item.payload;
+      const { data, error } = await client.rpc('set_wholesale_item_purchased', {
+        p_shop_id: item.shopId,
+        p_item_id: itemId,
+        p_purchased: purchased,
+      });
+      if (error) return outcomeFromError(error);
+      return { kind: 'ok', apply: async () => { await db.wholesaleOrderItems.put(mapWholesaleOrderItemRow(data as Row)); } };
     }
 
     case 'wholesale_order_status': {

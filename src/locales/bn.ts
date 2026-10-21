@@ -419,6 +419,10 @@ export const bn: Translations = {
     reopen: 'খসড়ায় ফিরুন',
     nameInvalid: 'একটি নাম লিখুন।',
     noProducts: 'যোগ করার আর পণ্য নেই।',
+    unitCost: 'আনুমানিক দাম প্রতিটি',
+    estimatedTotal: 'আনুমানিক মোট',
+    purchased: 'কেনা হয়েছে',
+    costInvalid: 'শূন্য বা তার বেশি দাম লিখুন, অথবা খালি রাখুন।',
   },
   scanner: {
     title: 'বারকোড স্ক্যানার',

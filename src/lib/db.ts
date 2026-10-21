@@ -80,6 +80,7 @@ export type OutboxOperation =
       payload: { order: WholesaleOrder; items: WholesaleOrderItem[] };
     }
   | { type: 'wholesale_order_status'; payload: { orderId: string; status: WholesaleOrderStatus } }
+  | { type: 'wholesale_item_purchased'; payload: { itemId: string; purchased: boolean } }
   | { type: 'catalog_submit'; payload: CatalogSubmitPayload }
   | { type: 'low_stock_dismiss'; payload: { productId: string } }
   | { type: 'low_stock_clear'; payload: { productId: string } };

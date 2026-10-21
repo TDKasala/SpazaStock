@@ -44,3 +44,60 @@ export function suggestedOrderLines(products: WholesaleSuggestionInput[]): Whole
   lines.sort((a, b) => a.name.localeCompare(b.name));
   return lines;
 }
+
+/** Blank stays blank. Anything else must be zero or more, rounded to cents. */
+export function parseEstimatedCost(text: string): number | null | 'invalid' {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  const value = Number(trimmed);
+  if (!Number.isFinite(value) || value < 0) return 'invalid';
+  return Math.round(value * 100) / 100;
+}
+
+/** Quantity times the unit cost, in cents. No cost means the line is left out of the total. */
+export function lineTotal(quantity: number, unitCost: number | null): number | null {
+  if (unitCost == null) return null;
+  return Math.round(quantity * unitCost * 100) / 100;
+}
+
+/** Sum of the lines that have a cost. Null when every cost is blank. */
+export function orderTotal(lines: Array<{ quantity: number; unitCost: number | null }>): number | null {
+  let sum = 0;
+  let any = false;
+  for (const line of lines) {
+    const total = lineTotal(line.quantity, line.unitCost);
+    if (total == null) continue;
+    any = true;
+    sum = Math.round((sum + total) * 100) / 100;
+  }
+  return any ? sum : null;
+}
+
+export function formatRand(amount: number): string {
+  return `R ${amount.toFixed(2)}`;
+}
+
+export interface OrderSummaryLine {
+  name: string;
+  quantity: number;
+  unitCost: number | null;
+  purchased: boolean;
+}
+
+/** Plain text for the order screen and the WhatsApp message. */
+export function orderSummaryText(
+  wholesalerName: string,
+  lines: OrderSummaryLine[],
+  labels: { purchased: string; total: string }
+): string {
+  const rows = lines.map((line) => {
+    const total = lineTotal(line.quantity, line.unitCost);
+    const cost = total == null || line.unitCost == null ? '' : ` × ${formatRand(line.unitCost)} = ${formatRand(total)}`;
+    const bought = line.purchased ? ` · ${labels.purchased}` : '';
+    return `${line.name} · ${line.quantity}${cost}${bought}`;
+  });
+  const total = orderTotal(lines.map((line) => ({ quantity: line.quantity, unitCost: line.unitCost })));
+  const parts = [wholesalerName, ...rows];
+  if (total != null) parts.push(`${labels.total}: ${formatRand(total)}`);
+  return parts.join('\n');
+}

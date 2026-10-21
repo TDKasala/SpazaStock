@@ -103,6 +103,10 @@ export async function saveWholesaleOrder(
     if (!Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 1_000_000) {
       return { error: 'Quantity must be a whole number from 1 to 1,000,000.', errorCode: 'invalid' };
     }
+    const cost = item.estimatedUnitCost ?? null;
+    if (cost !== null && (!Number.isFinite(cost) || cost < 0)) {
+      return { error: 'Estimated cost cannot be negative.', errorCode: 'invalid' };
+    }
     if (seen.has(item.productId)) return { error: 'The same product was sent twice.', errorCode: 'invalid' };
     seen.add(item.productId);
   }
@@ -169,6 +173,35 @@ export async function setWholesaleOrderStatus(
       await db.wholesaleOrders.put(order);
       await enqueue(shopId, { type: 'wholesale_order_status', payload: { orderId, status } });
       return { value: order };
+    })
+  );
+  if (outcome.value) emitDataChanged('local');
+  return outcome;
+}
+
+/** Marks one line bought or not. Stock and expiry batches stay as they are. */
+export async function setWholesaleItemPurchased(
+  shopId: string,
+  itemId: string,
+  purchased: boolean
+): Promise<WholesaleOutcome<WholesaleOrderItem>> {
+  if (!(await canManageOrders(shopId))) return FORBIDDEN;
+  const outcome = await withWriteLock(() =>
+    db.transaction('rw', db.wholesaleOrders, db.wholesaleOrderItems, db.outbox, async (): Promise<WholesaleOutcome<WholesaleOrderItem>> => {
+      const existing = await db.wholesaleOrderItems.get(itemId);
+      if (!existing || existing.shopId !== shopId) return { error: 'Order line not found in this shop.', errorCode: 'not_found' };
+      const order = await db.wholesaleOrders.get(existing.orderId);
+      if (!order || order.shopId !== shopId) return { error: 'Order not found in this shop.', errorCode: 'not_found' };
+      if (order.status === 'cancelled') return { error: 'A cancelled order cannot be changed.', errorCode: 'invalid' };
+      if ((existing.purchasedAt != null) === purchased) return { value: existing };
+      const item: WholesaleOrderItem = {
+        ...existing,
+        purchasedAt: purchased ? new Date().toISOString() : null,
+        updatedAt: new Date().toISOString(),
+      };
+      await db.wholesaleOrderItems.put(item);
+      await enqueue(shopId, { type: 'wholesale_item_purchased', payload: { itemId, purchased } });
+      return { value: item };
     })
   );
   if (outcome.value) emitDataChanged('local');

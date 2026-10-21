@@ -139,4 +139,66 @@ describe('wholesale orders', () => {
     );
     expect(onHand.n).toBe(6);
   });
+
+  it('stores a cost and a purchased tick without changing stock', async () => {
+    const product = await newProduct(pg, owner, shop, '6001000099011');
+    await stockIn(pg, owner, shop, product.id, 6, { expiry: '2026-12-01' });
+    const before = await batchCount(shop);
+    const orderId = randomUUID();
+    const lineId = randomUUID();
+    const saved = await rpc<{ items: Array<{ estimated_unit_cost: string | number }> }>(pg, owner, 'save_wholesale_order', {
+      p_shop_id: shop,
+      p_order_id: orderId,
+      p_wholesaler_id: null,
+      p_note: null,
+      p_items: [{ id: lineId, product_id: product.id, quantity: 4, estimated_unit_cost: 12.5 }],
+    });
+    expect(Number(saved.items[0].estimated_unit_cost)).toBe(12.5);
+
+    const ticked = await rpc<{ purchased_at: string | null }>(pg, owner, 'set_wholesale_item_purchased', {
+      p_shop_id: shop,
+      p_item_id: lineId,
+      p_purchased: true,
+    });
+    expect(ticked.purchased_at).toBeTruthy();
+    const repeated = await rpc<{ purchased_at: string | null }>(pg, owner, 'set_wholesale_item_purchased', {
+      p_shop_id: shop,
+      p_item_id: lineId,
+      p_purchased: true,
+    });
+    expect(repeated.purchased_at).toBe(ticked.purchased_at);
+
+    const resaved = await rpc<{ items: Array<{ estimated_unit_cost: string | number; purchased_at: string | null }> }>(
+      pg,
+      owner,
+      'save_wholesale_order',
+      {
+        p_shop_id: shop,
+        p_order_id: orderId,
+        p_wholesaler_id: null,
+        p_note: null,
+        p_items: [{ id: lineId, product_id: product.id, quantity: 4, estimated_unit_cost: 10 }],
+      }
+    );
+    expect(Number(resaved.items[0].estimated_unit_cost)).toBe(10);
+    expect(resaved.items[0].purchased_at).toBeTruthy();
+    expect(await batchCount(shop)).toBe(before);
+
+    await rpc(pg, owner, 'set_wholesale_order_status', { p_shop_id: shop, p_order_id: orderId, p_status: 'cancelled' });
+    expect(
+      await errorCode(rpc(pg, owner, 'set_wholesale_item_purchased', { p_shop_id: shop, p_item_id: lineId, p_purchased: false }))
+    ).toBe('22023');
+    expect(
+      await errorCode(rpc(pg, outsider, 'set_wholesale_item_purchased', { p_shop_id: shop, p_item_id: lineId, p_purchased: true }))
+    ).toBe('42501');
+    expect(
+      await errorCode(rpc(pg, owner, 'save_wholesale_order', {
+        p_shop_id: shop,
+        p_order_id: randomUUID(),
+        p_wholesaler_id: null,
+        p_note: null,
+        p_items: [{ id: randomUUID(), product_id: product.id, quantity: 1, estimated_unit_cost: -1 }],
+      }))
+    ).toBe('22023');
+  });
 });

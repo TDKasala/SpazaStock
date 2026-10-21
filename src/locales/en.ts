@@ -416,6 +416,10 @@ export const en = {
     reopen: 'Back to draft',
     nameInvalid: 'Enter a name.',
     noProducts: 'No other products to add.',
+    unitCost: 'Estimated cost each',
+    estimatedTotal: 'Estimated total',
+    purchased: 'Purchased',
+    costInvalid: 'Enter a cost of zero or more, or leave it blank.',
   },
   scanner: {
     title: 'Barcode Scanner',

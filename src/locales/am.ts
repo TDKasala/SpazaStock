@@ -418,6 +418,10 @@ export const am: Translations = {
     reopen: 'ወደ ረቂቅ ተመለስ',
     nameInvalid: 'ስም ያስገቡ።',
     noProducts: 'ሌላ የሚጨመር ዕቃ የለም።',
+    unitCost: 'የተገመተ ዋጋ በአንድ',
+    estimatedTotal: 'የተገመተ ድምር',
+    purchased: 'ተገዝቷል',
+    costInvalid: 'ዜሮ ወይም ከዚያ በላይ ዋጋ ያስገቡ፣ ወይም ባዶ ይተዉት።',
   },
   scanner: {
     title: 'የባርኮድ ስካነር',
