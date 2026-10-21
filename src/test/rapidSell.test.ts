@@ -8,7 +8,7 @@ import {
   saleNetQuantity,
   voidSale,
 } from '../services/salesService';
-import { createProduct, setProductArchived } from '../services/productService';
+import { createProduct, getProducts, setProductArchived } from '../services/productService';
 import { getProductBatches, getProductTotalStock, stockIn } from '../services/stockService';
 import { db, resetLocalDatabase } from '../lib/db';
 import type { Product } from '../types';
@@ -222,6 +222,16 @@ describe('rapid scan-to-sell', () => {
       expect(await seller.scan(BARCODE)).toMatchObject({ kind: 'archived', product: { id: product.id } });
       expect(await db.sales.count()).toBe(0);
       expect(await getProductTotalStock(product.id, SHOP_ID)).toBe(3);
+    });
+
+    it('refuses to sell a hidden product and leaves its stock off the selling list', async () => {
+      const product = await makeProduct([{ quantity: 3, expiryDate: null }]);
+      await db.products.update(product.id, { listed: false });
+      const seller = createScanSeller(SHOP_ID);
+      expect(await seller.scan(BARCODE)).toMatchObject({ kind: 'hidden', product: { id: product.id } });
+      expect(await db.sales.count()).toBe(0);
+      expect(await getProductTotalStock(product.id, SHOP_ID)).toBe(3);
+      expect(await getProducts(SHOP_ID)).toEqual([]);
     });
 
     it('refuses to undo more than is left on the sale', async () => {

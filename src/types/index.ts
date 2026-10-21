@@ -82,6 +82,11 @@ export interface Product {
   updatedAt: string;
   /** Set when archived: hidden from lists, scans and alerts, but its history is kept. */
   archivedAt?: string | null;
+  /**
+   * Whether this shop sells the product. False hides it from stock and sales without deleting stock.
+   * Omitted on older cached rows, which stay visible.
+   */
+  listed?: boolean;
   /** Optional brand, e.g. Coca-Cola. */
   brand?: string | null;
   /** Optional size of the single item, e.g. 330ml. */

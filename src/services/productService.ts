@@ -123,7 +123,9 @@ export async function getProductById(productId: string, shopId: string): Promise
 /** Products in the shop, newest first. Archived products are left out unless asked for. */
 export async function getProducts(shopId: string, options: { includeArchived?: boolean } = {}): Promise<Product[]> {
   const products = await db.products.where('[shopId+createdAt]').between([shopId, ''], [shopId, '\uffff']).toArray();
-  const visible = options.includeArchived ? products : products.filter((p) => !isArchived(p));
+  const visible = options.includeArchived
+    ? products
+    : products.filter((p) => !isArchived(p) && p.listed !== false);
   return visible.reverse();
 }
 

@@ -203,7 +203,65 @@ export async function confirmShopCatalog(
     })),
   });
   if (error) return { error: { code: error.code ?? 'error', message: error.message } };
+  const products = await storeReviewedProducts(data);
+  return { data: { products } };
+}
 
+export interface CatalogReviewItem {
+  id: string;
+  name: string;
+  brand: string | null;
+  category: ProductCategory;
+  packageSize: string | null;
+  shopProductId: string | null;
+  /** Null when this shop has not reviewed the product yet. */
+  listed: boolean | null;
+  barcodes: CatalogBarcodeHit[];
+}
+
+export interface CatalogReviewProgress {
+  total: number;
+  selling: number;
+  hidden: number;
+  open: number;
+}
+
+export interface CatalogReviewPage {
+  items: CatalogReviewItem[];
+  total: number;
+  progress: CatalogReviewProgress;
+}
+
+export interface CatalogDecision {
+  catalogProductId: string;
+  decision: 'sell' | 'hide';
+  buyingPrice: number | null;
+  sellingPrice: number | null;
+}
+
+function mapReviewItem(raw: unknown): CatalogReviewItem {
+  const row = asRecord(raw);
+  const barcodes = Array.isArray(row.barcodes) ? row.barcodes : [];
+  return {
+    id: String(row.id),
+    name: String(row.name ?? ''),
+    brand: row.brand == null ? null : String(row.brand),
+    category: (row.category as ProductCategory) ?? 'other',
+    packageSize: row.package_size == null ? null : String(row.package_size),
+    shopProductId: row.shop_product_id == null ? null : String(row.shop_product_id),
+    listed: row.shop_product_id == null || row.listed == null ? null : row.listed === true,
+    barcodes: barcodes.map((item) => {
+      const code = asRecord(item);
+      return {
+        barcode: String(code.barcode ?? ''),
+        kind: (code.kind as CatalogBarcodeHit['kind']) ?? 'unit',
+        unitsPerPackage: code.units_per_package == null ? null : Number(code.units_per_package),
+      };
+    }),
+  };
+}
+
+async function storeReviewedProducts(data: unknown): Promise<AdoptedCatalogProduct[]> {
   const rows = asRecord(data).products;
   const products = (Array.isArray(rows) ? rows : []).map((entry) => {
     const body = asRecord(entry);
@@ -216,7 +274,6 @@ export async function confirmShopCatalog(
       barcodes: (Array.isArray(body.barcodes) ? body.barcodes : []).map((row) => mapBarcodeRow(asRecord(row))),
     };
   });
-
   if (products.length > 0) {
     await withWriteLock(() =>
       db.transaction('rw', [db.products, db.packagings, db.barcodes], async () => {
@@ -229,5 +286,60 @@ export async function confirmShopCatalog(
     );
     emitDataChanged('local');
   }
-  return { data: { products } };
+  return products;
+}
+
+/** One page of common products, plus progress for the whole common set. */
+export async function listShopCatalogReview(
+  shopId: string,
+  options: { query?: string; status?: 'open' | 'selling' | 'hidden' | null; category?: string | null; limit?: number; offset?: number } = {}
+): Promise<Result<CatalogReviewPage>> {
+  const supabase = getSupabase();
+  if (!supabase) return { error: NOT_CONFIGURED };
+  const { data, error } = await supabase.rpc('list_shop_catalog_review', {
+    p_shop_id: shopId,
+    p_query: options.query ?? '',
+    p_status: options.status ?? null,
+    p_category: options.category ?? null,
+    p_limit: options.limit ?? 20,
+    p_offset: options.offset ?? 0,
+  });
+  if (error) return { error: { code: error.code ?? 'error', message: error.message } };
+  const page = asRecord(data);
+  const progress = asRecord(page.progress);
+  const items = Array.isArray(page.items) ? page.items.map(mapReviewItem) : [];
+  return {
+    data: {
+      items,
+      total: Number(page.total ?? items.length),
+      progress: {
+        total: Number(progress.total ?? 0),
+        selling: Number(progress.selling ?? 0),
+        hidden: Number(progress.hidden ?? 0),
+        open: Number(progress.open ?? 0),
+      },
+    },
+  };
+}
+
+/**
+ * Records sell or hide for this shop only. An existing shop row changes `listed` and keeps its prices and stock.
+ */
+export async function reviewShopCatalog(
+  shopId: string,
+  decisions: CatalogDecision[]
+): Promise<Result<{ products: AdoptedCatalogProduct[] }>> {
+  const supabase = getSupabase();
+  if (!supabase) return { error: NOT_CONFIGURED };
+  const { data, error } = await supabase.rpc('review_shop_catalog', {
+    p_shop_id: shopId,
+    p_decisions: decisions.map((item) => ({
+      catalog_product_id: item.catalogProductId,
+      decision: item.decision,
+      buying_price: item.decision === 'sell' ? item.buyingPrice : null,
+      selling_price: item.decision === 'sell' ? item.sellingPrice : null,
+    })),
+  });
+  if (error) return { error: { code: error.code ?? 'error', message: error.message } };
+  return { data: { products: await storeReviewedProducts(data) } };
 }

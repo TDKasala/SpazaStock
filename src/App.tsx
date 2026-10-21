@@ -23,7 +23,7 @@ import { LinkBarcodeDialog } from './components/stock/LinkBarcodeDialog';
 import { LandingPage } from './components/auth/LandingPage';
 import { LoginPage } from './components/auth/LoginPage';
 import { ShopOnboarding } from './components/auth/ShopOnboarding';
-import { CommonCatalogSetup } from './components/auth/CommonCatalogSetup';
+import { CatalogReview } from './components/catalog/CatalogReview';
 import { InviteAcceptScreen } from './components/auth/InviteAcceptScreen';
 import { NewPasswordScreen } from './components/auth/ResetPasswordScreen';
 import { TeamView } from './components/team/TeamView';
@@ -435,7 +435,7 @@ function ShopGate() {
   if (isLoading || accessDenied) return <FullScreenLoading />;
   if (!shop) return <ShopOnboarding />;
   if (shop.catalogPromptPending && (shop.role === 'owner' || shop.role === 'manager')) {
-    return <CommonCatalogSetup shopId={shop.id} onDone={completeCatalogPrompt} />;
+    return <CatalogReview shopId={shop.id} canEdit onFinishLater={completeCatalogPrompt} />;
   }
   // Keyed by shop so switching shops restarts sync and resets every screen.
   return (

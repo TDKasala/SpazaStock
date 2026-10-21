@@ -23,7 +23,7 @@ const PULL_OVERLAP_MS = 2 * 60 * 1000;
 const SALES_HISTORY_DAYS = 60;
 const PRODUCT_COLUMNS =
   'id, shop_id, barcode, name, category, buying_price, selling_price, created_at, updated_at, archived_at, brand, size, ' +
-  'image_path, min_stock_units, catalog_product_id';
+  'image_path, min_stock_units, catalog_product_id, listed';
 const LOW_STOCK_DISMISSAL_COLUMNS =
   'id, shop_id, product_id, dismissed_at, dismissed_by, cleared_at, updated_at';
 const BATCH_COLUMNS =
@@ -104,6 +104,7 @@ export function mapProductRow(row: Row): Product {
     imagePath: (row.image_path as string | null) ?? null,
     minStockUnits: row.min_stock_units == null ? null : Number(row.min_stock_units),
     catalogProductId: (row.catalog_product_id as string | null) ?? null,
+    listed: row.listed === false ? false : true,
   };
 }
 

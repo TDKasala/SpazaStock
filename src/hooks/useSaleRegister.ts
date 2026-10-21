@@ -166,6 +166,12 @@ export function useSaleRegister(shopId: string, onUnknownBarcode: (barcode: stri
           announce('error', message);
           return false;
         }
+        case 'hidden': {
+          const message = t('product.hiddenNotice', { name: outcome.product.name });
+          setError(message);
+          announce('error', message);
+          return false;
+        }
         case 'error':
           setError(outcome.message || t('errors.generic'));
           announce('error', outcome.message || t('errors.generic'));

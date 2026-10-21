@@ -23,7 +23,7 @@ describe('legacy localStorage import', () => {
     localStorage.setItem(
       BATCHES_KEY,
       JSON.stringify([
-        { productId: 'prod_1700000000000_abcd', quantity: 4, expiryDate: '2026-10-20' },
+        { productId: 'prod_1700000000000_abcd', quantity: 4, expiryDate: '2027-10-20' },
         { productId: 'prod_1700000000000_abcd', quantity: 0, expiryDate: '2026-10-01' },
         { productId: 'unknown', quantity: 9, expiryDate: null },
       ])

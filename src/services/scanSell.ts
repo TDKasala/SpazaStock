@@ -13,6 +13,7 @@ export type ScanSellOutcome =
   | { kind: 'duplicate' }
   | { kind: 'unknown_barcode'; barcode: string }
   | { kind: 'archived'; product: Product }
+  | { kind: 'hidden'; product: Product }
   | { kind: 'insufficient_stock'; product: Product; available: number; expired: number }
   | { kind: 'error'; message: string };
 
@@ -78,6 +79,7 @@ export function createScanSeller(shopId: string, queue: SerialQueue = createSeri
         if (!resolved) return { kind: 'unknown_barcode', barcode: clean };
         const { product, packaging } = resolved;
         if (isArchived(product)) return { kind: 'archived', product };
+        if (product.listed === false) return { kind: 'hidden', product };
         // A pack or case barcode sells the whole package at the unit price per unit.
         const outcome = await sellNow(product, packaging?.unitsPerPackage ?? 1, idempotencyKey, packaging);
         return outcome.kind === 'sold' && packaging ? { ...outcome, packaging } : outcome;
