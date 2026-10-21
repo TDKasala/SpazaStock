@@ -73,6 +73,10 @@ export const CatalogReview: React.FC<Props> = ({ shopId, canEdit, onFinishLater,
   }, [query]);
 
   useEffect(() => {
+    window.scrollTo({ top: 0 });
+  }, [page]);
+
+  useEffect(() => {
     const onOnline = () => {
       retryFailedCatalogImages();
       setReloadKey((value) => value + 1);
@@ -183,7 +187,7 @@ export const CatalogReview: React.FC<Props> = ({ shopId, canEdit, onFinishLater,
 
   return (
     <div className="min-h-dvh bg-zinc-950 text-zinc-100">
-      <div className="mx-auto flex min-h-dvh max-w-lg flex-col gap-4 px-4 py-6 pb-28">
+      <div className={`mx-auto flex min-h-dvh max-w-lg flex-col gap-4 px-4 py-6 ${total > PAGE_SIZE ? 'pb-44' : 'pb-28'}`}>
         <header className="flex items-start justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold">{t('catalog.review.title')}</h1>
@@ -370,25 +374,6 @@ export const CatalogReview: React.FC<Props> = ({ shopId, canEdit, onFinishLater,
 
         {error && <p className="text-sm text-red-400">{error}</p>}
 
-        {total > PAGE_SIZE && (
-          <div className="flex items-center justify-between text-sm">
-            <Button variant="ghost" size="sm" disabled={page === 0 || busy} onClick={() => setPage((n) => n - 1)}>
-              {t('stock.previousPage')}
-            </Button>
-            <span className="text-zinc-400">
-              {t('stock.pageRange', { from: page * PAGE_SIZE + 1, to: Math.min(total, (page + 1) * PAGE_SIZE), total })}
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={page + 1 >= pageCount || busy}
-              onClick={() => setPage((n) => n + 1)}
-            >
-              {t('stock.nextPage')}
-            </Button>
-          </div>
-        )}
-
         {onFinishLater && (
           <Button variant="outline" fullWidth disabled={busy} onClick={() => void finishLater()}>
             {t('catalog.review.finishLater')}
@@ -396,15 +381,32 @@ export const CatalogReview: React.FC<Props> = ({ shopId, canEdit, onFinishLater,
         )}
       </div>
 
-      {canEdit && selectedCount > 0 && (
+      {(total > PAGE_SIZE || (canEdit && selectedCount > 0)) && (
         <div className="fixed inset-x-0 bottom-0 z-20 border-t border-zinc-800 bg-zinc-950 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <div className="mx-auto flex max-w-lg gap-2">
-            <Button fullWidth disabled={busy} onClick={() => decideSelected('sell')}>
-              {t('catalog.review.sellSelected')}
-            </Button>
-            <Button fullWidth variant="outline" disabled={busy} onClick={() => decideSelected('hide')}>
-              {t('catalog.review.hideSelected')}
-            </Button>
+          <div className="mx-auto flex max-w-lg flex-col gap-2">
+            {total > PAGE_SIZE && (
+              <div className="flex items-center justify-between gap-2">
+                <Button variant="ghost" size="sm" disabled={page === 0 || busy} onClick={() => setPage((n) => n - 1)}>
+                  {t('stock.previousPage')}
+                </Button>
+                <span className="text-center text-sm text-zinc-400">
+                  {t('stock.pageRange', { from: page * PAGE_SIZE + 1, to: Math.min(total, (page + 1) * PAGE_SIZE), total })}
+                </span>
+                <Button variant="ghost" size="sm" disabled={page + 1 >= pageCount || busy} onClick={() => setPage((n) => n + 1)}>
+                  {t('stock.nextPage')}
+                </Button>
+              </div>
+            )}
+            {canEdit && selectedCount > 0 && (
+              <div className="flex gap-2">
+                <Button fullWidth disabled={busy} onClick={() => decideSelected('sell')}>
+                  {t('catalog.review.sellSelected')}
+                </Button>
+                <Button fullWidth variant="outline" disabled={busy} onClick={() => decideSelected('hide')}>
+                  {t('catalog.review.hideSelected')}
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       )}

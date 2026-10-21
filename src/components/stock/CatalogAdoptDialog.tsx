@@ -77,6 +77,10 @@ export const CatalogAdoptDialog: React.FC<CatalogAdoptDialogProps> = ({ isOpen, 
   }, [isOpen]);
 
   useEffect(() => {
+    document.querySelector<HTMLElement>('[data-testid="dialog-body"]')?.scrollTo({ top: 0 });
+  }, [page]);
+
+  useEffect(() => {
     if (!isOpen) return;
     const onOnline = () => {
       retryFailedCatalogImages();
@@ -232,10 +236,51 @@ export const CatalogAdoptDialog: React.FC<CatalogAdoptDialogProps> = ({ isOpen, 
       title={t('catalog.title')}
       description={t('catalog.description')}
       footer={
-        selected ? (
-          <Button onClick={() => void save()} isLoading={saving} fullWidth leftIcon={<BookOpen className="w-4 h-4" />}>
-            {selected.shopProductId ? t('catalog.useExisting') : t('catalog.add')}
-          </Button>
+        total > PAGE_SIZE || selected ? (
+          <div className="flex w-full flex-col gap-2">
+            {total > PAGE_SIZE && (
+              <div className="flex items-center justify-between gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={page === 0 || searching || saving}
+                  onClick={() => {
+                    setPage((value) => value - 1);
+                    setChecked({});
+                    setSelected(null);
+                  }}
+                >
+                  {t('stock.previousPage')}
+                </Button>
+                <span className="text-center text-xs text-zinc-400">
+                  {t('stock.pageRange', {
+                    from: page * PAGE_SIZE + 1,
+                    to: Math.min(total, (page + 1) * PAGE_SIZE),
+                    total,
+                  })}
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={page + 1 >= Math.ceil(total / PAGE_SIZE) || searching || saving}
+                  onClick={() => {
+                    setPage((value) => value + 1);
+                    setChecked({});
+                    setSelected(null);
+                  }}
+                >
+                  {t('stock.nextPage')}
+                </Button>
+              </div>
+            )}
+            {selected && (
+              <Button onClick={() => void save()} isLoading={saving} fullWidth leftIcon={<BookOpen className="w-4 h-4" />}>
+                {selected.shopProductId ? t('catalog.useExisting') : t('catalog.add')}
+              </Button>
+            )}
+          </div>
         ) : undefined
       }
     >
@@ -313,43 +358,6 @@ export const CatalogAdoptDialog: React.FC<CatalogAdoptDialogProps> = ({ isOpen, 
             </li>
           ))}
         </ul>
-        {total > PAGE_SIZE && (
-          <div className="flex items-center justify-between text-sm">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={page === 0 || searching || saving}
-              onClick={() => {
-                setPage((value) => value - 1);
-                setChecked({});
-                setSelected(null);
-              }}
-            >
-              {t('stock.previousPage')}
-            </Button>
-            <span className="text-zinc-400">
-              {t('stock.pageRange', {
-                from: page * PAGE_SIZE + 1,
-                to: Math.min(total, (page + 1) * PAGE_SIZE),
-                total,
-              })}
-            </span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={page + 1 >= Math.ceil(total / PAGE_SIZE) || searching || saving}
-              onClick={() => {
-                setPage((value) => value + 1);
-                setChecked({});
-                setSelected(null);
-              }}
-            >
-              {t('stock.nextPage')}
-            </Button>
-          </div>
-        )}
         {!showAdded && visible.length > 0 && (
           <div className="sticky bottom-0 z-10 flex flex-wrap items-center gap-2 border-t border-zinc-800 bg-zinc-950 py-2">
             <span className="text-sm text-zinc-200">{t('catalog.selectedCount', { count: selectedCount })}</span>
