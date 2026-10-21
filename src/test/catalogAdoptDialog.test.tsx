@@ -6,7 +6,8 @@ import { LanguageProvider } from '../context/LanguageContext';
 import { resetLocalDatabase } from '../lib/db';
 import { saveShopSettings } from '../lib/shopSettings';
 import { SHOP_ID } from './helpers';
-import { adoptCatalogProduct, searchCatalog, type CatalogSearchHit } from '../services/catalogService';
+import { confirmCatalogIntake, searchCatalog, type CatalogSearchHit } from '../services/catalogService';
+import { todayInZone } from '../lib/expiry';
 
 vi.mock('../context/ShopContext', () => ({
   useShopId: () => '11111111-1111-4111-8111-111111111111',
@@ -15,7 +16,7 @@ vi.mock('../context/ShopContext', () => ({
 
 vi.mock('../services/catalogService', () => ({
   searchCatalog: vi.fn(),
-  adoptCatalogProduct: vi.fn(),
+  confirmCatalogIntake: vi.fn(),
 }));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -54,7 +55,7 @@ beforeEach(async () => {
   await resetLocalDatabase();
   await saveShopSettings(SHOP_ID, { role: 'owner' });
   vi.mocked(searchCatalog).mockReset();
-  vi.mocked(adoptCatalogProduct).mockReset();
+  vi.mocked(confirmCatalogIntake).mockReset();
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -66,44 +67,53 @@ afterEach(() => {
 });
 
 describe('CatalogAdoptDialog', () => {
-  it('searches the shared catalogue and adopts one product with this shop’s prices', async () => {
+  it('keeps a tick as a draft and confirms prices with the counted stock', async () => {
     vi.mocked(searchCatalog).mockResolvedValue({ data: { items: [hit], total: 1 } });
-    vi.mocked(adoptCatalogProduct).mockResolvedValue({
-      data: {
-        created: true,
-        product: {
-          id: 'product-1',
-          shopId: SHOP_ID,
-          barcode: '6001087354019',
-          name: 'Shared Maize',
-          category: 'groceries',
-          buyingPrice: 4,
-          sellingPrice: 7,
-          createdAt: '2026-10-20T00:00:00.000Z',
-          updatedAt: '2026-10-20T00:00:00.000Z',
-          archivedAt: null,
-          brand: 'Ace',
-          size: '2.5kg',
-          imagePath: null,
-          minStockUnits: null,
+    vi.mocked(confirmCatalogIntake).mockResolvedValue({
+      data: [
+        {
           catalogProductId: hit.id,
+          status: 'created',
+          created: true,
+          product: {
+            id: 'product-1',
+            shopId: SHOP_ID,
+            barcode: '6001087354019',
+            name: 'Shared Maize',
+            category: 'groceries',
+            buyingPrice: 4,
+            sellingPrice: 7,
+            createdAt: '2026-10-20T00:00:00.000Z',
+            updatedAt: '2026-10-20T00:00:00.000Z',
+            archivedAt: null,
+            brand: 'Ace',
+            size: '2.5kg',
+            imagePath: null,
+            minStockUnits: null,
+            catalogProductId: hit.id,
+          },
+          packagings: [],
+          barcodes: [],
+          batches: [],
         },
-        packagings: [],
-        barcodes: [],
-      },
+      ],
     });
 
     await render(<CatalogAdoptDialog isOpen onClose={() => undefined} />);
     await settle();
     expect(container.textContent).toContain('Shared Maize');
-    expect(container.textContent).not.toContain('Buying price for this shop');
+    expect(confirmCatalogIntake).not.toHaveBeenCalled();
 
     const choice = [...container.querySelectorAll('button')].find((button) => button.textContent?.includes('Shared Maize'));
     await act(async () => {
       choice?.click();
     });
-    const buying = container.querySelector<HTMLInputElement>('input[inputmode="decimal"]');
-    expect(buying).toBeTruthy();
+    expect(container.textContent).not.toContain('Buying price for this shop');
+    const count = [...container.querySelectorAll('button')].find((button) => button.textContent?.includes('Count stock'));
+    await act(async () => {
+      count?.click();
+    });
+
     await act(async () => {
       const inputs = container.querySelectorAll<HTMLInputElement>('input[inputmode="decimal"]');
       const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
@@ -111,13 +121,33 @@ describe('CatalogAdoptDialog', () => {
       inputs[0].dispatchEvent(new Event('input', { bubbles: true }));
       set?.call(inputs[1], '7');
       inputs[1].dispatchEvent(new Event('input', { bubbles: true }));
+      const quantity = container.querySelector<HTMLInputElement>('input[inputmode="numeric"]');
+      set?.call(quantity, '3');
+      quantity?.dispatchEvent(new Event('input', { bubbles: true }));
+      const expiry = container.querySelector<HTMLInputElement>('input[type="date"]');
+      set?.call(expiry, '2026-12-01');
+      expiry?.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    const review = [...container.querySelectorAll('button')].find((button) => button.textContent === 'Review');
+    await act(async () => {
+      review?.click();
     });
     const add = [...container.querySelectorAll('button')].find((button) => button.textContent?.includes('Add to this shop'));
     await act(async () => {
       add?.click();
     });
-    expect(adoptCatalogProduct).toHaveBeenCalledWith(SHOP_ID, hit.id, { buyingPrice: 4, sellingPrice: 7 });
-    expect(container.textContent).toContain('Added to this shop');
+    expect(confirmCatalogIntake).toHaveBeenCalledWith(
+      SHOP_ID,
+      [
+        expect.objectContaining({
+          buyingPrice: '4',
+          sellingPrice: '7',
+          batches: [expect.objectContaining({ quantity: '3', expires: true, expiryDate: '2026-12-01' })],
+        }),
+      ],
+      todayInZone('Africa/Johannesburg')
+    );
+    expect(container.textContent).toContain('Added to this shop with the stock you counted.');
   });
 
   it('does not ask for new prices when the shop already stocks the product', async () => {

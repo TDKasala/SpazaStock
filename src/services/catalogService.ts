@@ -1,9 +1,10 @@
-import type { Product, ProductBarcode, ProductCategory, ProductPackaging } from '../types';
+import type { Product, ProductBarcode, ProductCategory, ProductPackaging, StockBatch } from '../types';
+import { intakePayload, intakeProblems, type IntakeItemDraft } from '../lib/catalogIntake';
 import { db, withWriteLock } from '../lib/db';
 import { emitDataChanged } from '../lib/events';
 import { newId } from '../lib/ids';
 import { getSupabase } from '../lib/supabase';
-import { mapBarcodeRow, mapPackagingRow, mapProductRow } from '../sync/syncEngine';
+import { mapBarcodeRow, mapBatchRow, mapPackagingRow, mapProductRow } from '../sync/syncEngine';
 
 export interface CatalogBarcodeHit {
   barcode: string;
@@ -146,6 +147,67 @@ export async function adoptCatalogProduct(
   );
   emitDataChanged('local');
   return { data: { created: body.created === true, product, packagings, barcodes } };
+}
+
+export interface ConfirmedIntakeItem {
+  catalogProductId: string;
+  status: 'created' | 'stocked' | 'already_in_shop' | 'duplicate';
+  created: boolean;
+  product: Product;
+  packagings: ProductPackaging[];
+  barcodes: ProductBarcode[];
+  batches: StockBatch[];
+}
+
+/**
+ * Links every selected catalogue product and inserts its opening batches in one transaction.
+ * A repeat of the same product and batch ids does not add the quantity again.
+ */
+export async function confirmCatalogIntake(
+  shopId: string,
+  items: IntakeItemDraft[],
+  today: string
+): Promise<Result<ConfirmedIntakeItem[]>> {
+  if (intakeProblems(items, today).length > 0) {
+    return { error: { code: 'invalid', message: 'The count is not ready to save.' } };
+  }
+  const supabase = getSupabase();
+  if (!supabase) return { error: NOT_CONFIGURED };
+  const { data, error } = await supabase.rpc('confirm_catalog_intake', {
+    p_shop_id: shopId,
+    p_items: intakePayload(items),
+  });
+  if (error) return { error: { code: error.code ?? 'error', message: error.message } };
+
+  const rows = Array.isArray(asRecord(data).items) ? (asRecord(data).items as unknown[]) : [];
+  const confirmed = rows.map((row) => {
+    const body = asRecord(row);
+    const batches = (Array.isArray(body.batches) ? body.batches : []).map((entry) =>
+      mapBatchRow(asRecord(asRecord(entry).batch))
+    );
+    return {
+      catalogProductId: String(body.catalog_product_id),
+      status: String(body.status) as ConfirmedIntakeItem['status'],
+      created: body.created === true,
+      product: mapProductRow(asRecord(body.product)),
+      packagings: (Array.isArray(body.packagings) ? body.packagings : []).map((item) => mapPackagingRow(asRecord(item))),
+      barcodes: (Array.isArray(body.barcodes) ? body.barcodes : []).map((item) => mapBarcodeRow(asRecord(item))),
+      batches,
+    };
+  });
+
+  await withWriteLock(() =>
+    db.transaction('rw', [db.products, db.packagings, db.barcodes, db.batches], async () => {
+      for (const item of confirmed) {
+        await db.products.put(item.product);
+        if (item.packagings.length > 0) await db.packagings.bulkPut(item.packagings);
+        if (item.barcodes.length > 0) await db.barcodes.bulkPut(item.barcodes);
+        if (item.batches.length > 0) await db.batches.bulkPut(item.batches);
+      }
+    })
+  );
+  emitDataChanged('local');
+  return { data: confirmed };
 }
 
 export interface CommonCatalogItem {

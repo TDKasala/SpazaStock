@@ -6,7 +6,7 @@ import { LanguageProvider } from '../context/LanguageContext';
 import { resetLocalDatabase } from '../lib/db';
 import { saveShopSettings } from '../lib/shopSettings';
 import { SHOP_ID } from './helpers';
-import { adoptCatalogProduct, searchCatalog, type CatalogSearchHit } from '../services/catalogService';
+import { confirmCatalogIntake, searchCatalog, type CatalogSearchHit } from '../services/catalogService';
 
 vi.mock('../context/ShopContext', () => ({
   useShopId: () => '11111111-1111-4111-8111-111111111111',
@@ -15,7 +15,7 @@ vi.mock('../context/ShopContext', () => ({
 
 vi.mock('../services/catalogService', () => ({
   searchCatalog: vi.fn(),
-  adoptCatalogProduct: vi.fn(),
+  confirmCatalogIntake: vi.fn(),
 }));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -67,7 +67,7 @@ beforeEach(async () => {
   await resetLocalDatabase();
   await saveShopSettings(SHOP_ID, { role: 'owner' });
   vi.mocked(searchCatalog).mockReset();
-  vi.mocked(adoptCatalogProduct).mockReset();
+  vi.mocked(confirmCatalogIntake).mockReset();
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -89,31 +89,6 @@ describe('catalogue paging and retry', () => {
         },
       };
     });
-    vi.mocked(adoptCatalogProduct).mockImplementation(async (_shopId, id) => ({
-      data: {
-        created: true,
-        product: {
-          id: `shop-${id}`,
-          shopId: SHOP_ID,
-          barcode: '6001087354019',
-          name: id,
-          category: 'groceries',
-          buyingPrice: null,
-          sellingPrice: null,
-          createdAt: '2026-10-21T00:00:00.000Z',
-          updatedAt: '2026-10-21T00:00:00.000Z',
-          archivedAt: null,
-          brand: 'Ace',
-          size: '1kg',
-          imagePath: null,
-          minStockUnits: null,
-          catalogProductId: id,
-        },
-        packagings: [],
-        barcodes: [],
-      },
-    }));
-
     await render(<CatalogAdoptDialog isOpen onClose={() => undefined} />);
     await settle();
     expect(searchCatalog).toHaveBeenCalledWith(SHOP_ID, '', expect.objectContaining({ inShop: false, limit: 20, offset: 0 }));
@@ -131,11 +106,12 @@ describe('catalogue paging and retry', () => {
       buttonNamed('Select all')?.click();
     });
     await act(async () => {
-      buttonNamed('Add selected')?.click();
+      buttonNamed('Count stock')?.click();
     });
-    await settle();
-    expect(adoptCatalogProduct).toHaveBeenCalledTimes(1);
-    expect(adoptCatalogProduct).toHaveBeenCalledWith(SHOP_ID, 'third', { buyingPrice: null, sellingPrice: null });
+    expect(confirmCatalogIntake).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('Third meal');
+    expect(container.textContent).toContain('Quantity');
+    expect(container.textContent).not.toContain('First meal');
   });
 
   it('shows retry while offline and searches again when asked', async () => {

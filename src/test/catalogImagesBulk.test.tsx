@@ -6,7 +6,7 @@ import { LanguageProvider } from '../context/LanguageContext';
 import { resetLocalDatabase } from '../lib/db';
 import { saveShopSettings } from '../lib/shopSettings';
 import { SHOP_ID } from './helpers';
-import { adoptCatalogProduct, searchCatalog, type CatalogSearchHit } from '../services/catalogService';
+import { confirmCatalogIntake, searchCatalog, type CatalogSearchHit } from '../services/catalogService';
 
 vi.mock('../context/ShopContext', () => ({
   useShopId: () => '11111111-1111-4111-8111-111111111111',
@@ -15,7 +15,7 @@ vi.mock('../context/ShopContext', () => ({
 
 vi.mock('../services/catalogService', () => ({
   searchCatalog: vi.fn(),
-  adoptCatalogProduct: vi.fn(),
+  confirmCatalogIntake: vi.fn(),
 }));
 
 vi.mock('../services/productImageService', async () => {
@@ -87,7 +87,7 @@ beforeEach(async () => {
   await resetLocalDatabase();
   await saveShopSettings(SHOP_ID, { role: 'owner' });
   vi.mocked(searchCatalog).mockReset();
-  vi.mocked(adoptCatalogProduct).mockReset();
+  vi.mocked(confirmCatalogIntake).mockReset();
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -134,32 +134,8 @@ describe('catalogue pictures and bulk add', () => {
     expect(container.textContent).not.toContain('Add selected');
   });
 
-  it('adds the current page selection and clears the rows that succeeded', async () => {
+  it('keeps the ticked products as a draft until they are counted', async () => {
     vi.mocked(searchCatalog).mockResolvedValue({ data: { items: [pictured, plain], total: 2 } });
-    vi.mocked(adoptCatalogProduct).mockImplementation(async (_shopId, id) => ({
-      data: {
-        created: true,
-        product: {
-          id: `shop-${id}`,
-          shopId: SHOP_ID,
-          barcode: '6001087354019',
-          name: id,
-          category: 'groceries',
-          buyingPrice: null,
-          sellingPrice: null,
-          createdAt: '2026-10-21T00:00:00.000Z',
-          updatedAt: '2026-10-21T00:00:00.000Z',
-          archivedAt: null,
-          brand: 'Ace',
-          size: '2.5kg',
-          imagePath: id === 'pictured' ? pictured.imagePath : null,
-          minStockUnits: null,
-          catalogProductId: id,
-        },
-        packagings: [],
-        barcodes: [],
-      },
-    }));
 
     await render(<CatalogAdoptDialog isOpen onClose={() => undefined} />);
     await settle();
@@ -167,49 +143,17 @@ describe('catalogue pictures and bulk add', () => {
       buttonNamed('Select all')?.click();
     });
     expect(container.textContent).toContain('2 selected');
+    expect(confirmCatalogIntake).not.toHaveBeenCalled();
     await act(async () => {
-      buttonNamed('Add selected')?.click();
+      buttonNamed('Count stock')?.click();
     });
-    await settle();
-
-    expect(adoptCatalogProduct).toHaveBeenCalledTimes(2);
-    expect(adoptCatalogProduct).toHaveBeenCalledWith(SHOP_ID, 'pictured', { buyingPrice: null, sellingPrice: null });
-    expect(adoptCatalogProduct).toHaveBeenCalledWith(SHOP_ID, 'plain', { buyingPrice: null, sellingPrice: null });
-    expect(container.textContent).not.toContain('Pictured meal');
-    expect(container.textContent).not.toContain('Plain rice');
-    expect(container.textContent).not.toContain('2 selected');
-    expect(container.textContent).toContain('Added to this shop');
+    expect(container.textContent).toContain('Pictured meal');
+    expect(container.textContent).toContain('Quantity');
+    expect(confirmCatalogIntake).not.toHaveBeenCalled();
   });
 
-  it('keeps a failed product selected and shows the error', async () => {
+  it('shows both products on review and will not confirm an empty count', async () => {
     vi.mocked(searchCatalog).mockResolvedValue({ data: { items: [pictured, plain], total: 2 } });
-    vi.mocked(adoptCatalogProduct).mockImplementation(async (_shopId, id) => {
-      if (id === 'plain') return { error: { code: 'error', message: 'no' } };
-      return {
-        data: {
-          created: true,
-          product: {
-            id: 'shop-pictured',
-            shopId: SHOP_ID,
-            barcode: '6001087354019',
-            name: 'Pictured meal',
-            category: 'groceries',
-            buyingPrice: null,
-            sellingPrice: null,
-            createdAt: '2026-10-21T00:00:00.000Z',
-            updatedAt: '2026-10-21T00:00:00.000Z',
-            archivedAt: null,
-            brand: 'Ace',
-            size: '2.5kg',
-            imagePath: pictured.imagePath,
-            minStockUnits: null,
-            catalogProductId: 'pictured',
-          },
-          packagings: [],
-          barcodes: [],
-        },
-      };
-    });
 
     await render(<CatalogAdoptDialog isOpen onClose={() => undefined} />);
     await settle();
@@ -217,13 +161,17 @@ describe('catalogue pictures and bulk add', () => {
       buttonNamed('Select all')?.click();
     });
     await act(async () => {
-      buttonNamed('Add selected')?.click();
+      buttonNamed('Count stock')?.click();
     });
-    await settle();
-
-    expect(container.textContent).not.toContain('Pictured meal');
+    await act(async () => {
+      buttonNamed('Next')?.click();
+    });
+    await act(async () => {
+      buttonNamed('Review')?.click();
+    });
+    expect(container.textContent).toContain('Pictured meal');
     expect(container.textContent).toContain('Plain rice');
-    expect(container.querySelector<HTMLInputElement>('input[aria-label="Plain rice"]')?.checked).toBe(true);
-    expect(container.textContent).toContain('Could not add this product');
+    expect(buttonNamed('Add to this shop')?.disabled).toBe(true);
+    expect(confirmCatalogIntake).not.toHaveBeenCalled();
   });
 });
