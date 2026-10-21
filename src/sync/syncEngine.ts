@@ -391,7 +391,7 @@ async function sendProductImage(
   const { productId, imagePath } = item.payload;
   const bucket = client.storage.from(PRODUCT_IMAGE_BUCKET);
 
-  if (imagePath) {
+  if (imagePath && !imagePath.startsWith('catalog/')) {
     const image = await db.productImages.get(imagePath);
     if (!image) return { kind: 'fail', error: 'The picture is no longer on this phone.', code: 'missing_image' };
     const { error } = await bucket.upload(imagePath, image.bytes, {
@@ -433,7 +433,7 @@ async function sendProductImage(
     }
   }
   const local = await db.products.get(productId);
-  if (imagePath && local?.catalogProductId) {
+  if (imagePath && !imagePath.startsWith('catalog/') && local?.catalogProductId) {
     await publishCatalogImage(client, item.shopId, local.catalogProductId, imagePath);
   }
   return {
@@ -461,6 +461,11 @@ async function publishCatalogImage(
   imagePath: string
 ): Promise<void> {
   if (await getMeta(catalogImageMetaKey(catalogId))) return;
+  // The shop row already points at the shared file. Uploading it again is rejected.
+  if (imagePath.startsWith('catalog/')) {
+    await setMeta(catalogImageMetaKey(catalogId), imagePath);
+    return;
+  }
   try {
     const image = await db.productImages.get(imagePath);
     if (!image) return;
@@ -572,7 +577,9 @@ async function saveCatalogIdentity(
   }
 
   const canonical = mapProductRow(linked.data as Row);
-  if (product.imagePath) await publishCatalogImage(client, shopId, catalogId, product.imagePath);
+  if (product.imagePath && !product.imagePath.startsWith('catalog/')) {
+    await publishCatalogImage(client, shopId, catalogId, product.imagePath);
+  }
   return {
     kind: 'ok',
     catalogId,

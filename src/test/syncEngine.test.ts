@@ -987,6 +987,28 @@ describe('product pictures', () => {
     expect((await db.productImages.get(path))?.pending).toBe(false);
   });
 
+  it('does not upload a shared catalogue picture the shop only points at', async () => {
+    const product = await makeProduct();
+    const catalogId = 'c957c618-2eb1-4bd2-ab2b-0b357b1d4ee4';
+    const path = `catalog/${catalogId}.webp`;
+    await db.outbox.clear();
+    await db.products.update(product.id, { catalogProductId: catalogId, imagePath: path });
+    await db.productImages.put({
+      path,
+      shopId: 'catalog',
+      bytes: picture.bytes,
+      mimeType: 'image/webp',
+      pending: false,
+      cachedAt: SERVER_TIME,
+    });
+
+    const fake = createFakeSupabase({ rpc: imageRpcs(product) });
+    expect(await pushOutbox(fake.client, SHOP_ID)).toEqual({ pushed: 0, failed: 0, retryAt: null });
+    expect(await pushOutbox(fake.client, SHOP_ID)).toEqual({ pushed: 0, failed: 0, retryAt: null });
+    expect(fake.upload).not.toHaveBeenCalled();
+    expect(await getMeta(`catalog-image:${catalogId}`)).toBe(path);
+  });
+
   it('treats an upload that already happened as done', async () => {
     const product = await makeProduct();
     await saveProductImage(product.id, SHOP_ID, picture);
