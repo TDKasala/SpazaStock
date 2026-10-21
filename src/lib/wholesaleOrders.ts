@@ -101,3 +101,20 @@ export function orderSummaryText(
   if (total != null) parts.push(`${labels.total}: ${formatRand(total)}`);
   return parts.join('\n');
 }
+
+const EXPIRY_CATEGORIES = new Set(['bakery', 'dairy', 'groceries', 'beverages', 'snacks']);
+
+/** Same products as a normal delivery: a tracked category, or one that already has an expiry batch. */
+export function deliveryNeedsExpiry(
+  category: string,
+  batches: Array<{ productId: string; expiryDate: string | null }>,
+  productId: string
+): boolean {
+  if (EXPIRY_CATEGORIES.has(category)) return true;
+  return batches.some((batch) => batch.productId === productId && batch.expiryDate != null);
+}
+
+/** Ordered quantity minus every receipt already stored for the line. */
+export function outstandingQuantity(ordered: number, received: number): number {
+  return Math.max(ordered - received, 0);
+}

@@ -422,6 +422,12 @@ export const am: Translations = {
     estimatedTotal: 'የተገመተ ድምር',
     purchased: 'ተገዝቷል',
     costInvalid: 'ዜሮ ወይም ከዚያ በላይ ዋጋ ያስገቡ፣ ወይም ባዶ ይተዉት።',
+    outstanding: 'የቀረ',
+    thisDelivery: 'ይህ መድረስ',
+    addDate: 'ሌላ ቀን ጨምር',
+    deliveryExpiry: 'የሚያበቃበት ቀን',
+    recordDelivery: 'መድረሱን መዝግብ',
+    expiryRequired: 'የሚያበቃበትን ቀን ያስገቡ።',
   },
   scanner: {
     title: 'የባርኮድ ስካነር',

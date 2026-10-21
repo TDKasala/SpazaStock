@@ -39,6 +39,7 @@ export const MoreView: React.FC<MoreViewProps> = ({
       <WholesaleOrders
         shopId={shop.id}
         canManage={can(shop.role, 'orders.manage')}
+        canReceive={can(shop.role, 'stock.receive')}
         products={products}
         batches={batches}
         timezone={timezone}

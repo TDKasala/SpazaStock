@@ -422,6 +422,12 @@ export const so: Translations = {
     estimatedTotal: 'Wadarta la qiyaasay',
     purchased: 'Waa la iibsaday',
     costInvalid: 'Geli qiime eber ama ka badan, ama ka tag madhan.',
+    outstanding: 'Weli haray',
+    thisDelivery: 'Tani imaatay',
+    addDate: 'Ku dar taariikh kale',
+    deliveryExpiry: 'Taariikhda dhicitaanka',
+    recordDelivery: 'Diiwaangeli keenista',
+    expiryRequired: 'Geli taariikhda dhicitaanka.',
   },
   scanner: {
     title: 'Iskaanka barcode-ka',

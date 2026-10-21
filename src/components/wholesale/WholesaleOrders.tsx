@@ -3,24 +3,27 @@ import { ChevronLeft, Truck } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { db } from '../../lib/db';
 import { onDataChanged } from '../../lib/events';
+import { isValidDateFormat } from '../../lib/dates';
 import { isBatchExpired, todayInZone } from '../../lib/expiry';
 import { whatsappShareUrl } from '../../lib/invite';
 import { newId } from '../../lib/ids';
 import { parseMinStock } from '../../lib/lowStock';
-import { formatRand, lineTotal, orderSummaryText, parseEstimatedCost, suggestedOrderLines } from '../../lib/wholesaleOrders';
+import { deliveryNeedsExpiry, formatRand, lineTotal, orderSummaryText, outstandingQuantity, parseEstimatedCost, suggestedOrderLines } from '../../lib/wholesaleOrders';
 import {
   archiveWholesaler,
+  receiveWholesaleOrder,
   saveWholesaleOrder,
   setWholesaleItemPurchased,
   setWholesaleOrderStatus,
   upsertWholesaler,
 } from '../../services/wholesaleService';
-import type { Product, StockBatch, Wholesaler, WholesaleOrder, WholesaleOrderItem, WholesaleOrderStatus } from '../../types';
+import type { Product, StockBatch, Wholesaler, WholesaleOrder, WholesaleOrderItem, WholesaleOrderReceiptLine, WholesaleOrderStatus } from '../../types';
 import { Button } from '../ui/Button';
 
 export interface WholesaleOrdersProps {
   shopId: string;
   canManage: boolean;
+  canReceive: boolean;
   products: Product[];
   batches: StockBatch[];
   timezone: string;
@@ -45,6 +48,13 @@ interface EditorState {
   createdAt: string;
 }
 
+interface DeliverySlice {
+  id: string;
+  batchId: string;
+  quantity: string;
+  expiry: string;
+}
+
 const NEXT_STATUS: Partial<Record<WholesaleOrderStatus, Array<{ status: WholesaleOrderStatus; label: string }>>> = {
   draft: [
     { status: 'approved', label: 'wholesale.approve' },
@@ -55,15 +65,8 @@ const NEXT_STATUS: Partial<Record<WholesaleOrderStatus, Array<{ status: Wholesal
     { status: 'draft', label: 'wholesale.reopen' },
     { status: 'cancelled', label: 'wholesale.cancelOrder' },
   ],
-  ordered: [
-    { status: 'partially_received', label: 'wholesale.markPartial' },
-    { status: 'received', label: 'wholesale.markReceived' },
-    { status: 'cancelled', label: 'wholesale.cancelOrder' },
-  ],
-  partially_received: [
-    { status: 'received', label: 'wholesale.markReceived' },
-    { status: 'cancelled', label: 'wholesale.cancelOrder' },
-  ],
+  ordered: [{ status: 'cancelled', label: 'wholesale.cancelOrder' }],
+  partially_received: [{ status: 'cancelled', label: 'wholesale.cancelOrder' }],
 };
 
 const STATUS_LABEL: Record<WholesaleOrderStatus, string> = {
@@ -83,9 +86,14 @@ function sellableUnits(productId: string, batches: StockBatch[], today: string):
 
 const fieldClass = 'w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-3 text-sm text-zinc-100';
 
+function freshSlice(): DeliverySlice {
+  return { id: newId(), batchId: newId(), quantity: '', expiry: '' };
+}
+
 export const WholesaleOrders: React.FC<WholesaleOrdersProps> = ({
   shopId,
   canManage,
+  canReceive,
   products,
   batches,
   timezone,
@@ -96,6 +104,8 @@ export const WholesaleOrders: React.FC<WholesaleOrdersProps> = ({
   const [wholesalers, setWholesalers] = useState<Wholesaler[]>([]);
   const [orders, setOrders] = useState<WholesaleOrder[]>([]);
   const [editor, setEditor] = useState<EditorState | null>(null);
+  const [receiptLines, setReceiptLines] = useState<WholesaleOrderReceiptLine[]>([]);
+  const [deliveries, setDeliveries] = useState<Record<string, DeliverySlice[]>>({});
   const [form, setForm] = useState<{ id?: string; name: string; phone: string; note: string } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -157,7 +167,12 @@ export const WholesaleOrders: React.FC<WholesaleOrdersProps> = ({
 
   const openExisting = async (order: WholesaleOrder) => {
     const items = await db.wholesaleOrderItems.where('orderId').equals(order.id).toArray();
+    const received = items.length === 0
+      ? []
+      : await db.wholesaleOrderReceiptLines.where('orderItemId').anyOf(items.map((item) => item.id)).toArray();
     setError(null);
+    setReceiptLines(received);
+    setDeliveries(Object.fromEntries(items.map((item) => [item.id, [freshSlice()]])));
     setEditor({
       id: order.id,
       wholesalerId: order.wholesalerId ?? '',
@@ -331,8 +346,71 @@ export const WholesaleOrders: React.FC<WholesaleOrdersProps> = ({
     }
   };
 
+  const updateSlice = (lineId: string, sliceId: string, patch: Partial<DeliverySlice>) => {
+    setDeliveries((current) => ({
+      ...current,
+      [lineId]: (current[lineId] ?? []).map((slice) => (slice.id === sliceId ? { ...slice, ...patch } : slice)),
+    }));
+  };
+
+  const recordDelivery = async () => {
+    if (!editor || !canReceive || saving) return;
+    if (editor.status !== 'ordered' && editor.status !== 'partially_received') return;
+    const lines: Array<{ id: string; orderItemId: string; batchId: string; quantity: number; expiryDate: string | null }> = [];
+    for (const line of editor.lines) {
+      const product = products.find((row) => row.id === line.productId);
+      const needsExpiry = product ? deliveryNeedsExpiry(product.category, batches, product.id) : false;
+      for (const slice of deliveries[line.id] ?? []) {
+        if (!slice.quantity.trim()) continue;
+        const quantity = parseMinStock(slice.quantity);
+        if (quantity === 'invalid' || quantity === null || quantity < 1) {
+          setError(t('intelligence.minStockInvalid'));
+          return;
+        }
+        const expiry = slice.expiry.trim();
+        if ((needsExpiry && !expiry) || (expiry && !isValidDateFormat(expiry))) {
+          setError(t('wholesale.expiryRequired'));
+          return;
+        }
+        lines.push({
+          id: slice.id,
+          orderItemId: line.id,
+          batchId: slice.batchId,
+          quantity,
+          expiryDate: expiry || null,
+        });
+      }
+    }
+    if (lines.length === 0) {
+      setError(t('wholesale.needLines'));
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const result = await receiveWholesaleOrder(shopId, newId(), editor.id, lines);
+      if (!result.value) {
+        setError(result.error ?? t('errors.generic'));
+        return;
+      }
+      const received = await db.wholesaleOrderReceiptLines.where('orderItemId').anyOf(editor.lines.map((line) => line.id)).toArray();
+      setReceiptLines(received);
+      setDeliveries(Object.fromEntries(editor.lines.map((line) => [line.id, [freshSlice()]])));
+      setEditor({ ...editor, status: result.value.order.status });
+      setOrders((current) => {
+        const rest = current.filter((row) => row.id !== result.value!.order.id);
+        return [result.value!.order, ...rest];
+      });
+      setNotice(t('wholesale.saved'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (editor) {
     const editable = canManage && editor.status === 'draft';
+    const receiving = canReceive && (editor.status === 'ordered' || editor.status === 'partially_received');
+    const showProgress = editor.status === 'ordered' || editor.status === 'partially_received' || editor.status === 'received';
     const summaryLines = editor.lines.flatMap((line) => {
       const quantity = parseMinStock(line.quantity);
       const cost = parseEstimatedCost(line.cost);
@@ -385,6 +463,19 @@ export const WholesaleOrders: React.FC<WholesaleOrdersProps> = ({
             const quantity = parseMinStock(line.quantity);
             const cost = parseEstimatedCost(line.cost);
             const total = typeof quantity === 'number' && cost !== 'invalid' ? lineTotal(quantity, cost) : null;
+            const orderedQty = typeof quantity === 'number' ? quantity : 0;
+            const already = receiptLines.filter((row) => row.orderItemId === line.id).reduce((sum, row) => sum + row.quantity, 0);
+            const slices = deliveries[line.id] ?? [];
+            const entering = slices.reduce((sum, slice) => {
+              const parsed = parseMinStock(slice.quantity);
+              return sum + (parsed === 'invalid' || parsed === null ? 0 : parsed);
+            }, 0);
+            const left = outstandingQuantity(orderedQty, already + entering);
+            const needsExpiry = deliveryNeedsExpiry(
+              products.find((product) => product.id === line.productId)?.category ?? 'other',
+              batches,
+              line.productId
+            );
             return (
             <li key={line.id} className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
               <div className="flex items-center justify-between gap-2">
@@ -440,6 +531,47 @@ export const WholesaleOrders: React.FC<WholesaleOrdersProps> = ({
                   {t('wholesale.purchased')}
                 </label>
               )}
+              {showProgress && (
+                <p className="mt-2 text-xs text-zinc-300">
+                  {t('wholesale.statusOrdered')} {orderedQty} · {t('wholesale.statusReceived')} {already} · {t('wholesale.outstanding')} {left}
+                </p>
+              )}
+              {receiving && slices.map((slice, index) => (
+                <div key={slice.id} className="mt-2 space-y-2">
+                  <label className="block text-xs text-zinc-400">
+                    {t('wholesale.thisDelivery')}
+                    <input
+                      inputMode="numeric"
+                      aria-label={`${name} ${t('wholesale.thisDelivery')}${index === 0 ? '' : ` ${index + 1}`}`}
+                      value={slice.quantity}
+                      onChange={(event) => updateSlice(line.id, slice.id, { quantity: event.target.value })}
+                      className={`${fieldClass} mt-1`}
+                    />
+                  </label>
+                  <label className="block text-xs text-zinc-400">
+                    {t('wholesale.deliveryExpiry')}
+                    <input
+                      type="date"
+                      aria-required={needsExpiry}
+                      aria-label={`${name} ${t('wholesale.deliveryExpiry')}${index === 0 ? '' : ` ${index + 1}`}`}
+                      value={slice.expiry}
+                      onChange={(event) => updateSlice(line.id, slice.id, { expiry: event.target.value })}
+                      className={`${fieldClass} mt-1`}
+                    />
+                  </label>
+                </div>
+              ))}
+              {receiving && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="mt-2"
+                  onClick={() => setDeliveries((current) => ({ ...current, [line.id]: [...(current[line.id] ?? []), freshSlice()] }))}
+                >
+                  {t('wholesale.addDate')}
+                </Button>
+              )}
             </li>
             );
           })}
@@ -471,6 +603,11 @@ export const WholesaleOrders: React.FC<WholesaleOrdersProps> = ({
           </label>
         )}
         {error && <p className="text-xs text-rose-300">{error}</p>}
+        {receiving && (
+          <Button type="button" disabled={saving} onClick={() => void recordDelivery()}>
+            {t('wholesale.recordDelivery')}
+          </Button>
+        )}
         {canManage && (
           <div className="flex flex-col gap-2">
             {editor.status === 'draft' && (

@@ -148,6 +148,28 @@ export interface WholesaleOrderItem {
   updatedAt: string;
 }
 
+/** One recorded delivery. Replaying the id does not receive the units again. */
+export interface WholesaleOrderReceipt {
+  id: string;
+  shopId: string;
+  orderId: string;
+  receivedAt: string;
+  receivedBy: string | null;
+  updatedAt: string;
+}
+
+/** Units that arrived in one delivery, and the batch that holds them. */
+export interface WholesaleOrderReceiptLine {
+  id: string;
+  shopId: string;
+  receiptId: string;
+  orderItemId: string;
+  batchId: string;
+  quantity: number;
+  expiryDate: string | null;
+  updatedAt: string;
+}
+
 /** Quiets a low-stock alert on every phone until sellable stock rises above the minimum. */
 export interface LowStockDismissal {
   id: string;

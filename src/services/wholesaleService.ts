@@ -1,10 +1,21 @@
 import { db, withWriteLock } from '../lib/db';
+import { isValidDateFormat } from '../lib/dates';
 import { emitDataChanged } from '../lib/events';
 import { newId } from '../lib/ids';
 import { can } from '../lib/permissions';
 import { getShopSettings } from '../lib/shopSettings';
+import { deliveryNeedsExpiry, outstandingQuantity } from '../lib/wholesaleOrders';
 import { enqueue } from '../sync/outbox';
-import type { Wholesaler, WholesaleOrder, WholesaleOrderItem, WholesaleOrderStatus } from '../types';
+import type {
+  StockBatch,
+  StockMovement,
+  Wholesaler,
+  WholesaleOrder,
+  WholesaleOrderItem,
+  WholesaleOrderReceipt,
+  WholesaleOrderReceiptLine,
+  WholesaleOrderStatus,
+} from '../types';
 
 export interface WholesaleOutcome<T> {
   value?: T;
@@ -143,8 +154,8 @@ export async function saveWholesaleOrder(
 const TRANSITIONS: Record<WholesaleOrderStatus, WholesaleOrderStatus[]> = {
   draft: ['approved', 'cancelled'],
   approved: ['ordered', 'draft', 'cancelled'],
-  ordered: ['partially_received', 'received', 'cancelled'],
-  partially_received: ['received', 'cancelled'],
+  ordered: ['cancelled'],
+  partially_received: ['cancelled'],
   received: [],
   cancelled: [],
 };
@@ -203,6 +214,192 @@ export async function setWholesaleItemPurchased(
       await enqueue(shopId, { type: 'wholesale_item_purchased', payload: { itemId, purchased } });
       return { value: item };
     })
+  );
+  if (outcome.value) emitDataChanged('local');
+  return outcome;
+}
+
+export interface ReceiveLineInput {
+  id: string;
+  orderItemId: string;
+  batchId: string;
+  quantity: number;
+  expiryDate: string | null;
+}
+
+const RECEIVE_FORBIDDEN: WholesaleOutcome<never> = {
+  error: 'Only someone who can receive stock can record a delivery.',
+  errorCode: 'forbidden',
+};
+
+async function canReceiveStock(shopId: string): Promise<boolean> {
+  return can((await getShopSettings(shopId)).role, 'stock.receive');
+}
+
+/**
+ * Records the units that actually arrived. One receipt id is safe to retry.
+ * Stock is written here, not through a second stock-in queue item.
+ */
+export async function receiveWholesaleOrder(
+  shopId: string,
+  receiptId: string,
+  orderId: string,
+  lines: ReceiveLineInput[]
+): Promise<WholesaleOutcome<{ order: WholesaleOrder; receipt: WholesaleOrderReceipt }>> {
+  if (!(await canReceiveStock(shopId))) return RECEIVE_FORBIDDEN;
+  if (!receiptId || !orderId || lines.length < 1 || lines.length > 160) {
+    return { error: 'Record at least one product.', errorCode: 'invalid' };
+  }
+
+  const outcome = await withWriteLock(() =>
+    db.transaction(
+      'rw',
+      [
+        db.products,
+        db.batches,
+        db.movements,
+        db.wholesalers,
+        db.wholesaleOrders,
+        db.wholesaleOrderItems,
+        db.wholesaleOrderReceipts,
+        db.wholesaleOrderReceiptLines,
+        db.outbox,
+      ],
+      async (): Promise<WholesaleOutcome<{ order: WholesaleOrder; receipt: WholesaleOrderReceipt }>> => {
+        const order = await db.wholesaleOrders.get(orderId);
+        if (!order || order.shopId !== shopId) return { error: 'Order not found in this shop.', errorCode: 'not_found' };
+        const existingReceipt = await db.wholesaleOrderReceipts.get(receiptId);
+        if (existingReceipt) {
+          if (existingReceipt.shopId !== shopId || existingReceipt.orderId !== orderId) {
+            return { error: 'This receipt belongs to another order.', errorCode: 'invalid' };
+          }
+          return { value: { order, receipt: existingReceipt } };
+        }
+        if (order.status !== 'ordered' && order.status !== 'partially_received') {
+          return { error: 'Only an ordered delivery can be received.', errorCode: 'invalid' };
+        }
+
+        const items = await db.wholesaleOrderItems.where('orderId').equals(orderId).toArray();
+        const active = items.filter((item) => item.shopId === shopId);
+        const receivedByItem = new Map<string, number>();
+        const stored = active.length === 0
+          ? []
+          : await db.wholesaleOrderReceiptLines.where('orderItemId').anyOf(active.map((item) => item.id)).toArray();
+        for (const line of stored) {
+          receivedByItem.set(line.orderItemId, (receivedByItem.get(line.orderItemId) ?? 0) + line.quantity);
+        }
+        const asked = new Map<string, number>();
+        const seenLine = new Set<string>();
+        const seenBatch = new Set<string>();
+        for (const line of lines) {
+          if (seenLine.has(line.id) || seenBatch.has(line.batchId)) {
+            return { error: 'The same delivery line was sent twice.', errorCode: 'invalid' };
+          }
+          seenLine.add(line.id);
+          seenBatch.add(line.batchId);
+          if (!Number.isInteger(line.quantity) || line.quantity < 1 || line.quantity > 1_000_000) {
+            return { error: 'Quantity must be a whole number from 1 to 1,000,000.', errorCode: 'invalid' };
+          }
+          const item = active.find((row) => row.id === line.orderItemId);
+          if (!item) return { error: 'Order line not found in this shop.', errorCode: 'not_found' };
+          const product = await db.products.get(item.productId);
+          if (!product || product.shopId !== shopId) return { error: 'Product not found in this shop.', errorCode: 'not_found' };
+          const productBatches = await db.batches.where('productId').equals(item.productId).toArray();
+          if (deliveryNeedsExpiry(product.category, productBatches, item.productId)) {
+            if (!line.expiryDate || !isValidDateFormat(line.expiryDate)) {
+              return { error: 'Enter an expiry date.', errorCode: 'invalid' };
+            }
+          } else if (line.expiryDate && !isValidDateFormat(line.expiryDate)) {
+            return { error: 'Expiry date must be a real date.', errorCode: 'invalid' };
+          }
+          if (await db.batches.get(line.batchId)) return { error: 'This delivery was already recorded.', errorCode: 'invalid' };
+          asked.set(line.orderItemId, (asked.get(line.orderItemId) ?? 0) + line.quantity);
+        }
+        for (const [itemId, quantity] of asked) {
+          const item = active.find((row) => row.id === itemId)!;
+          if (quantity > outstandingQuantity(item.quantity, receivedByItem.get(itemId) ?? 0)) {
+            return { error: 'That is more than is still outstanding.', errorCode: 'invalid' };
+          }
+        }
+
+        const now = new Date().toISOString();
+        const wholesaler = order.wholesalerId ? await db.wholesalers.get(order.wholesalerId) : undefined;
+        const supplierName = wholesaler && wholesaler.shopId === shopId ? wholesaler.name : null;
+        const receipt: WholesaleOrderReceipt = {
+          id: receiptId,
+          shopId,
+          orderId,
+          receivedAt: now,
+          receivedBy: null,
+          updatedAt: now,
+        };
+        const running = new Map<string, number>();
+        const receiptLines: WholesaleOrderReceiptLine[] = [];
+        for (const line of lines) {
+          const item = active.find((row) => row.id === line.orderItemId)!;
+          if (!running.has(item.productId)) {
+            const rows = await db.batches.where('[shopId+productId]').equals([shopId, item.productId]).toArray();
+            running.set(item.productId, rows.reduce((sum, batch) => sum + batch.quantity, 0));
+          }
+          const nextTotal = (running.get(item.productId) ?? 0) + line.quantity;
+          running.set(item.productId, nextTotal);
+          const batch: StockBatch = {
+            id: line.batchId,
+            shopId,
+            productId: item.productId,
+            quantity: line.quantity,
+            initialQuantity: line.quantity,
+            expiryDate: line.expiryDate,
+            costPricePerUnit: item.estimatedUnitCost ?? null,
+            receivedAt: now,
+            packagingId: null,
+            packageQuantity: null,
+            unitsPerPackage: null,
+            receivedBarcodeId: null,
+            lotNumber: null,
+            supplierName,
+          };
+          const movement: StockMovement = {
+            id: newId(),
+            shopId,
+            productId: item.productId,
+            batchId: batch.id,
+            type: 'stock_in',
+            quantityDelta: line.quantity,
+            resultingTotalQuantity: nextTotal,
+            idempotencyKey: `stock_in:wholesale:${receiptId}:${line.id}`,
+            createdAt: now,
+          };
+          await db.batches.add(batch);
+          await db.movements.add(movement);
+          receiptLines.push({
+            id: line.id,
+            shopId,
+            receiptId,
+            orderItemId: line.orderItemId,
+            batchId: line.batchId,
+            quantity: line.quantity,
+            expiryDate: line.expiryDate,
+            updatedAt: now,
+          });
+          receivedByItem.set(line.orderItemId, (receivedByItem.get(line.orderItemId) ?? 0) + line.quantity);
+        }
+
+        const stillOutstanding = active.some(
+          (item) => outstandingQuantity(item.quantity, receivedByItem.get(item.id) ?? 0) > 0
+        );
+        const saved: WholesaleOrder = {
+          ...order,
+          status: stillOutstanding ? 'partially_received' : 'received',
+          updatedAt: now,
+        };
+        await db.wholesaleOrders.put(saved);
+        await db.wholesaleOrderReceipts.add(receipt);
+        await db.wholesaleOrderReceiptLines.bulkAdd(receiptLines);
+        await enqueue(shopId, { type: 'wholesale_order_receive', payload: { receiptId, orderId, lines } });
+        return { value: { order: saved, receipt } };
+      }
+    )
   );
   if (outcome.value) emitDataChanged('local');
   return outcome;

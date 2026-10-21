@@ -420,6 +420,12 @@ export const en = {
     estimatedTotal: 'Estimated total',
     purchased: 'Purchased',
     costInvalid: 'Enter a cost of zero or more, or leave it blank.',
+    outstanding: 'Outstanding',
+    thisDelivery: 'This delivery',
+    addDate: 'Add another date',
+    deliveryExpiry: 'Expiry date',
+    recordDelivery: 'Record delivery',
+    expiryRequired: 'Enter an expiry date.',
   },
   scanner: {
     title: 'Barcode Scanner',

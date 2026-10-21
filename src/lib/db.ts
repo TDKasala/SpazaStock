@@ -11,6 +11,8 @@ import type {
   Wholesaler,
   WholesaleOrder,
   WholesaleOrderItem,
+  WholesaleOrderReceipt,
+  WholesaleOrderReceiptLine,
   WholesaleOrderStatus,
   StockBatch,
   StockDiscrepancy,
@@ -81,6 +83,20 @@ export type OutboxOperation =
     }
   | { type: 'wholesale_order_status'; payload: { orderId: string; status: WholesaleOrderStatus } }
   | { type: 'wholesale_item_purchased'; payload: { itemId: string; purchased: boolean } }
+  | {
+      type: 'wholesale_order_receive';
+      payload: {
+        receiptId: string;
+        orderId: string;
+        lines: Array<{
+          id: string;
+          orderItemId: string;
+          batchId: string;
+          quantity: number;
+          expiryDate: string | null;
+        }>;
+      };
+    }
   | { type: 'catalog_submit'; payload: CatalogSubmitPayload }
   | { type: 'low_stock_dismiss'; payload: { productId: string } }
   | { type: 'low_stock_clear'; payload: { productId: string } };
@@ -135,6 +151,8 @@ export type SpazaDatabase = Dexie & {
   wholesalers: EntityTable<Wholesaler, 'id'>;
   wholesaleOrders: EntityTable<WholesaleOrder, 'id'>;
   wholesaleOrderItems: EntityTable<WholesaleOrderItem, 'id'>;
+  wholesaleOrderReceipts: EntityTable<WholesaleOrderReceipt, 'id'>;
+  wholesaleOrderReceiptLines: EntityTable<WholesaleOrderReceiptLine, 'id'>;
   outbox: EntityTable<OutboxItem, 'seq'>;
   meta: EntityTable<MetaRow, 'key'>;
 };
@@ -174,6 +192,11 @@ db.version(6).stores({
   wholesaleOrderItems: 'id, shopId, orderId, productId, [shopId+orderId]',
 });
 
+db.version(7).stores({
+  wholesaleOrderReceipts: 'id, shopId, orderId, [shopId+updatedAt]',
+  wholesaleOrderReceiptLines: 'id, shopId, receiptId, orderItemId, [shopId+updatedAt]',
+});
+
 /** Every table the write path touches, for `db.transaction('rw', WRITE_TABLES, ...)`. */
 export const WRITE_TABLES = [
   db.products,
@@ -189,6 +212,8 @@ export const WRITE_TABLES = [
   db.wholesalers,
   db.wholesaleOrders,
   db.wholesaleOrderItems,
+  db.wholesaleOrderReceipts,
+  db.wholesaleOrderReceiptLines,
   db.outbox,
 ];
 

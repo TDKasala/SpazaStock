@@ -423,6 +423,12 @@ export const bn: Translations = {
     estimatedTotal: 'আনুমানিক মোট',
     purchased: 'কেনা হয়েছে',
     costInvalid: 'শূন্য বা তার বেশি দাম লিখুন, অথবা খালি রাখুন।',
+    outstanding: 'বাকি আছে',
+    thisDelivery: 'এই সরবরাহ',
+    addDate: 'আরেকটি তারিখ যোগ করুন',
+    deliveryExpiry: 'মেয়াদ শেষের তারিখ',
+    recordDelivery: 'সরবরাহ লিখুন',
+    expiryRequired: 'মেয়াদ শেষের তারিখ লিখুন।',
   },
   scanner: {
     title: 'বারকোড স্ক্যানার',

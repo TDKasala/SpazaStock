@@ -12,9 +12,12 @@ import type {
   Sale,
   StockBatch,
   StockDiscrepancy,
+  StockMovement,
   Wholesaler,
   WholesaleOrder,
   WholesaleOrderItem,
+  WholesaleOrderReceipt,
+  WholesaleOrderReceiptLine,
   WholesaleOrderStatus,
 } from '../types';
 import { db, getMeta, setMeta, withWriteLock, WRITE_TABLES, type OutboxItem } from '../lib/db';
@@ -116,6 +119,8 @@ export function mapProductRow(row: Row): Product {
 const WHOLESALER_COLUMNS = 'id, shop_id, name, phone, note, archived_at, created_at, updated_at';
 const WHOLESALE_ORDER_COLUMNS = 'id, shop_id, wholesaler_id, status, note, created_at, updated_at';
 const WHOLESALE_ITEM_COLUMNS = 'id, shop_id, order_id, product_id, quantity, estimated_unit_cost, purchased_at, removed_at, updated_at';
+const WHOLESALE_RECEIPT_COLUMNS = 'id, shop_id, order_id, received_at, received_by, updated_at';
+const WHOLESALE_RECEIPT_LINE_COLUMNS = 'id, shop_id, receipt_id, order_item_id, batch_id, quantity, expiry_date, updated_at';
 
 export function mapWholesalerRow(row: Row): Wholesaler {
   return {
@@ -152,6 +157,45 @@ export function mapWholesaleOrderItemRow(row: Row): WholesaleOrderItem {
     estimatedUnitCost: toNumberOrNull(row.estimated_unit_cost),
     purchasedAt: row.purchased_at ? toIso(row.purchased_at) : null,
     updatedAt: toIso(row.updated_at),
+  };
+}
+
+export function mapWholesaleReceiptRow(row: Row): WholesaleOrderReceipt {
+  return {
+    id: String(row.id),
+    shopId: String(row.shop_id),
+    orderId: String(row.order_id),
+    receivedAt: toIso(row.received_at),
+    receivedBy: (row.received_by as string | null) ?? null,
+    updatedAt: toIso(row.updated_at),
+  };
+}
+
+export function mapWholesaleReceiptLineRow(row: Row): WholesaleOrderReceiptLine {
+  const expiry = row.expiry_date == null ? null : String(row.expiry_date).slice(0, 10);
+  return {
+    id: String(row.id),
+    shopId: String(row.shop_id),
+    receiptId: String(row.receipt_id),
+    orderItemId: String(row.order_item_id),
+    batchId: String(row.batch_id),
+    quantity: Number(row.quantity),
+    expiryDate: expiry,
+    updatedAt: toIso(row.updated_at),
+  };
+}
+
+export function mapStockMovementRow(row: Row): StockMovement {
+  return {
+    id: String(row.id),
+    shopId: String(row.shop_id),
+    productId: String(row.product_id),
+    batchId: row.batch_id ? String(row.batch_id) : null,
+    type: String(row.reason ?? row.type) as StockMovement['type'],
+    quantityDelta: Number(row.quantity_delta),
+    resultingTotalQuantity: Number(row.resulting_total_quantity),
+    idempotencyKey: row.idempotency_key ? String(row.idempotency_key) : undefined,
+    createdAt: toIso(row.occurred_at ?? row.created_at),
   };
 }
 
@@ -1058,6 +1102,49 @@ async function sendItem(client: SupabaseClient, item: OutboxItem): Promise<SendO
       };
     }
 
+    case 'wholesale_order_receive': {
+      const { receiptId, orderId, lines } = item.payload;
+      const { data, error } = await client.rpc('receive_wholesale_order', {
+        p_shop_id: item.shopId,
+        p_receipt_id: receiptId,
+        p_order_id: orderId,
+        p_lines: lines.map((line) => ({
+          id: line.id,
+          order_item_id: line.orderItemId,
+          batch_id: line.batchId,
+          quantity: line.quantity,
+          expiry_date: line.expiryDate,
+        })),
+      });
+      if (error) return outcomeFromError(error);
+      const body = (data ?? {}) as {
+        order?: Row;
+        receipt?: Row;
+        lines?: Row[];
+        batches?: Row[];
+        movements?: Row[];
+      };
+      return {
+        kind: 'ok',
+        apply: async () => {
+          if (body.order) await db.wholesaleOrders.put(mapWholesaleOrderRow(body.order));
+          if (body.receipt) await db.wholesaleOrderReceipts.put(mapWholesaleReceiptRow(body.receipt));
+          if (body.lines && body.lines.length > 0) {
+            await db.wholesaleOrderReceiptLines.bulkPut(body.lines.map(mapWholesaleReceiptLineRow));
+          }
+          if (body.batches && body.batches.length > 0) await db.batches.bulkPut(body.batches.map(mapBatchRow));
+          for (const movement of body.movements ?? []) {
+            const mapped = mapStockMovementRow(movement);
+            if (mapped.idempotencyKey) {
+              const prior = await db.movements.where('[shopId+idempotencyKey]').equals([item.shopId, mapped.idempotencyKey]).toArray();
+              await db.movements.bulkDelete(prior.map((row) => row.id).filter((id) => id !== mapped.id));
+            }
+            await db.movements.put(mapped);
+          }
+        },
+      };
+    }
+
     case 'wholesale_item_purchased': {
       const { itemId, purchased } = item.payload;
       const { data, error } = await client.rpc('set_wholesale_item_purchased', {
@@ -1353,6 +1440,22 @@ const PULL_SPECS: PullSpec[] = [
         if (row.removed_at) await db.wholesaleOrderItems.delete(String(row.id));
         else await db.wholesaleOrderItems.put(mapWholesaleOrderItemRow(row));
       }
+    },
+  },
+  {
+    table: 'wholesale_order_receipts',
+    columns: WHOLESALE_RECEIPT_COLUMNS,
+    initialCursor: () => new Date(0).toISOString(),
+    apply: async (rows) => {
+      await db.wholesaleOrderReceipts.bulkPut(rows.map(mapWholesaleReceiptRow));
+    },
+  },
+  {
+    table: 'wholesale_order_receipt_lines',
+    columns: WHOLESALE_RECEIPT_LINE_COLUMNS,
+    initialCursor: () => new Date(0).toISOString(),
+    apply: async (rows) => {
+      await db.wholesaleOrderReceiptLines.bulkPut(rows.map(mapWholesaleReceiptLineRow));
     },
   },
 ];

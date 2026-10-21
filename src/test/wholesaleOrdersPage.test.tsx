@@ -3,8 +3,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WholesaleOrders } from '../components/wholesale/WholesaleOrders';
 import { LanguageProvider } from '../context/LanguageContext';
-import { resetLocalDatabase } from '../lib/db';
-import { saveWholesaleOrder, setWholesaleItemPurchased, setWholesaleOrderStatus, upsertWholesaler } from '../services/wholesaleService';
+import { db, resetLocalDatabase } from '../lib/db';
+import { receiveWholesaleOrder, saveWholesaleOrder, setWholesaleItemPurchased, setWholesaleOrderStatus, upsertWholesaler } from '../services/wholesaleService';
 import { stockIn } from '../services/stockService';
 import type { Product, StockBatch } from '../types';
 
@@ -16,6 +16,7 @@ vi.mock('../services/wholesaleService', () => ({
   saveWholesaleOrder: vi.fn(),
   setWholesaleOrderStatus: vi.fn(),
   setWholesaleItemPurchased: vi.fn(),
+  receiveWholesaleOrder: vi.fn(),
 }));
 
 vi.mock('../services/stockService', () => ({
@@ -65,6 +66,7 @@ async function render() {
         <WholesaleOrders
           shopId={shopId}
           canManage
+          canReceive
           products={[product('bread', 'Bread', 5, 12), product('coke', 'Coke', null, null)]}
           batches={[batch('bread', 2, null), batch('bread', 9, '2020-01-01')]}
           timezone="Africa/Johannesburg"
@@ -81,6 +83,7 @@ beforeEach(async () => {
   vi.mocked(saveWholesaleOrder).mockReset();
   vi.mocked(setWholesaleOrderStatus).mockReset();
   vi.mocked(setWholesaleItemPurchased).mockReset();
+  vi.mocked(receiveWholesaleOrder).mockReset();
   vi.mocked(stockIn).mockReset();
   container = document.createElement('div');
   document.body.appendChild(container);
@@ -251,6 +254,76 @@ describe('Wholesale orders page', () => {
       bought?.click();
     });
     expect(setWholesaleItemPurchased).toHaveBeenCalledWith(shopId, expect.any(String), true);
+    expect(stockIn).not.toHaveBeenCalled();
+  });
+
+  it('shows the outstanding quantity and records the delivery without calling stock in', async () => {
+    const now = '2026-10-21T00:00:00.000Z';
+    await db.wholesaleOrders.put({
+      id: 'order-1',
+      shopId,
+      wholesalerId: null,
+      status: 'ordered',
+      note: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await db.wholesaleOrderItems.put({
+      id: 'line-1',
+      shopId,
+      orderId: 'order-1',
+      productId: 'bread',
+      quantity: 10,
+      estimatedUnitCost: null,
+      purchasedAt: null,
+      updatedAt: now,
+    });
+    vi.mocked(receiveWholesaleOrder).mockResolvedValue({
+      value: {
+        order: {
+          id: 'order-1',
+          shopId,
+          wholesalerId: null,
+          status: 'partially_received',
+          note: null,
+          createdAt: now,
+          updatedAt: now,
+        },
+        receipt: { id: 'receipt-1', shopId, orderId: 'order-1', receivedAt: now, receivedBy: null, updatedAt: now },
+      },
+    });
+
+    await render();
+    await act(async () => {
+      for (let attempt = 0; attempt < 20 && !buttonNamed('No wholesaler'); attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+    });
+    await act(async () => {
+      buttonNamed('No wholesaler')?.click();
+      for (let attempt = 0; attempt < 20 && !container.querySelector('input[aria-label="Bread This delivery"]'); attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+    });
+    const quantity = container.querySelector<HTMLInputElement>('input[aria-label="Bread This delivery"]');
+    const expiry = container.querySelector<HTMLInputElement>('input[aria-label="Bread Expiry date"]');
+    await act(async () => {
+      const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+      set?.call(quantity, '4');
+      quantity?.dispatchEvent(new Event('input', { bubbles: true }));
+      set?.call(expiry, '2026-12-01');
+      expiry?.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(container.textContent).toContain('Outstanding 6');
+    await act(async () => {
+      buttonNamed('Record delivery')?.click();
+    });
+    expect(receiveWholesaleOrder).toHaveBeenCalledWith(
+      shopId,
+      expect.any(String),
+      'order-1',
+      [expect.objectContaining({ orderItemId: 'line-1', quantity: 4, expiryDate: '2026-12-01' })]
+    );
     expect(stockIn).not.toHaveBeenCalled();
   });
 });

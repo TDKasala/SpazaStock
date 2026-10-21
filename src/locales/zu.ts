@@ -425,6 +425,12 @@ export const zu: Translations = {
     estimatedTotal: 'Isamba esilinganisiwe',
     purchased: 'Kuthengiwe',
     costInvalid: 'Faka izindleko ezinguziwo noma ngaphezulu, noma ushiye kungenalutho.',
+    outstanding: 'Okusele',
+    thisDelivery: 'Lokhu okufikile',
+    addDate: 'Faka olunye usuku',
+    deliveryExpiry: 'Usuku lokuphelelwa',
+    recordDelivery: 'Bhala ukulethwa',
+    expiryRequired: 'Faka usuku lokuphelelwa.',
   },
   scanner: {
     title: 'Iskena Samabhakhodi',
