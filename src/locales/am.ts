@@ -368,6 +368,13 @@ export const am: Translations = {
     notifyTitle: 'ዝቅተኛ ዕቃ፦ {{name}}',
     notifyBody: '{{count}} በእጅ፣ መጠን {{minimum}}።',
     paginationLabel: 'የዝቅተኛ ዕቃ ገጾች',
+    levelsTitle: 'የዕቃ መጠን',
+    levelsHint: 'ለእያንዳንዱ ዕቃ ምን ያህል የሚሸጥ ብዛት እንደሚቆይ ይምረጡ። ማንቂያውን ለማጥፋት ዕቃውን ባዶ ይተውት።',
+    levelsPhone: 'ከላይ ያለው የስልክ ማንቂያ መተግበሪያው ሲዘጋ ይህን ይልካል።',
+    levelsSearch: 'ዕቃዎችን ፈልግ',
+    levelsEmpty: 'የሚዛመድ ዕቃ የለም።',
+    levelsSaved: 'መጠኑ ተቀምጧል።',
+    levelsReadOnly: 'ባለቤት ወይም አስተዳዳሪ ብቻ ነው የሚቀይረው።',
   },
   scanner: {
     title: 'የባርኮድ ስካነር',

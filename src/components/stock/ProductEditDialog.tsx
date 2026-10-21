@@ -8,6 +8,7 @@ import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { ErrorMessage } from '../ui/ErrorMessage';
 import { batchCode } from '../../lib/expiry';
+import { parseMinStock } from '../../lib/lowStock';
 import { newId } from '../../lib/ids';
 import { normalizeBarcode, setProductMinStock, updateProduct } from '../../services/productService';
 import { getPackagings } from '../../services/barcodeLinkService';
@@ -27,14 +28,6 @@ export interface ProductEditDialogProps {
   product: Product;
   onClose: () => void;
   onSaved: (product: Product) => void;
-}
-
-function parseMinStock(text: string): number | null | 'invalid' {
-  const trimmed = text.trim();
-  if (!trimmed) return null;
-  if (!/^\d+$/.test(trimmed)) return 'invalid';
-  const value = Number(trimmed);
-  return Number.isInteger(value) && value >= 0 ? value : 'invalid';
 }
 
 function sameDetails(product: Product, input: ProductEditInput): boolean {

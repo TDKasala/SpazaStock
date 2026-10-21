@@ -37,6 +37,14 @@ describe('expiry-push logic', () => {
     expect(buildPayload({ ...push, body: null, data: { batch_id: 'b1', kind: 'expired', threshold_days: null } })).toMatchObject(
       { tag: 'expiry:b1:expired:expired', body: '' }
     );
+    expect(
+      buildPayload({
+        ...push,
+        title: 'Low stock: Bread',
+        body: '2 on hand, minimum 5.',
+        data: { kind: 'low_stock', product_id: 'bread' },
+      })
+    ).toMatchObject({ tag: 'low-stock:bread', url: '/?tab=alerts' });
   });
 
   it('counts delivery to any device as sent and reports gone subscriptions', () => {

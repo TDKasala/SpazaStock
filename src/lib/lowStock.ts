@@ -29,6 +29,18 @@ export interface LowStockItem {
   dismissed: boolean;
 }
 
+/**
+ * Blank turns the alert off. Anything that is not a whole number of units, including decimals
+ * and negatives, is rejected.
+ */
+export function parseMinStock(text: string): number | null | 'invalid' {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  if (!/^\d+$/.test(trimmed)) return 'invalid';
+  const value = Number(trimmed);
+  return Number.isInteger(value) && value >= 0 ? value : 'invalid';
+}
+
 /** A dismissal only counts while stock is still at or below the minimum. */
 export function dismissalIsActive(
   dismissal: Pick<LowStockDismissalState, 'clearedAt'> | null | undefined,

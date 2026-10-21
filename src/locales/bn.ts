@@ -369,6 +369,13 @@ export const bn: Translations = {
     notifyTitle: 'কম স্টক: {{name}}',
     notifyBody: '{{count}} হাতে আছে, সর্বনিম্ন {{minimum}}।',
     paginationLabel: 'কম স্টকের পাতা',
+    levelsTitle: 'স্টকের মাত্রা',
+    levelsHint: 'প্রতিটি পণ্যের কতগুলো বিক্রির যোগ্য জিনিস রাখবেন তা ঠিক করুন। সতর্কতা বন্ধ করতে ঘর খালি রাখুন।',
+    levelsPhone: 'উপরের ফোন সতর্কতা অ্যাপ বন্ধ থাকলে এটি পাঠায়।',
+    levelsSearch: 'পণ্য খুঁজুন',
+    levelsEmpty: 'কোনো পণ্য মেলেনি।',
+    levelsSaved: 'সর্বনিম্ন সংখ্যা সেভ হয়েছে।',
+    levelsReadOnly: 'মালিক বা ম্যানেজারই শুধু এগুলো বদলাতে পারেন।',
   },
   scanner: {
     title: 'বারকোড স্ক্যানার',

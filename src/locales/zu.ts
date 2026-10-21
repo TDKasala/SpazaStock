@@ -371,6 +371,13 @@ export const zu: Translations = {
     notifyTitle: 'Isitoko esincane: {{name}}',
     notifyBody: '{{count}} ekhona, umkhawulo {{minimum}}.',
     paginationLabel: 'Amakhasi esitoko esincane',
+    levelsTitle: 'Amazinga esitoko',
+    levelsHint: 'Setha ukuthi mangaki amayunithi athengiswayo okufanele uwanike kumkhiqizo ngamunye. Shiya umkhiqizo engenalutho ukuze ucime isexwayiso sawo.',
+    levelsPhone: 'Izexwayiso zefoni, ngenhla, zithumela lokhu uma uhlelo luvaliwe.',
+    levelsSearch: 'Sesha imikhiqizo',
+    levelsEmpty: 'Akukho mikhiqizo efanayo.',
+    levelsSaved: 'Umkhawulo ulondoloziwe.',
+    levelsReadOnly: 'Umnikazi noma umphathi kuphela ongakwazi ukushintsha lokhu.',
   },
   scanner: {
     title: 'Iskena Samabhakhodi',

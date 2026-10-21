@@ -368,6 +368,13 @@ export const so: Translations = {
     notifyTitle: 'Kayd hooseeya: {{name}}',
     notifyBody: '{{count}} oo yaal, xadka {{minimum}}.',
     paginationLabel: 'Bogagga kaydka hooseeya',
+    levelsTitle: 'Heerarka kaydka',
+    levelsHint: 'Dooro inta xabbo ee la iibin karo ee aad rabto inaad haysato alaab kasta. Ka tag alaab madhan si aad u damiso digniinteeda.',
+    levelsPhone: 'Digniinaha telefoonka, kor, ayaa tan dira marka app-ku xiran yahay.',
+    levelsSearch: 'Raadi alaabta',
+    levelsEmpty: 'Ma jirto alaab ku habboon.',
+    levelsSaved: 'Xadka waa la kaydiyay.',
+    levelsReadOnly: 'Milkiilaha ama maamulaha kaliya ayaa beddeli kara.',
   },
   scanner: {
     title: 'Iskaanka barcode-ka',

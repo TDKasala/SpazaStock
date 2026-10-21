@@ -366,6 +366,13 @@ export const en = {
     notifyTitle: 'Low stock: {{name}}',
     notifyBody: '{{count}} on hand, minimum {{minimum}}.',
     paginationLabel: 'Low stock pages',
+    levelsTitle: 'Stock levels',
+    levelsHint: 'Set how many sellable units to keep for each product. Leave a product blank to turn its alert off.',
+    levelsPhone: 'Phone alerts, above, send this when the app is closed.',
+    levelsSearch: 'Search products',
+    levelsEmpty: 'No products match.',
+    levelsSaved: 'Minimum saved.',
+    levelsReadOnly: 'Only an owner or manager can change these.',
   },
   scanner: {
     title: 'Barcode Scanner',

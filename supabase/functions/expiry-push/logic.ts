@@ -69,14 +69,23 @@ export function classifyPushStatus(status: number | null | undefined): PushOutco
 
 export function buildPayload(push: ClaimedPush): PushPayload {
   const data = push.data ?? {};
-  const threshold = data.threshold_days ?? 'expired';
-  return {
-    title: push.title,
-    body: push.body ?? '',
-    tag: `expiry:${String(data.batch_id ?? push.notification_id)}:${String(data.kind ?? 'alert')}:${String(threshold)}`,
-    url: '/?tab=alerts',
-    data: { ...data, notification_id: push.notification_id },
-  };
+    if (data.kind === 'low_stock') {
+      return {
+        title: push.title,
+        body: push.body ?? '',
+        tag: `low-stock:${String(data.product_id ?? push.notification_id)}`,
+        url: '/?tab=alerts',
+        data: { ...data, notification_id: push.notification_id },
+      };
+    }
+    const threshold = data.threshold_days ?? 'expired';
+    return {
+      title: push.title,
+      body: push.body ?? '',
+      tag: `expiry:${String(data.batch_id ?? push.notification_id)}:${String(data.kind ?? 'alert')}:${String(threshold)}`,
+      url: '/?tab=alerts',
+      data: { ...data, notification_id: push.notification_id },
+    };
 }
 
 /**

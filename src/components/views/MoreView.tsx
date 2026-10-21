@@ -8,6 +8,7 @@ import { PushAlertsToggle } from '../expiry/PushAlertsToggle';
 import { ReminderSettings } from '../expiry/ReminderSettings';
 import { StockIntelligenceCard } from '../dashboard/StockIntelligenceCard';
 import { CatalogReview } from '../catalog/CatalogReview';
+import { StockLevelSettings } from '../stock/StockLevelSettings';
 import { Button } from '../ui/Button';
 
 export interface MoreViewProps {
@@ -48,6 +49,15 @@ export const MoreView: React.FC<MoreViewProps> = ({
         {t('catalog.review.open')}
       </Button>
       <PushAlertsToggle />
+      {shop && (
+        <StockLevelSettings
+          shopId={shop.id}
+          canEdit={can(shop.role, 'products.edit')}
+          products={products}
+          batches={batches}
+          timezone={timezone}
+        />
+      )}
       <ReminderSettings />
       <StockIntelligenceCard
         lowStock={lowStock}
