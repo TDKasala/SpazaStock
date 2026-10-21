@@ -82,7 +82,7 @@ function mapHit(raw: unknown): CatalogSearchHit {
 export async function searchCatalog(
   shopId: string,
   query: string,
-  options: { limit?: number; offset?: number } = {}
+  options: { limit?: number; offset?: number; inShop?: boolean | null } = {}
 ): Promise<Result<CatalogSearchPage>> {
   const supabase = getSupabase();
   if (!supabase) return { error: NOT_CONFIGURED };
@@ -91,6 +91,7 @@ export async function searchCatalog(
     p_query: query,
     p_limit: options.limit ?? 20,
     p_offset: options.offset ?? 0,
+    p_in_shop: options.inShop ?? null,
   });
   if (error) return { error: { code: error.code ?? 'error', message: error.message } };
   const page = asRecord(data);
@@ -213,6 +214,8 @@ export interface CatalogReviewItem {
   brand: string | null;
   category: ProductCategory;
   packageSize: string | null;
+  imageUrl: string | null;
+  imagePath: string | null;
   shopProductId: string | null;
   /** Null when this shop has not reviewed the product yet. */
   listed: boolean | null;
@@ -248,6 +251,8 @@ function mapReviewItem(raw: unknown): CatalogReviewItem {
     brand: row.brand == null ? null : String(row.brand),
     category: (row.category as ProductCategory) ?? 'other',
     packageSize: row.package_size == null ? null : String(row.package_size),
+    imageUrl: row.image_url == null ? null : String(row.image_url),
+    imagePath: row.image_path == null ? null : String(row.image_path),
     shopProductId: row.shop_product_id == null ? null : String(row.shop_product_id),
     listed: row.shop_product_id == null || row.listed == null ? null : row.listed === true,
     barcodes: barcodes.map((item) => {

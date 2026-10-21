@@ -624,6 +624,11 @@ export const so: Translations = {
     failed: 'Alaabtan lama darin. Isku day mar kale.',
     suspended: 'Dukaankan waa la hakiyay. Waad eegi kartaa, laakiin weli ma dari kartid alaab.',
     inShop: 'Dukaankaaga ayay ku jirtaa',
+    showInShop: 'Tus alaabta horey ugu jirta dukaankan',
+    selectAll: 'Dooro dhammaan',
+    clearSelection: 'Tirtir',
+    selectedCount: '{{count}} ayaa la doortay',
+    addSelected: 'Ku dar kuwa la doortay',
     setup: {
       title: 'Dooro alaabta aad iibiso',
       body: 'Calaamadee alaabta caadiga ah ee khaanadahaaga. Qiimayaashu way sugi karaan. Waxba laguma daro ilaa aad xaqiijiso.',

@@ -2,6 +2,7 @@ import React, { lazy, Suspense, useEffect, useState } from 'react';
 import { ScanLine } from 'lucide-react';
 import { PRODUCT_CATEGORIES } from '../stock/ProductFormFields';
 import { Button } from '../ui/Button';
+import { ProductThumbnail } from '../stock/ProductThumbnail';
 import { useLanguage } from '../../context/LanguageContext';
 import {
   confirmShopCatalog,
@@ -280,6 +281,11 @@ export const CatalogReview: React.FC<Props> = ({ shopId, canEdit, onFinishLater,
                       }
                     />
                   )}
+                  <ProductThumbnail
+                    path={item.imagePath}
+                    previewUrl={!item.imagePath && item.imageUrl?.startsWith('https://') ? item.imageUrl : null}
+                    alt={item.name}
+                  />
                   <div className="min-w-0 flex-1">
                     <p className="font-medium">{item.name}</p>
                     <p className="text-sm text-zinc-400">{[item.brand, item.packageSize].filter(Boolean).join(' · ')}</p>

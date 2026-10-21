@@ -620,6 +620,11 @@ export const en = {
     failed: 'Could not add this product. Try again.',
     suspended: 'This shop is suspended. You can look, but you cannot add products yet.',
     inShop: 'In your shop',
+    showInShop: 'Show products already in this shop',
+    selectAll: 'Select all',
+    clearSelection: 'Clear',
+    selectedCount: '{{count}} selected',
+    addSelected: 'Add selected',
     setup: {
       title: 'Choose the products you sell',
       body: 'Tick the common products on your shelves. Prices can wait. Nothing is added until you confirm.',

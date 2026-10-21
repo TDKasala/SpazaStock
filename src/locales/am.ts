@@ -616,6 +616,11 @@ export const am: Translations = {
     failed: 'ይህን ዕቃ መጨመር አልተቻለም። እንደገና ይሞክሩ።',
     suspended: 'ይህ ሱቅ ታግዷል። ማየት ይቻላል፣ ዕቃ መጨመር ግን ገና አይቻልም።',
     inShop: 'በሱቅዎ ውስጥ',
+    showInShop: 'በዚህ ሱቅ ያሉትን አሳይ',
+    selectAll: 'ሁሉንም ምረጥ',
+    clearSelection: 'አጽዳ',
+    selectedCount: '{{count}} ተመርጧል',
+    addSelected: 'የተመረጡትን ጨምር',
     setup: {
       title: 'የሚሸጡትን እቃዎች ይምረጡ',
       body: 'በመደብርዎ ያሉ የተለመዱ እቃዎችን ምልክት ያድርጉ። ዋጋዎች ሊጠብቁ ይችላሉ። እስክያረጋግጡ ድረስ ምንም አይጨመርም።',

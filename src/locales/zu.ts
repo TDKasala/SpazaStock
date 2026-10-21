@@ -634,6 +634,11 @@ export const zu: Translations = {
     failed: 'Ayiphumelelanga ukufaka lo mkhiqizo. Zama futhi.',
     suspended: 'Le sitolo imisiwe. Ungabuka, kodwa awukwazi ukufaka imikhiqizo okwamanje.',
     inShop: 'Kuse sitolo sakho',
+    showInShop: 'Bonisa esivele sikule sitolo',
+    selectAll: 'Khetha konke',
+    clearSelection: 'Sula',
+    selectedCount: 'Okukhethiwe: {{count}}',
+    addSelected: 'Faka okukhethiwe',
     setup: {
       title: 'Khetha imikhiqizo oyidayisayo',
       body: 'Maka imikhiqizo evamile eshalofini lakho. Amanani angalinda. Akukho okufakwayo uze uqinisekise.',

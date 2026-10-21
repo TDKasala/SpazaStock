@@ -126,6 +126,14 @@ describe('CatalogAdoptDialog', () => {
     });
     await render(<CatalogAdoptDialog isOpen onClose={() => undefined} />);
     await settle();
+    expect(container.textContent).not.toContain('Shared Maize');
+    const showAdded = [...container.querySelectorAll('label')].find((label) =>
+      label.textContent?.includes('Show products already in this shop')
+    );
+    await act(async () => {
+      showAdded?.click();
+    });
+    await settle();
     const choice = [...container.querySelectorAll('button')].find((button) => button.textContent?.includes('Shared Maize'));
     await act(async () => {
       choice?.click();
