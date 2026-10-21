@@ -429,6 +429,7 @@ export const bn: Translations = {
     deliveryExpiry: 'মেয়াদ শেষের তারিখ',
     recordDelivery: 'সরবরাহ লিখুন',
     expiryRequired: 'মেয়াদ শেষের তারিখ লিখুন।',
+    tooMuch: 'এটি বাকি পরিমাণের চেয়ে বেশি।',
   },
   scanner: {
     title: 'বারকোড স্ক্যানার',

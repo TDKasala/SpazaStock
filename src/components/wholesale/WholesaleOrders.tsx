@@ -385,6 +385,15 @@ export const WholesaleOrders: React.FC<WholesaleOrdersProps> = ({
       setError(t('wholesale.needLines'));
       return;
     }
+    for (const line of editor.lines) {
+      const ordered = parseMinStock(line.quantity);
+      const already = receiptLines.filter((row) => row.orderItemId === line.id).reduce((sum, row) => sum + row.quantity, 0);
+      const asking = lines.filter((row) => row.orderItemId === line.id).reduce((sum, row) => sum + row.quantity, 0);
+      if (typeof ordered === 'number' && asking > outstandingQuantity(ordered, already)) {
+        setError(t('wholesale.tooMuch'));
+        return;
+      }
+    }
     setSaving(true);
     setError(null);
     try {

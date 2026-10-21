@@ -5,6 +5,7 @@ import { createPackaging, linkBarcode, unlinkBarcode } from '../services/barcode
 import { removeProductImage, saveProductImage } from '../services/productImageService';
 import { saveShopSettings } from '../lib/shopSettings';
 import { addStockToBatch, stockIn, getProductTotalStock } from '../services/stockService';
+import { receiveWholesaleOrder } from '../services/wholesaleService';
 import { recordSale, voidSale } from '../services/salesService';
 import { db, getMeta, resetLocalDatabase } from '../lib/db';
 import type { Product } from '../types';
@@ -1117,5 +1118,127 @@ describe('product pictures', () => {
     expect(await pullChanges(fake.client, SHOP_ID)).toBe(1);
     expect((await db.products.get(product.id))?.imagePath).toBe(fresh);
     expect(await db.productImages.get(stale)).toBeUndefined();
+  });
+
+  it('replays a wholesale receipt without adding the same units twice', async () => {
+    const now = '2026-10-21T12:00:00.000Z';
+    const productId = '55555555-5555-4555-8555-555555555555';
+    const orderId = '66666666-6666-4666-8666-666666666666';
+    const lineId = '77777777-7777-4777-8777-777777777777';
+    const receiptId = '88888888-8888-4888-8888-888888888888';
+    const sliceId = '99999999-9999-4999-8999-999999999999';
+    const batchId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    await db.products.put({
+      id: productId,
+      shopId: SHOP_ID,
+      barcode: '6001000099033',
+      name: 'Bread',
+      category: 'groceries',
+      createdAt: now,
+      updatedAt: now,
+    });
+    await db.wholesaleOrders.put({
+      id: orderId,
+      shopId: SHOP_ID,
+      wholesalerId: null,
+      status: 'ordered',
+      note: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await db.wholesaleOrderItems.put({
+      id: lineId,
+      shopId: SHOP_ID,
+      orderId,
+      productId,
+      quantity: 10,
+      estimatedUnitCost: 12.5,
+      purchasedAt: null,
+      updatedAt: now,
+    });
+    const received = await receiveWholesaleOrder(SHOP_ID, receiptId, orderId, [{
+      id: sliceId,
+      orderItemId: lineId,
+      batchId,
+      quantity: 4,
+      expiryDate: '2026-12-01',
+    }]);
+    expect(received.value?.order.status).toBe('partially_received');
+    expect((await db.batches.get(batchId))?.quantity).toBe(4);
+
+    const serverMovementId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    const idempotencyKey = `stock_in:wholesale:${receiptId}:${sliceId}`;
+    const fake = createFakeSupabase({
+      rpc: (name, args) => {
+        if (name !== 'receive_wholesale_order') return { data: null, error: { message: `unexpected ${name}` } };
+        const line = (args.p_lines as Array<Record<string, unknown>>)[0];
+        return {
+          data: {
+            order: {
+              id: orderId,
+              shop_id: SHOP_ID,
+              wholesaler_id: null,
+              status: 'partially_received',
+              note: null,
+              created_at: now,
+              updated_at: now,
+            },
+            receipt: {
+              id: receiptId,
+              shop_id: SHOP_ID,
+              order_id: orderId,
+              received_at: now,
+              received_by: null,
+              updated_at: now,
+            },
+            lines: [{
+              id: line.id,
+              shop_id: SHOP_ID,
+              receipt_id: receiptId,
+              order_item_id: line.order_item_id,
+              batch_id: line.batch_id,
+              quantity: 4,
+              expiry_date: '2026-12-01',
+              updated_at: now,
+            }],
+            batches: [{
+              id: batchId,
+              shop_id: SHOP_ID,
+              product_id: productId,
+              quantity: 4,
+              initial_quantity: 4,
+              expiry_date: '2026-12-01',
+              cost_price_per_unit: '12.50',
+              received_at: now,
+              packaging_id: null,
+              package_quantity: null,
+              units_per_package: null,
+              received_barcode_id: null,
+              lot_number: null,
+              supplier_name: null,
+            }],
+            movements: [{
+              id: serverMovementId,
+              shop_id: SHOP_ID,
+              product_id: productId,
+              batch_id: batchId,
+              reason: 'stock_in',
+              quantity_delta: 4,
+              resulting_total_quantity: 4,
+              idempotency_key: idempotencyKey,
+              occurred_at: now,
+            }],
+          },
+          error: null,
+        };
+      },
+    });
+
+    expect(await pushOutbox(fake.client, SHOP_ID)).toEqual({ pushed: 1, failed: 0, retryAt: null });
+    expect(await pushOutbox(fake.client, SHOP_ID)).toEqual({ pushed: 0, failed: 0, retryAt: null });
+    expect(fake.rpc).toHaveBeenCalledTimes(1);
+    expect((await db.batches.get(batchId))?.quantity).toBe(4);
+    const movements = await db.movements.where('[shopId+idempotencyKey]').equals([SHOP_ID, idempotencyKey]).toArray();
+    expect(movements.map((movement) => movement.id)).toEqual([serverMovementId]);
   });
 });

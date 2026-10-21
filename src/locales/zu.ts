@@ -431,6 +431,7 @@ export const zu: Translations = {
     deliveryExpiry: 'Usuku lokuphelelwa',
     recordDelivery: 'Bhala ukulethwa',
     expiryRequired: 'Faka usuku lokuphelelwa.',
+    tooMuch: 'Lokhu kudlula okusele.',
   },
   scanner: {
     title: 'Iskena Samabhakhodi',

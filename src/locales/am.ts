@@ -428,6 +428,7 @@ export const am: Translations = {
     deliveryExpiry: 'የሚያበቃበት ቀን',
     recordDelivery: 'መድረሱን መዝግብ',
     expiryRequired: 'የሚያበቃበትን ቀን ያስገቡ።',
+    tooMuch: 'ይህ ከቀረው በላይ ነው።',
   },
   scanner: {
     title: 'የባርኮድ ስካነር',

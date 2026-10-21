@@ -365,5 +365,36 @@ describe('wholesale orders', () => {
     );
     expect(still.n).toBe(kept.n);
     expect(still.n).toBe(1);
+
+    for (const table of [
+      'wholesalers',
+      'wholesale_orders',
+      'wholesale_order_items',
+      'wholesale_order_receipts',
+      'wholesale_order_receipt_lines',
+      'stock_batches',
+    ]) {
+      const [hidden] = await query<{ n: number }>(
+        pg,
+        outsider,
+        `select count(*)::int as n from public.${table} where shop_id = $1`,
+        [shop]
+      );
+      expect(hidden.n).toBe(0);
+    }
+    const [visible] = await query<{ n: number }>(
+      pg,
+      staff,
+      'select count(*)::int as n from public.wholesale_orders where id = $1',
+      [orderId]
+    );
+    expect(visible.n).toBe(1);
+    expect(await errorCode(rpc(pg, staff, 'save_wholesale_order', {
+      p_shop_id: shop,
+      p_order_id: orderId,
+      p_wholesaler_id: wholesalerId,
+      p_note: null,
+      p_items: [{ id: lineId, product_id: product.id, quantity: 10 }],
+    }))).toBe('42501');
   });
 });

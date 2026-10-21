@@ -59,14 +59,61 @@ function buttonNamed(text: string): HTMLButtonElement | undefined {
   return [...container.querySelectorAll('button')].find((button) => button.textContent?.includes(text));
 }
 
-async function render() {
+function typeInto(input: HTMLInputElement | null, value: string) {
+  const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+  set?.call(input, value);
+  input?.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+async function seedOrderedOrder() {
+  const now = '2026-10-21T00:00:00.000Z';
+  await db.wholesaleOrders.put({
+    id: 'order-1',
+    shopId,
+    wholesalerId: null,
+    status: 'ordered',
+    note: null,
+    createdAt: now,
+    updatedAt: now,
+  });
+  await db.wholesaleOrderItems.put({
+    id: 'line-1',
+    shopId,
+    orderId: 'order-1',
+    productId: 'bread',
+    quantity: 10,
+    estimatedUnitCost: null,
+    purchasedAt: null,
+    updatedAt: now,
+  });
+}
+
+async function openDelivery(options?: { canManage?: boolean; canReceive?: boolean }) {
+  await seedOrderedOrder();
+  await render(options);
+  await act(async () => {
+    for (let attempt = 0; attempt < 20 && !buttonNamed('No wholesaler'); attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  });
+  await act(async () => {
+    buttonNamed('No wholesaler')?.click();
+    for (let attempt = 0; attempt < 20 && !container.querySelector('input[aria-label="Bread This delivery"]'); attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  });
+}
+
+async function render(options: { canManage?: boolean; canReceive?: boolean } = {}) {
+  const canManage = options.canManage ?? true;
+  const canReceive = options.canReceive ?? true;
   await act(async () => {
     root.render(
       <LanguageProvider>
         <WholesaleOrders
           shopId={shopId}
-          canManage
-          canReceive
+          canManage={canManage}
+          canReceive={canReceive}
           products={[product('bread', 'Bread', 5, 12), product('coke', 'Coke', null, null)]}
           batches={[batch('bread', 2, null), batch('bread', 9, '2020-01-01')]}
           timezone="Africa/Johannesburg"
@@ -325,5 +372,78 @@ describe('Wholesale orders page', () => {
       [expect.objectContaining({ orderItemId: 'line-1', quantity: 4, expiryDate: '2026-12-01' })]
     );
     expect(stockIn).not.toHaveBeenCalled();
+  });
+
+  it('asks for an expiry and refuses more than the outstanding quantity', async () => {
+    await openDelivery();
+    const quantity = container.querySelector<HTMLInputElement>('input[aria-label="Bread This delivery"]');
+    await act(async () => {
+      typeInto(quantity, '4');
+    });
+    await act(async () => {
+      buttonNamed('Record delivery')?.click();
+    });
+    expect(container.textContent).toContain('Enter an expiry date.');
+    expect(receiveWholesaleOrder).not.toHaveBeenCalled();
+
+    const expiry = container.querySelector<HTMLInputElement>('input[aria-label="Bread Expiry date"]');
+    await act(async () => {
+      typeInto(quantity, '11');
+      typeInto(expiry, '2026-12-01');
+    });
+    await act(async () => {
+      buttonNamed('Record delivery')?.click();
+    });
+    expect(container.textContent).toContain('That is more than is still outstanding.');
+    expect(receiveWholesaleOrder).not.toHaveBeenCalled();
+  });
+
+  it('lets staff record a delivery and sends two expiry dates as two batches', async () => {
+    const now = '2026-10-21T00:00:00.000Z';
+    vi.mocked(receiveWholesaleOrder).mockResolvedValue({
+      value: {
+        order: {
+          id: 'order-1',
+          shopId,
+          wholesalerId: null,
+          status: 'partially_received',
+          note: null,
+          createdAt: now,
+          updatedAt: now,
+        },
+        receipt: { id: 'receipt-1', shopId, orderId: 'order-1', receivedAt: now, receivedBy: null, updatedAt: now },
+      },
+    });
+    await openDelivery({ canManage: false, canReceive: true });
+    expect(buttonNamed('Approve')).toBeUndefined();
+    expect(buttonNamed('Record delivery')).toBeTruthy();
+
+    await act(async () => {
+      buttonNamed('Add another date')?.click();
+    });
+    const firstQuantity = container.querySelector<HTMLInputElement>('input[aria-label="Bread This delivery"]');
+    const secondQuantity = container.querySelector<HTMLInputElement>('input[aria-label="Bread This delivery 2"]');
+    const firstExpiry = container.querySelector<HTMLInputElement>('input[aria-label="Bread Expiry date"]');
+    const secondExpiry = container.querySelector<HTMLInputElement>('input[aria-label="Bread Expiry date 2"]');
+    await act(async () => {
+      typeInto(firstQuantity, '4');
+      typeInto(firstExpiry, '2026-12-01');
+      typeInto(secondQuantity, '2');
+      typeInto(secondExpiry, '2027-01-15');
+    });
+    await act(async () => {
+      buttonNamed('Record delivery')?.click();
+    });
+    expect(receiveWholesaleOrder).toHaveBeenCalledWith(
+      shopId,
+      expect.any(String),
+      'order-1',
+      [
+        expect.objectContaining({ quantity: 4, expiryDate: '2026-12-01' }),
+        expect.objectContaining({ quantity: 2, expiryDate: '2027-01-15' }),
+      ]
+    );
+    const lines = vi.mocked(receiveWholesaleOrder).mock.calls[0][3];
+    expect(new Set(lines.map((line) => line.batchId)).size).toBe(2);
   });
 });

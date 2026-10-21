@@ -428,6 +428,7 @@ export const so: Translations = {
     deliveryExpiry: 'Taariikhda dhicitaanka',
     recordDelivery: 'Diiwaangeli keenista',
     expiryRequired: 'Geli taariikhda dhicitaanka.',
+    tooMuch: 'Tani waxay ka badan tahay inta weli haray.',
   },
   scanner: {
     title: 'Iskaanka barcode-ka',

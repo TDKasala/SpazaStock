@@ -426,6 +426,7 @@ export const en = {
     deliveryExpiry: 'Expiry date',
     recordDelivery: 'Record delivery',
     expiryRequired: 'Enter an expiry date.',
+    tooMuch: 'That is more than is still outstanding.',
   },
   scanner: {
     title: 'Barcode Scanner',
