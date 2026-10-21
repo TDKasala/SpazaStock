@@ -4,14 +4,56 @@ import { useLanguage } from '../../context/LanguageContext';
 import { useShop, useShopId } from '../../context/ShopContext';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
-import type { Product, ProductStockSummary } from '../../types';
+import type { Product, ProductCategory, ProductStockSummary } from '../../types';
 import { getAllProductsStockSummary } from '../../services/stockService';
 import { getArchivedProducts, setProductArchived } from '../../services/productService';
 import { can } from '../../lib/permissions';
+import {
+  categoryFacets,
+  conditionFacets,
+  matchesStockCondition,
+  productMatchesQuery,
+  type StockCondition,
+} from '../../lib/stockFilters';
 import { StockProductCard } from '../stock/StockProductCard';
 import { CatalogAdoptDialog } from '../stock/CatalogAdoptDialog';
 
 const PAGE_SIZE = 15;
+
+const CONDITION_LABEL: Record<StockCondition, string> = {
+  in: 'stock.inStock',
+  out: 'stock.outOfStock',
+  low: 'stock.lowStock',
+  expiring: 'stock.expiring',
+};
+
+function FilterChip({
+  pressed,
+  label,
+  count,
+  onClick,
+}: {
+  pressed: boolean;
+  label: string;
+  count?: number;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={pressed}
+      onClick={onClick}
+      className={`inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-full border px-3 py-2 text-sm ${
+        pressed ? 'border-emerald-500 bg-emerald-600 text-white' : 'border-zinc-800 bg-zinc-900 text-zinc-300'
+      }`}
+    >
+      <span className="whitespace-nowrap">{label}</span>
+      {count != null && (
+        <span className={`text-xs tabular-nums ${pressed ? 'text-emerald-100' : 'text-zinc-500'}`}>{count}</span>
+      )}
+    </button>
+  );
+}
 
 export interface StockViewProps {
   onOpenScanner: () => void;
@@ -31,6 +73,8 @@ export const StockView: React.FC<StockViewProps> = ({
   const { settings } = useShop();
   const canEdit = can(settings.role, 'products.edit');
   const [searchTerm, setSearchTerm] = useState('');
+  const [category, setCategory] = useState<ProductCategory | null>(null);
+  const [condition, setCondition] = useState<StockCondition | null>(null);
   const [summaries, setSummaries] = useState<ProductStockSummary[]>([]);
   const [archived, setArchived] = useState<Product[]>([]);
   const [showArchived, setShowArchived] = useState(false);
@@ -60,11 +104,19 @@ export const StockView: React.FC<StockViewProps> = ({
     };
   }, [shopId, refreshTrigger]);
 
-  const term = searchTerm.trim().toLowerCase();
-  const matches = (product: Product) =>
-    product.name.toLowerCase().includes(term) || product.barcode.toLowerCase().includes(term);
-  const filteredSummaries = summaries.filter(({ product }) => matches(product));
-  const filteredArchived = archived.filter(matches);
+  const shopHasSeveralCategories = new Set(summaries.map(({ product }) => product.category)).size > 1;
+  const categories = categoryFacets(summaries, searchTerm, condition, category);
+  const conditions = conditionFacets(summaries, searchTerm, category, condition);
+  const filteredSummaries = summaries.filter(
+    (summary) =>
+      productMatchesQuery(summary.product, searchTerm) &&
+      (category === null || summary.product.category === category) &&
+      matchesStockCondition(summary, condition)
+  );
+  const filteredArchived = archived.filter(
+    (product) => productMatchesQuery(product, searchTerm) && (category === null || product.category === category)
+  );
+  const filtersActive = category !== null || condition !== null;
 
   const pageCount = Math.max(1, Math.ceil(filteredSummaries.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount - 1);
@@ -89,7 +141,7 @@ export const StockView: React.FC<StockViewProps> = ({
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="space-y-3">
         <Input
           placeholder={t('stock.searchPlaceholder')}
           value={searchTerm}
@@ -99,6 +151,54 @@ export const StockView: React.FC<StockViewProps> = ({
           }}
           leftIcon={<Search className="w-4 h-4" />}
         />
+        {shopHasSeveralCategories && (
+          <div>
+            <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-zinc-500">{t('stock.categoryFilters')}</p>
+            <div role="group" aria-label={t('stock.categoryFilters')} className="flex gap-2 overflow-x-auto pb-1">
+              <FilterChip
+                pressed={category === null}
+                label={t('stock.allCategories')}
+                onClick={() => {
+                  setCategory(null);
+                  setPage(0);
+                }}
+              />
+              {categories.map((facet) => (
+                <FilterChip
+                  key={facet.category}
+                  pressed={category === facet.category}
+                  label={t(`product.categories.${facet.category}`)}
+                  count={facet.count}
+                  onClick={() => {
+                    setCategory(facet.category);
+                    setPage(0);
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+        {conditions.length > 0 && (
+          <div>
+            <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
+              {t('stock.availabilityFilters')}
+            </p>
+            <div role="group" aria-label={t('stock.availabilityFilters')} className="flex gap-2 overflow-x-auto pb-1">
+              {conditions.map((facet) => (
+                <FilterChip
+                  key={facet.condition}
+                  pressed={condition === facet.condition}
+                  label={t(CONDITION_LABEL[facet.condition])}
+                  count={facet.count}
+                  onClick={() => {
+                    setCondition((current) => (current === facet.condition ? null : facet.condition));
+                    setPage(0);
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {isLoading ? (
@@ -151,10 +251,14 @@ export const StockView: React.FC<StockViewProps> = ({
             <Package className="w-6 h-6" />
           </div>
           <h3 className="text-sm font-semibold text-zinc-200">
-            {searchTerm ? t('stock.noMatchesTitle') : t('stock.emptyTitle')}
+            {searchTerm || filtersActive ? t('stock.noMatchesTitle') : t('stock.emptyTitle')}
           </h3>
           <p className="text-xs text-zinc-400 max-w-xs mt-1.5 leading-relaxed">
-            {searchTerm ? t('stock.noMatchesMessage', { term: searchTerm }) : t('stock.emptyMessage')}
+            {searchTerm
+              ? t('stock.noMatchesMessage', { term: searchTerm })
+              : filtersActive
+                ? t('stock.noFilterMatches')
+                : t('stock.emptyMessage')}
           </p>
           <Button onClick={onOpenScanner} variant="primary" size="sm" className="mt-4" leftIcon={<Barcode className="w-4 h-4" />}>
             {t('scanner.scanAction')}
@@ -164,7 +268,7 @@ export const StockView: React.FC<StockViewProps> = ({
 
       <CatalogAdoptDialog isOpen={catalogOpen} onClose={() => setCatalogOpen(false)} />
 
-      {!isLoading && archived.length > 0 && (
+      {!isLoading && condition === null && archived.length > 0 && (
         <div className="space-y-2">
           <button
             onClick={() => setShowArchived((v) => !v)}
