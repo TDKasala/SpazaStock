@@ -10,7 +10,7 @@ import { ErrorMessage } from '../ui/ErrorMessage';
 import { batchCode } from '../../lib/expiry';
 import { parseMinStock } from '../../lib/lowStock';
 import { newId } from '../../lib/ids';
-import { normalizeBarcode, setProductMinStock, updateProduct } from '../../services/productService';
+import { normalizeBarcode, setProductMinStock, setProductTargetStock, updateProduct } from '../../services/productService';
 import { getPackagings } from '../../services/barcodeLinkService';
 import { removeProductImage, saveProductImage } from '../../services/productImageService';
 import { ProductImagePicker, UNCHANGED_IMAGE, type ImageDraft } from './ProductImagePicker';
@@ -57,6 +57,8 @@ export const ProductEditDialog: React.FC<ProductEditDialogProps> = ({ isOpen, pr
   const [image, setImage] = useState<ImageDraft>(UNCHANGED_IMAGE);
   const [minStock, setMinStock] = useState(product.minStockUnits == null ? '' : String(product.minStockUnits));
   const [minStockError, setMinStockError] = useState<string | null>(null);
+  const [targetStock, setTargetStock] = useState(product.targetStockUnits == null ? '' : String(product.targetStockUnits));
+  const [targetStockError, setTargetStockError] = useState<string | null>(null);
   const [packagings, setPackagings] = useState<ProductPackaging[]>([]);
 
   useEffect(() => {
@@ -68,6 +70,8 @@ export const ProductEditDialog: React.FC<ProductEditDialogProps> = ({ isOpen, pr
     setImage(UNCHANGED_IMAGE);
     setMinStock(product.minStockUnits == null ? '' : String(product.minStockUnits));
     setMinStockError(null);
+    setTargetStock(product.targetStockUnits == null ? '' : String(product.targetStockUnits));
+    setTargetStockError(null);
     setExpiryDrafts({});
     setExpiryErrors({});
     setExpiryKeys({});
@@ -91,9 +95,14 @@ export const ProductEditDialog: React.FC<ProductEditDialogProps> = ({ isOpen, pr
     const { changes, invalid } = batchExpiryChanges(batches, expiryDrafts);
     setExpiryErrors(Object.fromEntries(invalid.map((id) => [id, t('product.expiryDateRequired')])));
     const parsedMin = parseMinStock(minStock);
+    const parsedTarget = parseMinStock(targetStock);
     if (parsedMin === 'invalid') setMinStockError(t('intelligence.minStockInvalid'));
     else setMinStockError(null);
-    if (!input || invalid.length > 0 || parsedMin === 'invalid') return;
+    const targetBelowMin =
+      parsedMin !== 'invalid' && parsedTarget !== 'invalid' && parsedMin !== null && parsedTarget !== null && parsedTarget < parsedMin;
+    if (parsedTarget === 'invalid' || targetBelowMin) setTargetStockError(t('intelligence.targetInvalid'));
+    else setTargetStockError(null);
+    if (!input || invalid.length > 0 || parsedMin === 'invalid' || parsedTarget === 'invalid' || targetBelowMin) return;
 
     setIsSubmitting(true);
     setServerError(null);
@@ -115,6 +124,21 @@ export const ProductEditDialog: React.FC<ProductEditDialogProps> = ({ isOpen, pr
         setSaved(current);
       }
 
+      const raiseTargetFirst =
+        parsedMin !== null &&
+        parsedTarget !== null &&
+        current.targetStockUnits != null &&
+        parsedMin > current.targetStockUnits;
+      if (raiseTargetFirst && (current.targetStockUnits ?? null) !== parsedTarget) {
+        const targetFirst = await setProductTargetStock(product.id, parsedTarget, shopId);
+        if (!targetFirst.product) {
+          setServerError(targetFirst.errorCode === 'forbidden' ? t('product.editForbidden') : t('intelligence.targetInvalid'));
+          return;
+        }
+        current = targetFirst.product;
+        setSaved(current);
+      }
+
       if ((current.minStockUnits ?? null) !== parsedMin) {
         const minResult = await setProductMinStock(product.id, parsedMin, shopId);
         if (!minResult.product) {
@@ -122,6 +146,16 @@ export const ProductEditDialog: React.FC<ProductEditDialogProps> = ({ isOpen, pr
           return;
         }
         current = minResult.product;
+        setSaved(current);
+      }
+
+      if ((current.targetStockUnits ?? null) !== parsedTarget) {
+        const targetResult = await setProductTargetStock(product.id, parsedTarget, shopId);
+        if (!targetResult.product) {
+          setServerError(targetResult.errorCode === 'forbidden' ? t('product.editForbidden') : t('intelligence.targetInvalid'));
+          return;
+        }
+        current = targetResult.product;
         setSaved(current);
       }
 
@@ -216,6 +250,19 @@ export const ProductEditDialog: React.FC<ProductEditDialogProps> = ({ isOpen, pr
             setMinStockError(null);
           }}
           error={minStockError ?? undefined}
+          inputMode="numeric"
+          min="0"
+          step="1"
+        />
+        <Input
+          label={t('intelligence.targetStock')}
+          helperText={t('intelligence.targetStockHint')}
+          value={targetStock}
+          onChange={(e) => {
+            setTargetStock(e.target.value);
+            setTargetStockError(null);
+          }}
+          error={targetStockError ?? undefined}
           inputMode="numeric"
           min="0"
           step="1"

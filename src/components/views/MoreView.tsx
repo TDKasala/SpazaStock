@@ -9,6 +9,7 @@ import { ReminderSettings } from '../expiry/ReminderSettings';
 import { StockIntelligenceCard } from '../dashboard/StockIntelligenceCard';
 import { CatalogReview } from '../catalog/CatalogReview';
 import { StockLevelSettings } from '../stock/StockLevelSettings';
+import { WholesaleOrders } from '../wholesale/WholesaleOrders';
 import { Button } from '../ui/Button';
 
 export interface MoreViewProps {
@@ -31,6 +32,20 @@ export const MoreView: React.FC<MoreViewProps> = ({
   const { t } = useLanguage();
   const { shop } = useShop();
   const [reviewing, setReviewing] = useState(false);
+  const [ordering, setOrdering] = useState(false);
+
+  if (ordering && shop) {
+    return (
+      <WholesaleOrders
+        shopId={shop.id}
+        canManage={can(shop.role, 'orders.manage')}
+        products={products}
+        batches={batches}
+        timezone={timezone}
+        onClose={() => setOrdering(false)}
+      />
+    );
+  }
 
   if (reviewing && shop) {
     return (
@@ -47,6 +62,9 @@ export const MoreView: React.FC<MoreViewProps> = ({
       <h2 className="text-lg font-bold text-zinc-100">{t('navigation.more')}</h2>
       <Button variant="outline" fullWidth onClick={() => setReviewing(true)}>
         {t('catalog.review.open')}
+      </Button>
+      <Button variant="outline" fullWidth onClick={() => setOrdering(true)}>
+        {t('wholesale.open')}
       </Button>
       <PushAlertsToggle />
       {shop && (

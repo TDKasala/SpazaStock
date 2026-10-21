@@ -341,10 +341,53 @@ export async function setProductMinStock(
       if (!product || product.shopId !== shopId) {
         return { error: 'Product not found in this shop.', errorCode: 'not_found' };
       }
+      if (
+        minStockUnits !== null &&
+        product.targetStockUnits != null &&
+        minStockUnits > product.targetStockUnits
+      ) {
+        return { error: 'Target stock must be at least the minimum.', errorCode: 'invalid' };
+      }
       if ((product.minStockUnits ?? null) === minStockUnits) return { product };
       const updated: Product = { ...product, minStockUnits, updatedAt: new Date().toISOString() };
       await db.products.put(updated);
       await enqueue(shopId, { type: 'product_min_stock', payload: { productId, minStockUnits } });
+      return { product: updated };
+    })
+  );
+
+  if (outcome.product) emitDataChanged('local');
+  return outcome;
+}
+
+/** Sets or clears the wholesale target, in sellable base units. Blank (null) means no target. */
+export async function setProductTargetStock(
+  productId: string,
+  targetStockUnits: number | null,
+  shopId: string
+): Promise<ProductEditOutcome> {
+  if (!(await canEditProducts(shopId))) return FORBIDDEN;
+  if (targetStockUnits !== null && (!Number.isInteger(targetStockUnits) || targetStockUnits < 0)) {
+    return { error: 'Target stock must be a whole number.', errorCode: 'invalid' };
+  }
+
+  const outcome = await withWriteLock(() =>
+    db.transaction('rw', db.products, db.outbox, async (): Promise<ProductEditOutcome> => {
+      const product = await db.products.get(productId);
+      if (!product || product.shopId !== shopId) {
+        return { error: 'Product not found in this shop.', errorCode: 'not_found' };
+      }
+      if (
+        targetStockUnits !== null &&
+        product.minStockUnits != null &&
+        targetStockUnits < product.minStockUnits
+      ) {
+        return { error: 'Target stock must be at least the minimum.', errorCode: 'invalid' };
+      }
+      if ((product.targetStockUnits ?? null) === targetStockUnits) return { product };
+      const updated: Product = { ...product, targetStockUnits, updatedAt: new Date().toISOString() };
+      await db.products.put(updated);
+      await enqueue(shopId, { type: 'product_target_stock', payload: { productId, targetStockUnits } });
       return { product: updated };
     })
   );

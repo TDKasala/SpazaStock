@@ -99,6 +99,49 @@ export interface Product {
    * Sellable base units at or below which the product is low. Null or omitted means it is not watched.
    */
   minStockUnits?: number | null;
+  /**
+   * Sellable units to hold after a wholesale order. Null or omitted means no target.
+   * When both are set, the target is at least the minimum.
+   */
+  targetStockUnits?: number | null;
+}
+
+export type WholesaleOrderStatus =
+  | 'draft'
+  | 'approved'
+  | 'ordered'
+  | 'partially_received'
+  | 'received'
+  | 'cancelled';
+
+export interface Wholesaler {
+  id: string;
+  shopId: string;
+  name: string;
+  phone: string | null;
+  note: string | null;
+  archivedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WholesaleOrder {
+  id: string;
+  shopId: string;
+  wholesalerId: string | null;
+  status: WholesaleOrderStatus;
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WholesaleOrderItem {
+  id: string;
+  shopId: string;
+  orderId: string;
+  productId: string;
+  quantity: number;
+  updatedAt: string;
 }
 
 /** Quiets a low-stock alert on every phone until sellable stock rises above the minimum. */

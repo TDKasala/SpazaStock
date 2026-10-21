@@ -9,7 +9,8 @@ export type Permission =
   | 'expiry.manage'
   | 'stock.receive'
   | 'sales.record'
-  | 'inventory.view';
+  | 'inventory.view'
+  | 'orders.manage';
 
 /**
  * Mirrors private.role_permissions in the database, which is what actually enforces access.
@@ -26,8 +27,9 @@ export const ROLE_PERMISSIONS: Record<ShopRole, readonly Permission[]> = {
     'stock.receive',
     'sales.record',
     'inventory.view',
+    'orders.manage',
   ],
-  manager: ['products.edit', 'stock.adjust', 'expiry.manage', 'stock.receive', 'sales.record', 'inventory.view'],
+  manager: ['products.edit', 'stock.adjust', 'expiry.manage', 'stock.receive', 'sales.record', 'inventory.view', 'orders.manage'],
   staff: ['stock.receive', 'sales.record', 'inventory.view'],
 };
 

@@ -8,6 +8,10 @@ import type {
   ProductEditInput,
   ProductPackaging,
   Sale,
+  Wholesaler,
+  WholesaleOrder,
+  WholesaleOrderItem,
+  WholesaleOrderStatus,
   StockBatch,
   StockDiscrepancy,
   StockMovement,
@@ -68,6 +72,14 @@ export type OutboxOperation =
     }
   | { type: 'product_image'; payload: { productId: string; imagePath: string | null } }
   | { type: 'product_min_stock'; payload: { productId: string; minStockUnits: number | null } }
+  | { type: 'product_target_stock'; payload: { productId: string; targetStockUnits: number | null } }
+  | { type: 'wholesaler_upsert'; payload: { wholesaler: Wholesaler } }
+  | { type: 'wholesaler_archive'; payload: { wholesalerId: string } }
+  | {
+      type: 'wholesale_order_save';
+      payload: { order: WholesaleOrder; items: WholesaleOrderItem[] };
+    }
+  | { type: 'wholesale_order_status'; payload: { orderId: string; status: WholesaleOrderStatus } }
   | { type: 'catalog_submit'; payload: CatalogSubmitPayload }
   | { type: 'low_stock_dismiss'; payload: { productId: string } }
   | { type: 'low_stock_clear'; payload: { productId: string } };
@@ -119,6 +131,9 @@ export type SpazaDatabase = Dexie & {
   barcodes: EntityTable<ProductBarcode, 'id'>;
   productImages: EntityTable<ProductImage, 'path'>;
   lowStockDismissals: EntityTable<LowStockDismissal, 'id'>;
+  wholesalers: EntityTable<Wholesaler, 'id'>;
+  wholesaleOrders: EntityTable<WholesaleOrder, 'id'>;
+  wholesaleOrderItems: EntityTable<WholesaleOrderItem, 'id'>;
   outbox: EntityTable<OutboxItem, 'seq'>;
   meta: EntityTable<MetaRow, 'key'>;
 };
@@ -152,6 +167,12 @@ db.version(5).stores({
   lowStockDismissals: 'id, shopId, productId, [shopId+productId]',
 });
 
+db.version(6).stores({
+  wholesalers: 'id, shopId, [shopId+name]',
+  wholesaleOrders: 'id, shopId, wholesalerId, status, [shopId+updatedAt]',
+  wholesaleOrderItems: 'id, shopId, orderId, productId, [shopId+orderId]',
+});
+
 /** Every table the write path touches, for `db.transaction('rw', WRITE_TABLES, ...)`. */
 export const WRITE_TABLES = [
   db.products,
@@ -164,6 +185,9 @@ export const WRITE_TABLES = [
   db.barcodes,
   db.productImages,
   db.lowStockDismissals,
+  db.wholesalers,
+  db.wholesaleOrders,
+  db.wholesaleOrderItems,
   db.outbox,
 ];
 

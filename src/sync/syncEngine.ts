@@ -12,6 +12,10 @@ import type {
   Sale,
   StockBatch,
   StockDiscrepancy,
+  Wholesaler,
+  WholesaleOrder,
+  WholesaleOrderItem,
+  WholesaleOrderStatus,
 } from '../types';
 import { db, getMeta, setMeta, withWriteLock, WRITE_TABLES, type OutboxItem } from '../lib/db';
 import { PRODUCT_IMAGE_BUCKET, pruneImageCache } from '../services/productImageService';
@@ -23,7 +27,7 @@ const PULL_OVERLAP_MS = 2 * 60 * 1000;
 const SALES_HISTORY_DAYS = 60;
 const PRODUCT_COLUMNS =
   'id, shop_id, barcode, name, category, buying_price, selling_price, created_at, updated_at, archived_at, brand, size, ' +
-  'image_path, min_stock_units, catalog_product_id, listed';
+  'image_path, min_stock_units, target_stock_units, catalog_product_id, listed';
 const LOW_STOCK_DISMISSAL_COLUMNS =
   'id, shop_id, product_id, dismissed_at, dismissed_by, cleared_at, updated_at';
 const BATCH_COLUMNS =
@@ -103,8 +107,49 @@ export function mapProductRow(row: Row): Product {
     size: (row.size as string | null) ?? null,
     imagePath: (row.image_path as string | null) ?? null,
     minStockUnits: row.min_stock_units == null ? null : Number(row.min_stock_units),
+    targetStockUnits: row.target_stock_units == null ? null : Number(row.target_stock_units),
     catalogProductId: (row.catalog_product_id as string | null) ?? null,
     listed: row.listed === false ? false : true,
+  };
+}
+
+const WHOLESALER_COLUMNS = 'id, shop_id, name, phone, note, archived_at, created_at, updated_at';
+const WHOLESALE_ORDER_COLUMNS = 'id, shop_id, wholesaler_id, status, note, created_at, updated_at';
+const WHOLESALE_ITEM_COLUMNS = 'id, shop_id, order_id, product_id, quantity, removed_at, updated_at';
+
+export function mapWholesalerRow(row: Row): Wholesaler {
+  return {
+    id: String(row.id),
+    shopId: String(row.shop_id),
+    name: String(row.name),
+    phone: (row.phone as string | null) ?? null,
+    note: (row.note as string | null) ?? null,
+    archivedAt: row.archived_at ? toIso(row.archived_at) : null,
+    createdAt: toIso(row.created_at),
+    updatedAt: toIso(row.updated_at),
+  };
+}
+
+export function mapWholesaleOrderRow(row: Row): WholesaleOrder {
+  return {
+    id: String(row.id),
+    shopId: String(row.shop_id),
+    wholesalerId: (row.wholesaler_id as string | null) ?? null,
+    status: String(row.status) as WholesaleOrderStatus,
+    note: (row.note as string | null) ?? null,
+    createdAt: toIso(row.created_at),
+    updatedAt: toIso(row.updated_at),
+  };
+}
+
+export function mapWholesaleOrderItemRow(row: Row): WholesaleOrderItem {
+  return {
+    id: String(row.id),
+    shopId: String(row.shop_id),
+    orderId: String(row.order_id),
+    productId: String(row.product_id),
+    quantity: Number(row.quantity),
+    updatedAt: toIso(row.updated_at),
   };
 }
 
@@ -250,6 +295,7 @@ async function remapProduct(shopId: string, oldId: string, canonical: Product): 
   await db.packagings.where('productId').equals(oldId).modify({ productId: canonical.id });
   await db.barcodes.where('productId').equals(oldId).modify({ productId: canonical.id });
   await db.lowStockDismissals.where('productId').equals(oldId).modify({ productId: canonical.id });
+  await db.wholesaleOrderItems.where('productId').equals(oldId).modify({ productId: canonical.id });
   await db.outbox
     .where('shopId')
     .equals(shopId)
@@ -263,11 +309,16 @@ async function remapProduct(shopId: string, oldId: string, canonical: Product): 
           item.type === 'product_archive' ||
           item.type === 'product_image' ||
           item.type === 'product_min_stock' ||
+          item.type === 'product_target_stock' ||
           item.type === 'low_stock_dismiss' ||
           item.type === 'low_stock_clear') &&
         item.payload.productId === oldId
       ) {
         item.payload.productId = canonical.id;
+      } else if (item.type === 'wholesale_order_save') {
+        item.payload.items = item.payload.items.map((line) =>
+          line.productId === oldId ? { ...line, productId: canonical.id } : line
+        );
       } else if (item.type === 'packaging_create' && item.payload.packaging.productId === oldId) {
         item.payload.packaging.productId = canonical.id;
       } else if (item.type === 'barcode_link' && item.payload.link.productId === oldId) {
@@ -339,7 +390,8 @@ async function hasLaterProductChange(item: OutboxItem, productId: string): Promi
         (other.type === 'product_update' ||
           other.type === 'product_archive' ||
           other.type === 'product_image' ||
-          other.type === 'product_min_stock') &&
+          other.type === 'product_min_stock' ||
+          other.type === 'product_target_stock') &&
         other.payload.productId === productId
     )
     .count();
@@ -940,6 +992,76 @@ async function sendItem(client: SupabaseClient, item: OutboxItem): Promise<SendO
       );
     }
 
+    case 'product_target_stock': {
+      const { productId, targetStockUnits } = item.payload;
+      return sendProductChange(
+        client,
+        item,
+        productId,
+        client.rpc('set_product_target_stock', {
+          p_shop_id: item.shopId,
+          p_product_id: productId,
+          p_target: targetStockUnits,
+        })
+      );
+    }
+
+    case 'wholesaler_upsert': {
+      const wholesaler = item.payload.wholesaler;
+      const { data, error } = await client.rpc('upsert_wholesaler', {
+        p_id: wholesaler.id,
+        p_shop_id: item.shopId,
+        p_name: wholesaler.name,
+        p_phone: wholesaler.phone,
+        p_note: wholesaler.note,
+      });
+      if (error) return outcomeFromError(error);
+      return { kind: 'ok', apply: async () => { await db.wholesalers.put(mapWholesalerRow(data as Row)); } };
+    }
+
+    case 'wholesaler_archive': {
+      const { wholesalerId } = item.payload;
+      const { data, error } = await client.rpc('archive_wholesaler', {
+        p_shop_id: item.shopId,
+        p_id: wholesalerId,
+      });
+      if (error) return outcomeFromError(error);
+      return { kind: 'ok', apply: async () => { await db.wholesalers.put(mapWholesalerRow(data as Row)); } };
+    }
+
+    case 'wholesale_order_save': {
+      const { order, items } = item.payload;
+      const { data, error } = await client.rpc('save_wholesale_order', {
+        p_shop_id: item.shopId,
+        p_order_id: order.id,
+        p_wholesaler_id: order.wholesalerId,
+        p_note: order.note,
+        p_items: items.map((line) => ({ id: line.id, product_id: line.productId, quantity: line.quantity })),
+      });
+      if (error) return outcomeFromError(error);
+      const body = (data ?? {}) as { order?: Row; items?: Row[] };
+      return {
+        kind: 'ok',
+        apply: async () => {
+          if (body.order) await db.wholesaleOrders.put(mapWholesaleOrderRow(body.order));
+          await db.wholesaleOrderItems.where('orderId').equals(order.id).delete();
+          const active = (body.items ?? []).filter((row) => !row.removed_at);
+          if (active.length > 0) await db.wholesaleOrderItems.bulkPut(active.map(mapWholesaleOrderItemRow));
+        },
+      };
+    }
+
+    case 'wholesale_order_status': {
+      const { orderId, status } = item.payload;
+      const { data, error } = await client.rpc('set_wholesale_order_status', {
+        p_shop_id: item.shopId,
+        p_order_id: orderId,
+        p_status: status,
+      });
+      if (error) return outcomeFromError(error);
+      return { kind: 'ok', apply: async () => { await db.wholesaleOrders.put(mapWholesaleOrderRow(data as Row)); } };
+    }
+
     case 'low_stock_dismiss':
     case 'low_stock_clear': {
       const { productId } = item.payload;
@@ -1186,6 +1308,33 @@ const PULL_SPECS: PullSpec[] = [
     initialCursor: () => new Date(0).toISOString(),
     apply: async (rows) => {
       await db.lowStockDismissals.bulkPut(rows.map(mapLowStockDismissalRow));
+    },
+  },
+  {
+    table: 'wholesalers',
+    columns: WHOLESALER_COLUMNS,
+    initialCursor: () => new Date(0).toISOString(),
+    apply: async (rows) => {
+      await db.wholesalers.bulkPut(rows.map(mapWholesalerRow));
+    },
+  },
+  {
+    table: 'wholesale_orders',
+    columns: WHOLESALE_ORDER_COLUMNS,
+    initialCursor: () => new Date(0).toISOString(),
+    apply: async (rows) => {
+      await db.wholesaleOrders.bulkPut(rows.map(mapWholesaleOrderRow));
+    },
+  },
+  {
+    table: 'wholesale_order_items',
+    columns: WHOLESALE_ITEM_COLUMNS,
+    initialCursor: () => new Date(0).toISOString(),
+    apply: async (rows) => {
+      for (const row of rows) {
+        if (row.removed_at) await db.wholesaleOrderItems.delete(String(row.id));
+        else await db.wholesaleOrderItems.put(mapWholesaleOrderItemRow(row));
+      }
     },
   },
 ];

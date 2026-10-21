@@ -3,7 +3,7 @@ import { Package } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { isBatchExpired, todayInZone } from '../../lib/expiry';
 import { parseMinStock } from '../../lib/lowStock';
-import { setProductMinStock } from '../../services/productService';
+import { setProductMinStock, setProductTargetStock } from '../../services/productService';
 import type { Product, StockBatch } from '../../types';
 import { ProductThumbnail } from './ProductThumbnail';
 
@@ -31,7 +31,8 @@ export const StockLevelSettings: React.FC<StockLevelSettingsProps> = ({
 }) => {
   const { t } = useLanguage();
   const [query, setQuery] = useState('');
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [minDrafts, setMinDrafts] = useState<Record<string, string>>({});
+  const [targetDrafts, setTargetDrafts] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -46,15 +47,22 @@ export const StockLevelSettings: React.FC<StockLevelSettingsProps> = ({
       .sort((a, b) => a.product.name.localeCompare(b.product.name));
   }, [products, batches, today, query]);
 
-  const valueFor = (product: Product): string =>
-    drafts[product.id] ?? (product.minStockUnits == null ? '' : String(product.minStockUnits));
+  const minValue = (product: Product): string =>
+    minDrafts[product.id] ?? (product.minStockUnits == null ? '' : String(product.minStockUnits));
+  const targetValue = (product: Product): string =>
+    targetDrafts[product.id] ?? (product.targetStockUnits == null ? '' : String(product.targetStockUnits));
 
-  const save = async (product: Product) => {
+  const saveMin = async (product: Product) => {
     if (!canEdit) return;
-    const text = valueFor(product);
-    const parsed = parseMinStock(text);
+    const parsed = parseMinStock(minValue(product));
     if (parsed === 'invalid') {
       setErrors((current) => ({ ...current, [product.id]: t('intelligence.minStockInvalid') }));
+      setSaved(false);
+      return;
+    }
+    const target = parseMinStock(targetValue(product));
+    if (parsed !== null && target !== 'invalid' && target !== null && parsed > target) {
+      setErrors((current) => ({ ...current, [product.id]: t('intelligence.targetInvalid') }));
       setSaved(false);
       return;
     }
@@ -70,12 +78,49 @@ export const StockLevelSettings: React.FC<StockLevelSettingsProps> = ({
       const result = await setProductMinStock(product.id, parsed, shopId);
       if (result.product) {
         setSaved(true);
-        setDrafts((current) => {
+        setMinDrafts((current) => {
           const next = { ...current };
           delete next[product.id];
           return next;
         });
-      } else setErrors((current) => ({ ...current, [product.id]: t('intelligence.minStockInvalid') }));
+      } else setErrors((current) => ({ ...current, [product.id]: t(result.errorCode === 'invalid' ? 'intelligence.targetInvalid' : 'intelligence.minStockInvalid') }));
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const saveTarget = async (product: Product) => {
+    if (!canEdit) return;
+    const parsed = parseMinStock(targetValue(product));
+    if (parsed === 'invalid') {
+      setErrors((current) => ({ ...current, [`${product.id}:target`]: t('intelligence.targetInvalid') }));
+      setSaved(false);
+      return;
+    }
+    const minimum = parseMinStock(minValue(product));
+    if (parsed !== null && minimum !== 'invalid' && minimum !== null && parsed < minimum) {
+      setErrors((current) => ({ ...current, [`${product.id}:target`]: t('intelligence.targetInvalid') }));
+      setSaved(false);
+      return;
+    }
+    setErrors((current) => {
+      const next = { ...current };
+      delete next[`${product.id}:target`];
+      return next;
+    });
+    if (parsed === (product.targetStockUnits ?? null)) return;
+
+    setSavingId(product.id);
+    try {
+      const result = await setProductTargetStock(product.id, parsed, shopId);
+      if (result.product) {
+        setSaved(true);
+        setTargetDrafts((current) => {
+          const next = { ...current };
+          delete next[product.id];
+          return next;
+        });
+      } else setErrors((current) => ({ ...current, [`${product.id}:target`]: t('intelligence.targetInvalid') }));
     } finally {
       setSavingId(null);
     }
@@ -113,31 +158,58 @@ export const StockLevelSettings: React.FC<StockLevelSettingsProps> = ({
                 </div>
                 <span className="text-[11px] text-zinc-400 shrink-0">{t('intelligence.onHand', { count: sellable })}</span>
               </div>
-              <input
-                inputMode="numeric"
-                aria-label={`${product.name} ${t('intelligence.minStock')}`}
-                value={valueFor(product)}
-                disabled={!canEdit || savingId === product.id}
-                placeholder={t('intelligence.minStock')}
-                onChange={(event) => {
-                  setDrafts((current) => ({ ...current, [product.id]: event.target.value }));
-                  setSaved(false);
-                  setErrors((current) => {
-                    const next = { ...current };
-                    delete next[product.id];
-                    return next;
-                  });
-                }}
-                onBlur={() => void save(product)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault();
-                    void save(product);
-                  }
-                }}
-                className="mt-2 w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-zinc-100 disabled:opacity-60"
-              />
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <input
+                  inputMode="numeric"
+                  aria-label={`${product.name} ${t('intelligence.minStock')}`}
+                  value={minValue(product)}
+                  disabled={!canEdit || savingId === product.id}
+                  placeholder={t('intelligence.minStock')}
+                  onChange={(event) => {
+                    setMinDrafts((current) => ({ ...current, [product.id]: event.target.value }));
+                    setSaved(false);
+                    setErrors((current) => {
+                      const next = { ...current };
+                      delete next[product.id];
+                      return next;
+                    });
+                  }}
+                  onBlur={() => void saveMin(product)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      void saveMin(product);
+                    }
+                  }}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-zinc-100 disabled:opacity-60"
+                />
+                <input
+                  inputMode="numeric"
+                  aria-label={`${product.name} ${t('intelligence.targetStock')}`}
+                  value={targetValue(product)}
+                  disabled={!canEdit || savingId === product.id}
+                  placeholder={t('intelligence.targetStock')}
+                  onChange={(event) => {
+                    setTargetDrafts((current) => ({ ...current, [product.id]: event.target.value }));
+                    setSaved(false);
+                    setErrors((current) => {
+                      const next = { ...current };
+                      delete next[`${product.id}:target`];
+                      return next;
+                    });
+                  }}
+                  onBlur={() => void saveTarget(product)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      void saveTarget(product);
+                    }
+                  }}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-zinc-100 disabled:opacity-60"
+                />
+              </div>
               {errors[product.id] && <p className="mt-1 text-[11px] text-rose-400">{errors[product.id]}</p>}
+              {errors[`${product.id}:target`] && <p className="mt-1 text-[11px] text-rose-400">{errors[`${product.id}:target`]}</p>}
             </div>
           ))
         )}

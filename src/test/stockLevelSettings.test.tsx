@@ -9,6 +9,7 @@ const shopId = '11111111-1111-4111-8111-111111111111';
 
 vi.mock('../services/productService', () => ({
   setProductMinStock: vi.fn(async () => ({ product: { id: 'bread' } })),
+  setProductTargetStock: vi.fn(async () => ({ product: { id: 'bread' } })),
 }));
 
 vi.mock('../services/productImageService', () => ({
