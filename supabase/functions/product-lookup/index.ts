@@ -31,7 +31,7 @@ import {
 } from './logic.ts';
 
 const PRODUCT_COLUMNS =
-  'id, shop_id, barcode, name, category, buying_price, selling_price, created_at, updated_at, archived_at, brand, size, image_path';
+  'id, shop_id, barcode, name, category, buying_price, selling_price, created_at, updated_at, archived_at, brand, size, image_path, listed, catalog_product_id';
 
 /** The shop app calls this from another site, so the browser preflight must succeed or the scan never runs. */
 const CORS_HEADERS = {

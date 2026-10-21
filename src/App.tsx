@@ -34,8 +34,7 @@ import { RapidSellPanel, RapidSellSummary } from './components/sales/RapidSellPa
 import { useSaleRegister } from './hooks/useSaleRegister';
 import { useExpiryAlerts } from './hooks/useExpiryAlerts';
 import { useStockIntelligence } from './hooks/useStockIntelligence';
-import { isArchived, resolveBarcode } from './services/productService';
-import { cacheShopProductLocally, lookupProductByBarcode } from './services/productLookupService';
+import { resolveInventoryScan, type InventoryScan } from './services/scanRoute';
 import { onDataChanged } from './lib/events';
 import { refreshPushSubscription } from './lib/push';
 import { captureInviteFromUrl } from './lib/invite';
@@ -43,7 +42,7 @@ import { can } from './lib/permissions';
 import { clearFreshSignIn, hasFreshSignIn, postSignInDestination } from './lib/platformAdmin';
 import { loggedOutRedirect } from './lib/signInRedirect';
 import { markSuspendedSignInDenied } from './lib/suspendedSignIn';
-import type { CatalogMatch, Product, ProductLookupResult, ProductLookupSuggestion, ResolvedBarcode, ScanMode } from './types';
+import type { CatalogMatch, Product, ProductLookupSuggestion, ResolvedBarcode, ScanMode } from './types';
 
 // The scanner (and its WASM decoder fallback) is only needed once the camera opens.
 const BarcodeScannerModal = lazy(() =>
@@ -133,35 +132,29 @@ export function AppContent() {
       resolved.barcodeId ? { packagingId: resolved.packaging?.id ?? null, barcodeId: resolved.barcodeId } : null
     );
 
-  const routeLookup = useCallback(
-    async (barcode: string, mode: ScanMode, lookup: ProductLookupResult) => {
-      if (lookup.status === 'found' && lookup.matchSource === 'shop' && lookup.shopProduct) {
-        const product = await cacheShopProductLocally(lookup.shopProduct);
-        if (mode === 'stock_in' && !isArchived(product)) openStockIn(product);
-        else setFoundProduct(product);
+  const applyInventoryScan = useCallback(
+    (scan: InventoryScan) => {
+      if (scan.screen === 'stock_in') {
+        openStockIn(
+          scan.product,
+          scan.barcodeId ? { packagingId: scan.packagingId, barcodeId: scan.barcodeId } : null
+        );
         return;
       }
-      const suggestion = lookup.status === 'found' && lookup.suggestion ? lookup.suggestion : null;
-      if (suggestion && (lookup.matchSource === 'catalog' || lookup.matchSource === 'open_food_facts' || lookup.matchSource === 'cache')) {
-        setRegisterRequest({
-          barcode,
-          mode,
-          suggestion,
-          origin: lookup.matchSource === 'catalog' ? 'catalog' : 'open_food_facts',
-          catalog: lookup.catalog ?? null,
-        });
+      if (scan.screen === 'found') {
+        setFoundProduct(scan.product);
         return;
       }
-      if (mode === 'stock_in') {
-        setUnknownStockBarcode(barcode);
+      if (scan.screen === 'unknown_stock') {
+        setUnknownStockBarcode(scan.barcode);
         return;
       }
       setRegisterRequest({
-        barcode,
-        mode,
-        suggestion: null,
-        origin: lookup.status === 'not_found' || lookup.status === 'invalid_barcode' ? 'manual' : 'failed',
-        catalog: null,
+        barcode: scan.barcode,
+        mode: scan.mode,
+        suggestion: scan.suggestion,
+        origin: scan.origin,
+        catalog: scan.catalog,
       });
     },
     [openStockIn]
@@ -171,11 +164,10 @@ export function AppContent() {
     (barcode: string) => {
       setScanMode(null);
       void (async () => {
-        const lookup = await lookupProductByBarcode(barcode, shopId);
-        await routeLookup(barcode, 'sell', lookup);
+        applyInventoryScan(await resolveInventoryScan(barcode, shopId, 'sell'));
       })();
     },
-    [routeLookup, shopId]
+    [applyInventoryScan, shopId]
   );
   const saleRegister = useSaleRegister(shopId, handleUnknownSaleBarcode);
   const { resetSession } = saleRegister;
@@ -190,11 +182,6 @@ export function AppContent() {
     [resetSession]
   );
 
-  const openRegister = async (barcode: string, mode: ScanMode) => {
-    const lookup = await lookupProductByBarcode(barcode, shopId);
-    await routeLookup(barcode, mode, lookup);
-  };
-
   const handleBarcodeScanned = async (barcode: string) => {
     const mode = scanMode ?? 'lookup';
 
@@ -208,10 +195,7 @@ export function AppContent() {
 
     setIsSearching(true);
     try {
-      const resolved = await resolveBarcode(barcode, shopId);
-      if (!resolved) await openRegister(barcode, mode);
-      else if (mode === 'stock_in' && !isArchived(resolved.product)) openStockInResolved(resolved);
-      else setFoundProduct(resolved.product);
+      applyInventoryScan(await resolveInventoryScan(barcode, shopId, mode));
     } finally {
       setIsSearching(false);
     }
@@ -321,6 +305,7 @@ export function AppContent() {
         onClose={() => setFoundProduct(null)}
         onScanAnother={() => openScanner('lookup')}
         onQuickAction={(action, product) => {
+          if (product.listed === false) return;
           setFoundProduct(null);
           if (action === 'add_stock') {
             openStockIn(product);

@@ -86,6 +86,8 @@ function coerceShopProduct(raw: Product | Record<string, unknown>): Product | nu
     brand: (r.brand ?? null) as string | null,
     size: (r.size ?? null) as string | null,
     imagePath: (r.imagePath ?? r.image_path ?? null) as string | null,
+    listed: r.listed === false ? false : true,
+    catalogProductId: (r.catalogProductId ?? r.catalog_product_id ?? null) as string | null,
   };
 }
 

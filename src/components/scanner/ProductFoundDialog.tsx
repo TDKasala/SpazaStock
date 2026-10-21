@@ -36,6 +36,7 @@ export const ProductFoundDialog: React.FC<ProductFoundDialogProps> = ({
   if (!isOpen || !product) return null;
 
   const archived = isArchived(product);
+  const hidden = !archived && product.listed === false;
   const canEdit = can(settings.role, 'products.edit');
   const handleRestore = async () => {
     const result = await setProductArchived(product.id, false, shopId);
@@ -145,8 +146,10 @@ export const ProductFoundDialog: React.FC<ProductFoundDialogProps> = ({
         )}
         {restoreError && <ErrorMessage variant="error" message={restoreError} onDismiss={() => setRestoreError(null)} />}
 
+        {hidden && <ErrorMessage variant="warning" message={t('product.hiddenNotice', { name: product.name })} />}
+
         {/* Quick Action Buttons */}
-        {onQuickAction && !archived && (
+        {onQuickAction && !archived && !hidden && (
           <div className="grid grid-cols-2 gap-2 pt-1">
             <Button
               onClick={() => onQuickAction('add_stock', product)}

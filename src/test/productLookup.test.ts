@@ -10,6 +10,7 @@ import {
   isOffFoundStatus,
   mapOffCategory,
   mapOffProduct,
+  mapShopProductRow,
   mergeCatalogText,
   offProductUrl,
   rateWindowStart,
@@ -186,6 +187,40 @@ describe('product-lookup cache and form helpers', () => {
     });
     expect(suggestion.imageUrl.source).toBe('user');
     expect(suggestion.imageUrl.value).toBeNull();
+  });
+
+  it('keeps a hidden shop row hidden and remembers its catalogue link', () => {
+    const mapped = mapShopProductRow({
+      id: 'p1',
+      shop_id: 's1',
+      barcode: EAN13,
+      name: 'Hidden Coke',
+      category: 'beverages',
+      buying_price: null,
+      selling_price: null,
+      created_at: '2026-01-01T00:00:00.000Z',
+      updated_at: '2026-01-01T00:00:00.000Z',
+      archived_at: null,
+      brand: null,
+      size: null,
+      image_path: null,
+      listed: false,
+      catalog_product_id: 'cat-1',
+    });
+    expect(mapped.listed).toBe(false);
+    expect(mapped.catalogProductId).toBe('cat-1');
+
+    const older = mapShopProductRow({
+      id: 'p1',
+      shop_id: 's1',
+      barcode: EAN13,
+      name: 'Shop Coke',
+      category: 'beverages',
+      created_at: '2026-01-01T00:00:00.000Z',
+      updated_at: '2026-01-01T00:00:00.000Z',
+    });
+    expect(older.listed).toBe(true);
+    expect(older.catalogProductId).toBeNull();
   });
 });
 

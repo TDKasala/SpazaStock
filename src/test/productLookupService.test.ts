@@ -68,4 +68,32 @@ describe('productLookupService', () => {
     expect(result.matchSource).toBe('open_food_facts');
     expect(result.suggestion?.name.value).toBe('Coke');
   });
+
+  it('does not turn a hidden shop product into a sellable one', async () => {
+    invoke.mockResolvedValueOnce({
+      data: {
+        status: 'found',
+        matchSource: 'shop',
+        barcode: '5449000000996',
+        shopProduct: {
+          id: 'p1',
+          shop_id: 'shop',
+          barcode: '5449000000996',
+          name: 'Hidden Coke',
+          category: 'beverages',
+          buying_price: null,
+          selling_price: null,
+          created_at: '2026-01-01T00:00:00.000Z',
+          updated_at: '2026-01-01T00:00:00.000Z',
+          archived_at: null,
+          listed: false,
+          catalog_product_id: 'cat-1',
+        },
+      },
+      error: null,
+    });
+    const result = await lookupProductByBarcode('5449000000996', 'shop');
+    expect(result.status).toBe('found');
+    expect(result.shopProduct).toMatchObject({ listed: false, catalogProductId: 'cat-1', name: 'Hidden Coke' });
+  });
 });

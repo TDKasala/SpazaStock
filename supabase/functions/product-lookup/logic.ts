@@ -83,6 +83,9 @@ export interface ShopProductPayload {
   brand: string | null;
   size: string | null;
   imagePath: string | null;
+  /** False only when this shop has hidden the product. Missing means still for sale. */
+  listed?: boolean;
+  catalogProductId?: string | null;
 }
 
 export interface LookupResponse {
@@ -434,6 +437,9 @@ export function mapShopProductRow(row: Record<string, unknown>): ShopProductPayl
     brand: row.brand == null ? null : String(row.brand),
     size: row.size == null ? null : String(row.size),
     imagePath: row.image_path == null ? null : String(row.image_path),
+    listed: row.listed === false ? false : true,
+    catalogProductId:
+      row.catalog_product_id == null || row.catalog_product_id === '' ? null : String(row.catalog_product_id),
   };
 }
 
