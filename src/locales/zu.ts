@@ -602,6 +602,7 @@ export const zu: Translations = {
     categoryFilters: 'Izigaba',
     allCategories: 'Zonke izigaba',
     availabilityFilters: 'Izinga lesitoko',
+    allLevels: 'Noma yiliphi izinga',
     inStock: 'Ekhona',
     outOfStock: 'Aphelile',
     lowStock: 'Kuyaphela',

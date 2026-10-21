@@ -588,6 +588,7 @@ export const en = {
     categoryFilters: 'Categories',
     allCategories: 'All categories',
     availabilityFilters: 'Stock level',
+    allLevels: 'Any stock level',
     inStock: 'In stock',
     outOfStock: 'Out of stock',
     lowStock: 'Running low',

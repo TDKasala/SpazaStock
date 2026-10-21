@@ -584,6 +584,7 @@ export const am: Translations = {
     categoryFilters: 'ምድቦች',
     allCategories: 'ሁሉም ምድቦች',
     availabilityFilters: 'የክምችት ሁኔታ',
+    allLevels: 'ማንኛውም የክምችት ሁኔታ',
     inStock: 'በክምችት ላይ',
     outOfStock: 'ያለቀ',
     lowStock: 'እየቀነሰ',

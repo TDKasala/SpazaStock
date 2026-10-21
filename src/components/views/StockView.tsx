@@ -10,7 +10,6 @@ import { getArchivedProducts, setProductArchived } from '../../services/productS
 import { can } from '../../lib/permissions';
 import {
   categoryFacets,
-  conditionFacets,
   matchesStockCondition,
   productMatchesQuery,
   type StockCondition,
@@ -20,6 +19,8 @@ import { CatalogAdoptDialog } from '../stock/CatalogAdoptDialog';
 
 const PAGE_SIZE = 15;
 
+const CONDITION_OPTIONS: StockCondition[] = ['in', 'out', 'low', 'expiring'];
+
 const CONDITION_LABEL: Record<StockCondition, string> = {
   in: 'stock.inStock',
   out: 'stock.outOfStock',
@@ -27,33 +28,7 @@ const CONDITION_LABEL: Record<StockCondition, string> = {
   expiring: 'stock.expiring',
 };
 
-function FilterChip({
-  pressed,
-  label,
-  count,
-  onClick,
-}: {
-  pressed: boolean;
-  label: string;
-  count?: number;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={pressed}
-      onClick={onClick}
-      className={`inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-full border px-3 py-2 text-sm ${
-        pressed ? 'border-emerald-500 bg-emerald-600 text-white' : 'border-zinc-800 bg-zinc-900 text-zinc-300'
-      }`}
-    >
-      <span className="whitespace-nowrap">{label}</span>
-      {count != null && (
-        <span className={`text-xs tabular-nums ${pressed ? 'text-emerald-100' : 'text-zinc-500'}`}>{count}</span>
-      )}
-    </button>
-  );
-}
+const filterSelectClass = 'w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-3 text-sm text-zinc-100';
 
 export interface StockViewProps {
   onOpenScanner: () => void;
@@ -104,9 +79,12 @@ export const StockView: React.FC<StockViewProps> = ({
     };
   }, [shopId, refreshTrigger]);
 
-  const shopHasSeveralCategories = new Set(summaries.map(({ product }) => product.category)).size > 1;
-  const categories = categoryFacets(summaries, searchTerm, condition, category);
-  const conditions = conditionFacets(summaries, searchTerm, category, condition);
+  const categories = categoryFacets(summaries, '', condition, category);
+  const levelCount = (value: StockCondition) =>
+    summaries.filter(
+      (summary) =>
+        (category === null || summary.product.category === category) && matchesStockCondition(summary, value)
+    ).length;
   const filteredSummaries = summaries.filter(
     (summary) =>
       productMatchesQuery(summary.product, searchTerm) &&
@@ -151,52 +129,50 @@ export const StockView: React.FC<StockViewProps> = ({
           }}
           leftIcon={<Search className="w-4 h-4" />}
         />
-        {shopHasSeveralCategories && (
-          <div>
-            <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-zinc-500">{t('stock.categoryFilters')}</p>
-            <div role="group" aria-label={t('stock.categoryFilters')} className="flex gap-2 overflow-x-auto pb-1">
-              <FilterChip
-                pressed={category === null}
-                label={t('stock.allCategories')}
-                onClick={() => {
-                  setCategory(null);
+        {!isLoading && summaries.length > 0 && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block min-w-0">
+              <span className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-zinc-500">
+                {t('stock.categoryFilters')}
+              </span>
+              <select
+                aria-label={t('stock.categoryFilters')}
+                value={category ?? ''}
+                onChange={(event) => {
+                  setCategory((event.target.value || null) as ProductCategory | null);
                   setPage(0);
                 }}
-              />
-              {categories.map((facet) => (
-                <FilterChip
-                  key={facet.category}
-                  pressed={category === facet.category}
-                  label={t(`product.categories.${facet.category}`)}
-                  count={facet.count}
-                  onClick={() => {
-                    setCategory(facet.category);
-                    setPage(0);
-                  }}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-        {conditions.length > 0 && (
-          <div>
-            <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
-              {t('stock.availabilityFilters')}
-            </p>
-            <div role="group" aria-label={t('stock.availabilityFilters')} className="flex gap-2 overflow-x-auto pb-1">
-              {conditions.map((facet) => (
-                <FilterChip
-                  key={facet.condition}
-                  pressed={condition === facet.condition}
-                  label={t(CONDITION_LABEL[facet.condition])}
-                  count={facet.count}
-                  onClick={() => {
-                    setCondition((current) => (current === facet.condition ? null : facet.condition));
-                    setPage(0);
-                  }}
-                />
-              ))}
-            </div>
+                className={filterSelectClass}
+              >
+                <option value="">{t('stock.allCategories')}</option>
+                {categories.map((facet) => (
+                  <option key={facet.category} value={facet.category}>
+                    {t(`product.categories.${facet.category}`)} ({facet.count})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block min-w-0">
+              <span className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-zinc-500">
+                {t('stock.availabilityFilters')}
+              </span>
+              <select
+                aria-label={t('stock.availabilityFilters')}
+                value={condition ?? ''}
+                onChange={(event) => {
+                  setCondition((event.target.value || null) as StockCondition | null);
+                  setPage(0);
+                }}
+                className={filterSelectClass}
+              >
+                <option value="">{t('stock.allLevels')}</option>
+                {CONDITION_OPTIONS.map((value) => (
+                  <option key={value} value={value}>
+                    {t(CONDITION_LABEL[value])} ({levelCount(value)})
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
         )}
       </div>

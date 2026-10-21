@@ -60,11 +60,13 @@ async function render() {
   });
 }
 
-function clickChip(label: string) {
-  const chip = [...container.querySelectorAll('button')].find((button) => button.textContent?.includes(label));
-  if (!chip) throw new Error(`Missing chip ${label}`);
+function choose(label: string, value: string) {
+  const select = [...container.querySelectorAll('select')].find((item) => item.getAttribute('aria-label') === label);
+  if (!select) throw new Error(`Missing filter ${label}`);
   return act(async () => {
-    chip.click();
+    const set = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set;
+    set?.call(select, value);
+    select.dispatchEvent(new Event('change', { bubbles: true }));
   });
 }
 
@@ -92,19 +94,22 @@ describe('stock page filters', () => {
 
     await render();
     expect(container.textContent).toContain('Albany Loaf');
-    expect(container.textContent).toContain('Beverages & Soft Drinks');
-    expect(container.textContent).not.toContain('Dairy & Eggs');
+    const categoryFilter = [...container.querySelectorAll('select')].find(
+      (item) => item.getAttribute('aria-label') === 'Categories'
+    );
+    expect(categoryFilter?.textContent).toContain('Beverages & Soft Drinks');
+    expect(categoryFilter?.textContent).not.toContain('Dairy & Eggs');
 
-    await clickChip('Beverages & Soft Drinks');
+    await choose('Categories', 'beverages');
     expect(container.textContent).toContain('Coke');
     expect(container.textContent).toContain('Fanta');
     expect(container.textContent).not.toContain('Albany Loaf');
 
-    await clickChip('Out of stock');
+    await choose('Stock level', 'out');
     expect(container.textContent).toContain('Coke');
     expect(container.textContent).not.toContain('Fanta');
 
-    await clickChip('All categories');
+    await choose('Categories', '');
     expect(container.textContent).toContain('Coke');
     expect(container.textContent).not.toContain('Fanta');
     expect(container.textContent).not.toContain('Albany Loaf');

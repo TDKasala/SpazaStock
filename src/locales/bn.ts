@@ -586,6 +586,7 @@ export const bn: Translations = {
     categoryFilters: 'বিভাগ',
     allCategories: 'সব বিভাগ',
     availabilityFilters: 'মালের অবস্থা',
+    allLevels: 'যেকোনো মালের অবস্থা',
     inStock: 'মালে আছে',
     outOfStock: 'ফুরিয়ে গেছে',
     lowStock: 'কম পড়ছে',

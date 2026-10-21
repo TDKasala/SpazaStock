@@ -592,6 +592,7 @@ export const so: Translations = {
     categoryFilters: 'Qaybaha',
     allCategories: 'Dhammaan qaybaha',
     availabilityFilters: 'Heerka kaydka',
+    allLevels: 'Heer kasta oo kayd ah',
     inStock: 'Kaydka ku jira',
     outOfStock: 'Waa dhammaaday',
     lowStock: 'Wuu yaraanayaa',
