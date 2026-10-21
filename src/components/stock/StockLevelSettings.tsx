@@ -5,6 +5,7 @@ import { isBatchExpired, todayInZone } from '../../lib/expiry';
 import { parseMinStock } from '../../lib/lowStock';
 import { setProductMinStock } from '../../services/productService';
 import type { Product, StockBatch } from '../../types';
+import { ProductThumbnail } from './ProductThumbnail';
 
 export interface StockLevelSettingsProps {
   shopId: string;
@@ -105,8 +106,11 @@ export const StockLevelSettings: React.FC<StockLevelSettingsProps> = ({
         ) : (
           rows.map(({ product, sellable }) => (
             <div key={product.id} className="rounded-xl border border-zinc-800 bg-zinc-900/60 px-3 py-2.5">
-              <div className="flex items-baseline justify-between gap-3">
-                <span className="text-sm font-medium text-zinc-100 truncate">{product.name}</span>
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <ProductThumbnail path={product.imagePath} size="sm" alt={product.name} />
+                  <span className="text-sm font-medium text-zinc-100 truncate">{product.name}</span>
+                </div>
                 <span className="text-[11px] text-zinc-400 shrink-0">{t('intelligence.onHand', { count: sellable })}</span>
               </div>
               <input

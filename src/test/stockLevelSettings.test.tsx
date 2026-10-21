@@ -11,11 +11,24 @@ vi.mock('../services/productService', () => ({
   setProductMinStock: vi.fn(async () => ({ product: { id: 'bread' } })),
 }));
 
+vi.mock('../services/productImageService', () => ({
+  PRODUCT_IMAGE_BUCKET: 'product-images',
+  getCachedImage: vi.fn(async () => ({
+    path: 'shop/bread.webp',
+    shopId: 'shop',
+    bytes: new Uint8Array([1, 2, 3, 4]).buffer,
+    mimeType: 'image/webp',
+    pending: false,
+    cachedAt: '2026-10-21T00:00:00.000Z',
+  })),
+  cacheImage: vi.fn(),
+}));
+
 import { setProductMinStock } from '../services/productService';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-function product(id: string, name: string, min: number | null, archived = false): Product {
+function product(id: string, name: string, min: number | null, archived = false, imagePath: string | null = null): Product {
   return {
     id,
     shopId,
@@ -26,6 +39,7 @@ function product(id: string, name: string, min: number | null, archived = false)
     updatedAt: '2026-10-21T00:00:00.000Z',
     minStockUnits: min,
     archivedAt: archived ? '2026-10-20T00:00:00.000Z' : null,
+    imagePath,
   };
 }
 
@@ -41,7 +55,11 @@ function batch(productId: string, quantity: number, expiryDate: string | null): 
   };
 }
 
-const products = [product('bread', 'Bread', null), product('milk', 'Milk', 4, true), product('coke', 'Coke', 2)];
+const products = [
+  product('bread', 'Bread', null, false, 'shop/bread.webp'),
+  product('milk', 'Milk', 4, true),
+  product('coke', 'Coke', 2),
+];
 const batches = [batch('bread', 3, null), batch('bread', 9, '2020-01-01')];
 
 let container: HTMLDivElement;
@@ -96,6 +114,16 @@ afterEach(() => {
 });
 
 describe('stock level settings', () => {
+  it('shows the product picture beside the name', async () => {
+    await render(true);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const picture = container.querySelector('img[alt="Bread"]');
+    expect(picture?.getAttribute('src')?.startsWith('blob:')).toBe(true);
+    expect(picture?.closest('div')?.className).toContain('w-10');
+  });
+
   it('saves a minimum and clears it when the field is left blank', async () => {
     await render(true);
     expect(container.textContent).toContain('3 on hand');
