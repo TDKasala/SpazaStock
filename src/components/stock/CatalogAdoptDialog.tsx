@@ -3,6 +3,7 @@ import { BookOpen, Search } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { useShopId } from '../../context/ShopContext';
 import { adoptRemoteImage } from '../../services/productImageService';
+import { retryFailedCatalogImages } from './ProductThumbnail';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { Input } from '../ui/Input';
@@ -36,11 +37,16 @@ function picturePreview(hit: CatalogSearchHit): string | null {
   return hit.imageUrl;
 }
 
+const PAGE_SIZE = 20;
+
 export const CatalogAdoptDialog: React.FC<CatalogAdoptDialogProps> = ({ isOpen, onClose }) => {
   const { t } = useLanguage();
   const shopId = useShopId();
   const [term, setTerm] = useState('');
   const [showAdded, setShowAdded] = useState(false);
+  const [page, setPage] = useState(0);
+  const [total, setTotal] = useState(0);
+  const [reloadKey, setReloadKey] = useState(0);
   const [items, setItems] = useState<CatalogSearchHit[]>([]);
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [searching, setSearching] = useState(false);
@@ -57,6 +63,8 @@ export const CatalogAdoptDialog: React.FC<CatalogAdoptDialogProps> = ({ isOpen, 
     if (!isOpen) return;
     setTerm('');
     setShowAdded(false);
+    setPage(0);
+    setTotal(0);
     setItems([]);
     setChecked({});
     setSelected(null);
@@ -70,32 +78,48 @@ export const CatalogAdoptDialog: React.FC<CatalogAdoptDialogProps> = ({ isOpen, 
 
   useEffect(() => {
     if (!isOpen) return;
+    const onOnline = () => {
+      retryFailedCatalogImages();
+      setReloadKey((value) => value + 1);
+    };
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       setSearchError(t('catalog.offline'));
+      setSearching(false);
       setItems([]);
+      setTotal(0);
       return;
     }
     let cancelled = false;
     const timer = window.setTimeout(() => {
       setSearching(true);
       setSearchError(null);
-      void searchCatalog(shopId, term.trim(), { inShop: showAdded }).then((result) => {
-        if (cancelled) return;
-        setSearching(false);
-        setSearched(true);
-        if (result.error) {
-          setItems([]);
-          setSearchError(t(errorKey(result.error)));
-          return;
+      void searchCatalog(shopId, term.trim(), { inShop: showAdded, limit: PAGE_SIZE, offset: page * PAGE_SIZE }).then(
+        (result) => {
+          if (cancelled) return;
+          setSearching(false);
+          setSearched(true);
+          if (result.error) {
+            setItems([]);
+            setTotal(0);
+            setSearchError(t(errorKey(result.error)));
+            return;
+          }
+          setItems(result.data.items);
+          setTotal(result.data.total);
         }
-        setItems(result.data.items);
-      });
+      );
     }, 300);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [isOpen, shopId, term, showAdded, t]);
+  }, [isOpen, shopId, term, showAdded, page, reloadKey, t]);
 
   const visible = items.filter((hit) => (showAdded ? hit.shopProductId != null : hit.shopProductId == null));
   const selectedCount = visible.filter((hit) => checked[hit.id]).length;
@@ -221,6 +245,7 @@ export const CatalogAdoptDialog: React.FC<CatalogAdoptDialogProps> = ({ isOpen, 
           value={term}
           onChange={(event) => {
             setTerm(event.target.value);
+            setPage(0);
             setSelected(null);
             setChecked({});
           }}
@@ -233,6 +258,7 @@ export const CatalogAdoptDialog: React.FC<CatalogAdoptDialogProps> = ({ isOpen, 
             checked={showAdded}
             onChange={(event) => {
               setShowAdded(event.target.checked);
+              setPage(0);
               setChecked({});
               setSelected(null);
             }}
@@ -240,7 +266,14 @@ export const CatalogAdoptDialog: React.FC<CatalogAdoptDialogProps> = ({ isOpen, 
           {t('catalog.showInShop')}
         </label>
         {searching && <p className="text-xs text-zinc-400">{t('catalog.searching')}</p>}
-        {searchError && <p className="text-xs text-rose-300">{searchError}</p>}
+        {searchError && (
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-xs text-rose-300">{searchError}</p>
+            <Button type="button" size="sm" variant="outline" onClick={() => setReloadKey((value) => value + 1)}>
+              {t('common.retry')}
+            </Button>
+          </div>
+        )}
         {searched && !searching && !searchError && visible.length === 0 && (
           <p className="text-xs text-zinc-400">{t('catalog.empty')}</p>
         )}
@@ -280,6 +313,43 @@ export const CatalogAdoptDialog: React.FC<CatalogAdoptDialogProps> = ({ isOpen, 
             </li>
           ))}
         </ul>
+        {total > PAGE_SIZE && (
+          <div className="flex items-center justify-between text-sm">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={page === 0 || searching || saving}
+              onClick={() => {
+                setPage((value) => value - 1);
+                setChecked({});
+                setSelected(null);
+              }}
+            >
+              {t('stock.previousPage')}
+            </Button>
+            <span className="text-zinc-400">
+              {t('stock.pageRange', {
+                from: page * PAGE_SIZE + 1,
+                to: Math.min(total, (page + 1) * PAGE_SIZE),
+                total,
+              })}
+            </span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={page + 1 >= Math.ceil(total / PAGE_SIZE) || searching || saving}
+              onClick={() => {
+                setPage((value) => value + 1);
+                setChecked({});
+                setSelected(null);
+              }}
+            >
+              {t('stock.nextPage')}
+            </Button>
+          </div>
+        )}
         {!showAdded && visible.length > 0 && (
           <div className="sticky bottom-0 z-10 flex flex-wrap items-center gap-2 border-t border-zinc-800 bg-zinc-950 py-2">
             <span className="text-sm text-zinc-200">{t('catalog.selectedCount', { count: selectedCount })}</span>

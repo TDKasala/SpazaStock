@@ -2,7 +2,7 @@ import React, { lazy, Suspense, useEffect, useState } from 'react';
 import { ScanLine } from 'lucide-react';
 import { PRODUCT_CATEGORIES } from '../stock/ProductFormFields';
 import { Button } from '../ui/Button';
-import { ProductThumbnail } from '../stock/ProductThumbnail';
+import { ProductThumbnail, retryFailedCatalogImages } from '../stock/ProductThumbnail';
 import { useLanguage } from '../../context/LanguageContext';
 import {
   confirmShopCatalog,
@@ -71,6 +71,15 @@ export const CatalogReview: React.FC<Props> = ({ shopId, canEdit, onFinishLater,
     }, 300);
     return () => window.clearTimeout(timer);
   }, [query]);
+
+  useEffect(() => {
+    const onOnline = () => {
+      retryFailedCatalogImages();
+      setReloadKey((value) => value + 1);
+    };
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -253,6 +262,11 @@ export const CatalogReview: React.FC<Props> = ({ shopId, canEdit, onFinishLater,
         </div>
 
         {offline && <p className="text-sm text-zinc-400">{t('catalog.offline')}</p>}
+        {(offline || error) && (
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => setReloadKey((value) => value + 1)}>
+            {t('common.retry')}
+          </Button>
+        )}
         {loading && <p className="text-sm text-zinc-400">{t('catalog.searching')}</p>}
         {!loading && !offline && items.length === 0 && (
           <p className="text-sm text-zinc-300">{t('catalog.review.empty')}</p>

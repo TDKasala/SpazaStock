@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { createProduct } from '../services/productService';
 import {
+  CATALOG_IMAGE_CACHE_ID,
   cacheImage,
   getCachedImage,
   productImagePath,
@@ -117,4 +118,41 @@ describe('productImageService', () => {
     expect(await getCachedImage(stale)).toBeUndefined();
     expect(await getCachedImage(updated!.imagePath!)).toBeDefined();
   });
+
+  it('keeps a shared catalogue picture when a shop cache is pruned', async () => {
+    const shared = 'catalog/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.webp';
+    await cacheImage(shared, SHOP_ID, picture(4).bytes, 'image/webp');
+    const stale = `${SHOP_ID}/${'c'.repeat(32)}.webp`;
+    await cacheImage(stale, SHOP_ID, picture(5).bytes, 'image/webp');
+
+    expect((await getCachedImage(shared))?.shopId).toBe(CATALOG_IMAGE_CACHE_ID);
+    expect(await pruneImageCache(SHOP_ID)).toBe(1);
+    expect(await getCachedImage(shared)).toBeDefined();
+    expect(await getCachedImage(stale)).toBeUndefined();
+  });
+
+  it('drops the oldest unused catalogue picture and keeps one a product shows', async () => {
+    const product = await newProduct();
+    const paths = Array.from({ length: 200 }, (_, index) => catalogPath(index));
+    for (const path of paths) await cacheImage(path, SHOP_ID, picture(6).bytes, 'image/webp');
+    for (let index = 0; index < paths.length; index += 1) {
+      await db.productImages.update(paths[index], {
+        cachedAt: new Date(Date.UTC(2020, 0, 1, 0, 0, index)).toISOString(),
+        pending: index === 1,
+      });
+    }
+    await db.products.update(product.id, { imagePath: paths[0] });
+    const newest = catalogPath(200);
+    await cacheImage(newest, SHOP_ID, picture(7).bytes, 'image/webp');
+
+    expect(await getCachedImage(paths[0])).toBeDefined();
+    expect(await getCachedImage(paths[1])).toBeDefined();
+    expect(await getCachedImage(paths[2])).toBeUndefined();
+    expect(await getCachedImage(newest)).toBeDefined();
+    expect(await db.productImages.where('shopId').equals(CATALOG_IMAGE_CACHE_ID).count()).toBe(200);
+  });
 });
+
+function catalogPath(index: number): string {
+  return `catalog/${String(index).padStart(8, '0')}-0000-4000-8000-000000000000.webp`;
+}

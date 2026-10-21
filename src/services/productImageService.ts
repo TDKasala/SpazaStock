@@ -10,6 +10,13 @@ import { compressProductImage, type CompressedImage } from '../lib/imageCompress
 import { enqueue } from '../sync/outbox';
 
 export const PRODUCT_IMAGE_BUCKET = 'product-images';
+/** Shared catalogue pictures are cached under this id, never under a shop. */
+export const CATALOG_IMAGE_CACHE_ID = 'catalog';
+const CATALOG_IMAGE_CACHE_LIMIT = 200;
+
+function cacheOwner(path: string, shopId: string): string {
+  return path.startsWith('catalog/') ? CATALOG_IMAGE_CACHE_ID : shopId;
+}
 
 export type ProductImageErrorCode = 'forbidden' | 'not_found';
 
@@ -184,10 +191,42 @@ export async function getCachedImage(path: string): Promise<ProductImage | undef
 
 /** Keeps a downloaded picture for offline use. A picture waiting to upload is left as it is. */
 export async function cacheImage(path: string, shopId: string, bytes: ArrayBuffer, mimeType: string): Promise<void> {
+  const owner = cacheOwner(path, shopId);
+  let added = false;
   await db.transaction('rw', db.productImages, async () => {
     if (await db.productImages.get(path)) return;
-    await db.productImages.put({ path, shopId, bytes, mimeType, pending: false, cachedAt: new Date().toISOString() });
+    await db.productImages.put({
+      path,
+      shopId: owner,
+      bytes,
+      mimeType,
+      pending: false,
+      cachedAt: new Date().toISOString(),
+    });
+    added = true;
   });
+  if (added && owner === CATALOG_IMAGE_CACHE_ID) await capCatalogImageCache();
+}
+
+/**
+ * Drops the oldest shared catalogue pictures once more than 200 are cached.
+ * A picture a product still shows, or one waiting to upload, stays.
+ */
+export async function capCatalogImageCache(): Promise<number> {
+  const products = await db.products.toArray();
+  const keep = new Set<string>();
+  for (const product of products) {
+    if (product.imagePath?.startsWith('catalog/')) keep.add(product.imagePath);
+  }
+  const rows = await db.productImages.where('shopId').equals(CATALOG_IMAGE_CACHE_ID).toArray();
+  const overflow = rows.length - CATALOG_IMAGE_CACHE_LIMIT;
+  if (overflow <= 0) return 0;
+  const disposable = rows
+    .filter((row) => !row.pending && !keep.has(row.path))
+    .sort((a, b) => a.cachedAt.localeCompare(b.cachedAt) || a.path.localeCompare(b.path));
+  const drop = disposable.slice(0, overflow).map((row) => row.path);
+  if (drop.length > 0) await db.productImages.bulkDelete(drop);
+  return drop.length;
 }
 
 /** Deletes pictures no product shows and nothing in the queue needs, e.g. after a replacement elsewhere. */

@@ -107,7 +107,7 @@ describe('catalogue pictures and bulk add', () => {
     await settle();
     await settle();
 
-    expect(searchCatalog).toHaveBeenCalledWith(SHOP_ID, '', { inShop: false });
+    expect(searchCatalog).toHaveBeenCalledWith(SHOP_ID, '', { inShop: false, limit: 20, offset: 0 });
     expect(container.textContent).toContain('Pictured meal');
     expect(container.textContent).toContain('Plain rice');
     expect(container.textContent).toContain('Remote oil');
@@ -129,7 +129,7 @@ describe('catalogue pictures and bulk add', () => {
       showAdded?.click();
     });
     await settle();
-    expect(searchCatalog).toHaveBeenCalledWith(SHOP_ID, '', { inShop: true });
+    expect(searchCatalog).toHaveBeenCalledWith(SHOP_ID, '', { inShop: true, limit: 20, offset: 0 });
     expect(container.textContent).toContain('Already here');
     expect(container.textContent).not.toContain('Add selected');
   });

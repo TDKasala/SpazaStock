@@ -19,6 +19,13 @@ const downloads = new Map<string, Promise<boolean>>();
 const failedAt = new Map<string, number>();
 const RETRY_AFTER_MS = 5 * 60 * 1000;
 
+/** A shared catalogue picture may try again once the phone is back online. */
+export function retryFailedCatalogImages(): void {
+  for (const path of failedAt.keys()) {
+    if (path.startsWith('catalog/')) failedAt.delete(path);
+  }
+}
+
 function downloadOnce(path: string): Promise<boolean> {
   if (Date.now() - (failedAt.get(path) ?? 0) < RETRY_AFTER_MS) return Promise.resolve(false);
   let pending = downloads.get(path);
@@ -51,6 +58,15 @@ export function useProductImage(path: string | null | undefined, visible = true)
   const [version, setVersion] = useState(0);
 
   useEffect(() => onDataChanged(() => setVersion((v) => v + 1)), []);
+
+  useEffect(() => {
+    const onOnline = () => {
+      retryFailedCatalogImages();
+      setVersion((value) => value + 1);
+    };
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
+  }, []);
 
   useEffect(() => {
     if (!path) {
