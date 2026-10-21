@@ -18,6 +18,53 @@ const downloads = new Map<string, Promise<boolean>>();
 /** A picture that could not be downloaded is not asked for again on every change. */
 const failedAt = new Map<string, number>();
 const RETRY_AFTER_MS = 5 * 60 * 1000;
+/**
+ * How long a picture address stays after the last thumbnail lets go of it.
+ * Revoking it in the same turn the image still points at it makes the browser
+ * request a file that no longer exists (net::ERR_FILE_NOT_FOUND).
+ */
+const RELEASE_BLOB_AFTER_MS = 2000;
+
+interface LiveBlob {
+  url: string;
+  refs: number;
+  releaseTimer: number | null;
+}
+
+const liveBlobs = new Map<string, LiveBlob>();
+
+function retainImageUrl(path: string, bytes: ArrayBuffer, mimeType: string): string {
+  let entry = liveBlobs.get(path);
+  if (!entry) {
+    entry = {
+      url: URL.createObjectURL(new Blob([bytes], { type: mimeType })),
+      refs: 0,
+      releaseTimer: null,
+    };
+    liveBlobs.set(path, entry);
+  }
+  if (entry.releaseTimer != null) {
+    window.clearTimeout(entry.releaseTimer);
+    entry.releaseTimer = null;
+  }
+  entry.refs += 1;
+  return entry.url;
+}
+
+function releaseImageUrl(path: string): void {
+  const entry = liveBlobs.get(path);
+  if (!entry) return;
+  entry.refs = Math.max(0, entry.refs - 1);
+  if (entry.refs > 0 || entry.releaseTimer != null) return;
+  entry.releaseTimer = window.setTimeout(() => {
+    const current = liveBlobs.get(path);
+    if (!current || current !== entry) return;
+    current.releaseTimer = null;
+    if (current.refs > 0) return;
+    URL.revokeObjectURL(current.url);
+    liveBlobs.delete(path);
+  }, RELEASE_BLOB_AFTER_MS);
+}
 
 /** A shared catalogue picture may try again once the phone is back online. */
 export function retryFailedCatalogImages(): void {
@@ -55,18 +102,6 @@ function downloadOnce(path: string): Promise<boolean> {
  */
 export function useProductImage(path: string | null | undefined, visible = true): { url: string | null; pending: boolean } {
   const [state, setState] = useState<{ url: string | null; pending: boolean }>({ url: null, pending: false });
-  const [version, setVersion] = useState(0);
-
-  useEffect(() => onDataChanged(() => setVersion((v) => v + 1)), []);
-
-  useEffect(() => {
-    const onOnline = () => {
-      retryFailedCatalogImages();
-      setVersion((value) => value + 1);
-    };
-    window.addEventListener('online', onOnline);
-    return () => window.removeEventListener('online', onOnline);
-  }, []);
 
   useEffect(() => {
     if (!path) {
@@ -74,8 +109,9 @@ export function useProductImage(path: string | null | undefined, visible = true)
       return;
     }
     let cancelled = false;
-    let url: string | null = null;
-    void (async () => {
+    let retained = false;
+
+    const apply = async () => {
       let cached = await getCachedImage(path);
       if (!cached && visible && navigator.onLine && (await downloadOnce(path))) cached = await getCachedImage(path);
       if (cancelled) return;
@@ -83,14 +119,28 @@ export function useProductImage(path: string | null | undefined, visible = true)
         setState({ url: null, pending: false });
         return;
       }
-      url = URL.createObjectURL(new Blob([cached.bytes], { type: cached.mimeType }));
-      setState({ url, pending: cached.pending });
-    })();
+      if (!retained) {
+        retained = true;
+        retainImageUrl(path, cached.bytes, cached.mimeType);
+      }
+      const entry = liveBlobs.get(path);
+      setState({ url: entry?.url ?? null, pending: cached.pending });
+    };
+
+    void apply();
+    const stopData = onDataChanged(() => void apply());
+    const onOnline = () => {
+      retryFailedCatalogImages();
+      void apply();
+    };
+    window.addEventListener('online', onOnline);
     return () => {
       cancelled = true;
-      if (url) URL.revokeObjectURL(url);
+      stopData();
+      window.removeEventListener('online', onOnline);
+      if (retained) releaseImageUrl(path);
     };
-  }, [path, visible, version]);
+  }, [path, visible]);
 
   return state;
 }
@@ -136,8 +186,7 @@ export const ProductThumbnail: React.FC<ProductThumbnailProps> = ({ path, size =
           src={src}
           alt={alt}
           className="w-full h-full object-cover"
-          loading="lazy"
-          decoding="async"
+          decoding="sync"
           referrerPolicy="no-referrer"
         />
       ) : (

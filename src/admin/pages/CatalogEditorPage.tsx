@@ -83,7 +83,9 @@ function useStoredImage(path: string | null) {
       });
     return () => {
       active = false;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      const current = objectUrl;
+      setUrl(null);
+      if (current) window.setTimeout(() => URL.revokeObjectURL(current), 2000);
     };
   }, [path]);
   return url;

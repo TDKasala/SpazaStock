@@ -56,7 +56,10 @@ export const ProductImagePicker: React.FC<ProductImagePickerProps> = ({
     }
     const url = URL.createObjectURL(new Blob([draft.image.bytes], { type: draft.image.mimeType }));
     setPreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
+    return () => {
+      setPreviewUrl(null);
+      window.setTimeout(() => URL.revokeObjectURL(url), 2000);
+    };
   }, [draft]);
 
   const shownPath = draft.kind === 'unchanged' ? currentPath : null;
