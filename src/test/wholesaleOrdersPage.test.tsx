@@ -1,7 +1,20 @@
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WholesaleOrders } from '../components/wholesale/WholesaleOrders';
+
+vi.mock('../services/productImageService', () => ({
+  PRODUCT_IMAGE_BUCKET: 'product-images',
+  getCachedImage: vi.fn(async () => ({
+    path: 'shop/bread.webp',
+    shopId: 'shop',
+    bytes: new Uint8Array([1, 2, 3, 4]).buffer,
+    mimeType: 'image/webp',
+    pending: false,
+    cachedAt: '2026-10-21T00:00:00.000Z',
+  })),
+  cacheImage: vi.fn(),
+}));
 import { LanguageProvider } from '../context/LanguageContext';
 import { db, resetLocalDatabase } from '../lib/db';
 import type { Product, StockBatch } from '../types';
@@ -10,7 +23,7 @@ const shopId = '11111111-1111-4111-8111-111111111111';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-function product(id: string, name: string, archived = false): Product {
+function product(id: string, name: string, archived = false, imagePath: string | null = null): Product {
   return {
     id,
     shopId,
@@ -20,6 +33,7 @@ function product(id: string, name: string, archived = false): Product {
     createdAt: '2026-10-21T00:00:00.000Z',
     updatedAt: '2026-10-21T00:00:00.000Z',
     archivedAt: archived ? '2026-10-20T00:00:00.000Z' : null,
+    imagePath,
   };
 }
 
@@ -35,7 +49,12 @@ function batch(id: string, productId: string, quantity: number, expiryDate: stri
   };
 }
 
-const products = [product('bread', 'Bread'), product('coke', 'Coke'), product('salt', 'Salt'), product('soap', 'Soap', true)];
+const products = [
+  product('bread', 'Bread', false, 'shop/bread.webp'),
+  product('coke', 'Coke'),
+  product('salt', 'Salt'),
+  product('soap', 'Soap', true),
+];
 const batches = [
   batch('bread-dated', 'bread', 4, '2026-12-01'),
   batch('bread-later', 'bread', 2, '2027-01-15'),
@@ -103,6 +122,14 @@ describe('Shopping list', () => {
     await render();
     const text = container.textContent ?? '';
     expect(text).toContain('Bread');
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const picture = container.querySelector('img[alt="Bread"]');
+    expect(picture?.getAttribute('src')?.startsWith('blob:')).toBe(true);
+    expect(picture?.parentElement?.parentElement?.textContent).toContain('Bread');
+    const coke = [...container.querySelectorAll('p')].find((node) => node.textContent === 'Coke');
+    expect(coke?.previousElementSibling?.className).toContain('w-10');
     expect(text).toContain('Coke');
     expect(text).toContain('Salt');
     expect(text).not.toContain('Soap');
@@ -141,6 +168,10 @@ describe('Shopping list', () => {
     await setControl(inputNamed('Coke Quantity to buy'), '2');
     await click('Review list');
 
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(container.querySelector('img[alt="Bread"]')?.getAttribute('src')?.startsWith('blob:')).toBe(true);
     const review = container.textContent ?? '';
     expect(review).toContain('Bread');
     expect(review).toContain('Coke');

@@ -8,6 +8,7 @@ import { intlTag, isLocale } from '../../lib/languages';
 import { parseMinStock } from '../../lib/lowStock';
 import { shoppingListText } from '../../lib/wholesaleOrders';
 import type { Product, StockBatch } from '../../types';
+import { ProductThumbnail } from '../stock/ProductThumbnail';
 import { Button } from '../ui/Button';
 
 export interface WholesaleOrdersProps {
@@ -130,7 +131,10 @@ export const WholesaleOrders: React.FC<WholesaleOrdersProps> = ({ products, batc
           const parsed = parseBuy(quantityOf(row.product.id));
           return (
             <div key={row.product.id} className="space-y-2 rounded-xl border border-zinc-800 p-3">
-              <p className="text-sm font-semibold text-zinc-100">{row.product.name}</p>
+              <div className="flex items-center gap-2 min-w-0">
+                <ProductThumbnail path={row.product.imagePath} size="sm" alt={row.product.name} />
+                <p className="text-sm font-semibold text-zinc-100 truncate">{row.product.name}</p>
+              </div>
               {batch && <p className="text-xs text-zinc-400">{batchLabel(batch)}</p>}
               <p className="text-xs text-zinc-400">{t('wholesale.inStock', { count: row.sellable })}</p>
               <label className="block text-xs text-zinc-400">
@@ -190,9 +194,12 @@ export const WholesaleOrders: React.FC<WholesaleOrdersProps> = ({ products, batc
         const parsed = parseBuy(quantityOf(row.product.id));
         return (
           <div key={row.product.id} className="space-y-2 rounded-xl border border-zinc-800 p-3">
-            <div className="flex items-baseline justify-between gap-3">
-              <p className="text-sm font-semibold text-zinc-100">{row.product.name}</p>
-              <p className="text-xs text-zinc-400">{t('wholesale.inStock', { count: row.sellable })}</p>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <ProductThumbnail path={row.product.imagePath} size="sm" alt={row.product.name} />
+                <p className="text-sm font-semibold text-zinc-100 truncate">{row.product.name}</p>
+              </div>
+              <p className="text-xs text-zinc-400 shrink-0">{t('wholesale.inStock', { count: row.sellable })}</p>
             </div>
             {row.expiryBatches.length > 0 && (
               <label className="block text-xs text-zinc-400">
