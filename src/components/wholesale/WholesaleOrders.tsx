@@ -6,7 +6,7 @@ import { isBatchExpired, todayInZone } from '../../lib/expiry';
 import { whatsappShareUrl } from '../../lib/invite';
 import { intlTag, isLocale } from '../../lib/languages';
 import { parseMinStock } from '../../lib/lowStock';
-import { shoppingListText } from '../../lib/wholesaleOrders';
+import { formatRand, lineTotal, orderTotal, parseEstimatedCost, shoppingListText } from '../../lib/wholesaleOrders';
 import type { Product, StockBatch } from '../../types';
 import { ProductThumbnail } from '../stock/ProductThumbnail';
 import { Button } from '../ui/Button';
@@ -25,6 +25,7 @@ interface ProductRow {
 }
 
 const fieldClass = 'w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-3 text-sm text-zinc-100';
+const compactClass = 'shrink-0 rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-2 text-sm text-zinc-100';
 
 function sellableUnits(productId: string, batches: StockBatch[], today: string): number {
   return batches
@@ -55,6 +56,7 @@ export const WholesaleOrders: React.FC<WholesaleOrdersProps> = ({ products, batc
   const today = useMemo(() => todayInZone(timezone), [timezone]);
   const [query, setQuery] = useState('');
   const [quantities, setQuantities] = useState<Record<string, string>>({});
+  const [prices, setPrices] = useState<Record<string, string>>({});
   const [batchChoice, setBatchChoice] = useState<Record<string, string>>({});
   const [reviewIds, setReviewIds] = useState<string[] | null>(null);
   const [checked, setChecked] = useState(false);
@@ -84,6 +86,12 @@ export const WholesaleOrders: React.FC<WholesaleOrdersProps> = ({ products, batc
   }, [rows, query]);
 
   const quantityOf = (productId: string): string => quantities[productId] ?? '';
+  const priceOf = (productId: string): string => prices[productId] ?? '';
+
+  const unitCostOf = (productId: string): number | null => {
+    const parsed = parseEstimatedCost(priceOf(productId));
+    return typeof parsed === 'number' ? parsed : null;
+  };
 
   const chosenBatch = (row: ProductRow): StockBatch | null => {
     const id = batchChoice[row.product.id];
@@ -111,14 +119,73 @@ export const WholesaleOrders: React.FC<WholesaleOrdersProps> = ({ products, batc
     return [{
       name: row.product.name,
       batchLabel: batch?.expiryDate ? formatExpiry(batch.expiryDate, locale) : null,
-      stockLabel: t('wholesale.inStock', { count: row.sellable }),
-      buyLabel: t('wholesale.lineBuy', { count: quantity }),
+      quantity,
+      unitCost: unitCostOf(row.product.id),
     }];
   });
 
+  const textLabels = { line: t('wholesale.lineTotal'), total: t('wholesale.total') };
+  const orderAmount = orderTotal(shareLines.map((line) => ({ quantity: line.quantity, unitCost: line.unitCost })));
+
+  const productLine = (row: ProductRow, onRemove?: () => void) => {
+    const parsed = parseBuy(quantityOf(row.product.id));
+    const cost = parseEstimatedCost(priceOf(row.product.id));
+    const amount = typeof parsed === 'number' ? lineTotal(parsed, typeof cost === 'number' ? cost : null) : null;
+    return (
+      <div key={row.product.id} className="rounded-xl border border-zinc-800 p-3">
+        <div className="overflow-x-auto">
+          <div className="flex flex-nowrap items-center gap-2 min-w-max">
+            <ProductThumbnail path={row.product.imagePath} size="sm" alt={row.product.name} />
+            <p className="w-28 truncate text-sm font-semibold text-zinc-100">{row.product.name}</p>
+            <p className="shrink-0 text-xs text-zinc-400">{t('wholesale.inStock', { count: row.sellable })}</p>
+            {row.expiryBatches.length > 0 && (
+              <select
+                aria-label={`${row.product.name} ${t('wholesale.batch')}`}
+                value={batchChoice[row.product.id] ?? ''}
+                onChange={(event) => setBatchChoice((current) => ({ ...current, [row.product.id]: event.target.value }))}
+                className={`${compactClass} w-40`}
+              >
+                <option value="">{t('wholesale.noBatch')}</option>
+                {row.expiryBatches.map((batch) => (
+                  <option key={batch.id} value={batch.id}>
+                    {batchLabel(batch)}
+                  </option>
+                ))}
+              </select>
+            )}
+            <input
+              aria-label={`${row.product.name} ${t('wholesale.buy')}`}
+              inputMode="numeric"
+              placeholder={t('wholesale.buy')}
+              value={quantityOf(row.product.id)}
+              onChange={(event) => setQuantities((current) => ({ ...current, [row.product.id]: event.target.value }))}
+              className={`${compactClass} w-16`}
+            />
+            <input
+              aria-label={`${row.product.name} ${t('wholesale.price')}`}
+              inputMode="decimal"
+              placeholder={t('wholesale.price')}
+              value={priceOf(row.product.id)}
+              onChange={(event) => setPrices((current) => ({ ...current, [row.product.id]: event.target.value }))}
+              className={`${compactClass} w-24`}
+            />
+            {amount != null && <span className="shrink-0 text-xs text-zinc-200">{formatRand(amount)}</span>}
+            {onRemove && (
+              <Button type="button" variant="ghost" size="sm" onClick={onRemove}>
+                {t('wholesale.remove')}
+              </Button>
+            )}
+          </div>
+        </div>
+        {checked && parsed === 'invalid' && <p className="mt-2 text-xs text-rose-300">{t('catalog.intake.quantityInvalid')}</p>}
+        {checked && cost === 'invalid' && <p className="mt-2 text-xs text-rose-300">{t('wholesale.priceInvalid')}</p>}
+      </div>
+    );
+  };
+
   if (reviewIds) {
     const reviewRows = rows.filter((row) => reviewIds.includes(row.product.id));
-    const text = shoppingListText(t('wholesale.title'), shareLines);
+    const text = shoppingListText(t('wholesale.title'), shareLines, textLabels);
     return (
       <div className="space-y-5 pb-24">
         <button type="button" onClick={() => setReviewIds(null)} className="inline-flex items-center gap-1 text-sm text-zinc-300">
@@ -126,42 +193,17 @@ export const WholesaleOrders: React.FC<WholesaleOrdersProps> = ({ products, batc
           {t('wholesale.backToProducts')}
         </button>
         <h2 className="text-lg font-bold text-zinc-100">{t('wholesale.title')}</h2>
-        {reviewRows.map((row) => {
-          const batch = chosenBatch(row);
-          const parsed = parseBuy(quantityOf(row.product.id));
-          return (
-            <div key={row.product.id} className="space-y-2 rounded-xl border border-zinc-800 p-3">
-              <div className="flex items-center gap-2 min-w-0">
-                <ProductThumbnail path={row.product.imagePath} size="sm" alt={row.product.name} />
-                <p className="text-sm font-semibold text-zinc-100 truncate">{row.product.name}</p>
-              </div>
-              {batch && <p className="text-xs text-zinc-400">{batchLabel(batch)}</p>}
-              <p className="text-xs text-zinc-400">{t('wholesale.inStock', { count: row.sellable })}</p>
-              <label className="block text-xs text-zinc-400">
-                {t('wholesale.buy')}
-                <input
-                  aria-label={`${row.product.name} ${t('wholesale.buy')}`}
-                  inputMode="numeric"
-                  value={quantityOf(row.product.id)}
-                  onChange={(event) => setQuantities((current) => ({ ...current, [row.product.id]: event.target.value }))}
-                  className={`${fieldClass} mt-1`}
-                />
-              </label>
-              {parsed === 'invalid' && <p className="text-xs text-rose-300">{t('catalog.intake.quantityInvalid')}</p>}
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setReviewIds((current) => current?.filter((id) => id !== row.product.id) ?? null);
-                  setQuantities((current) => ({ ...current, [row.product.id]: '' }));
-                }}
-              >
-                {t('wholesale.remove')}
-              </Button>
-            </div>
-          );
-        })}
+        {reviewRows.map((row) =>
+          productLine(row, () => {
+            setReviewIds((current) => current?.filter((id) => id !== row.product.id) ?? null);
+            setQuantities((current) => ({ ...current, [row.product.id]: '' }));
+          })
+        )}
+        {orderAmount != null && (
+          <p className="text-sm font-semibold text-zinc-100">
+            {t('wholesale.total')}: {formatRand(orderAmount)}
+          </p>
+        )}
         <a
           href={whatsappShareUrl(text)}
           target="_blank"
@@ -190,49 +232,7 @@ export const WholesaleOrders: React.FC<WholesaleOrdersProps> = ({ products, batc
         className={fieldClass}
       />
       {visible.length === 0 && <p className="text-sm text-zinc-400">{t('wholesale.empty')}</p>}
-      {visible.map((row) => {
-        const parsed = parseBuy(quantityOf(row.product.id));
-        return (
-          <div key={row.product.id} className="space-y-2 rounded-xl border border-zinc-800 p-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 min-w-0">
-                <ProductThumbnail path={row.product.imagePath} size="sm" alt={row.product.name} />
-                <p className="text-sm font-semibold text-zinc-100 truncate">{row.product.name}</p>
-              </div>
-              <p className="text-xs text-zinc-400 shrink-0">{t('wholesale.inStock', { count: row.sellable })}</p>
-            </div>
-            {row.expiryBatches.length > 0 && (
-              <label className="block text-xs text-zinc-400">
-                {t('wholesale.batch')}
-                <select
-                  aria-label={`${row.product.name} ${t('wholesale.batch')}`}
-                  value={batchChoice[row.product.id] ?? ''}
-                  onChange={(event) => setBatchChoice((current) => ({ ...current, [row.product.id]: event.target.value }))}
-                  className={`${fieldClass} mt-1`}
-                >
-                  <option value="">{t('wholesale.noBatch')}</option>
-                  {row.expiryBatches.map((batch) => (
-                    <option key={batch.id} value={batch.id}>
-                      {batchLabel(batch)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            <label className="block text-xs text-zinc-400">
-              {t('wholesale.buy')}
-              <input
-                aria-label={`${row.product.name} ${t('wholesale.buy')}`}
-                inputMode="numeric"
-                value={quantityOf(row.product.id)}
-                onChange={(event) => setQuantities((current) => ({ ...current, [row.product.id]: event.target.value }))}
-                className={`${fieldClass} mt-1`}
-              />
-            </label>
-            {checked && parsed === 'invalid' && <p className="text-xs text-rose-300">{t('catalog.intake.quantityInvalid')}</p>}
-          </div>
-        );
-      })}
+      {visible.map((row) => productLine(row))}
       <Button type="button" fullWidth onClick={openReview}>
         {t('wholesale.review')}
       </Button>

@@ -140,6 +140,10 @@ describe('Shopping list', () => {
 
     const breadBatches = selectNamed('Bread Batch');
     expect(breadBatches).toBeTruthy();
+    const line = breadBatches?.closest('div');
+    expect(line?.className).toContain('flex-nowrap');
+    expect(line?.contains(inputNamed('Bread Quantity to buy') as Node)).toBe(true);
+    expect(line?.contains(inputNamed('Bread Price') as Node)).toBe(true);
     const options = [...(breadBatches?.options ?? [])].map((option) => option.textContent ?? '');
     expect(options.some((option) => option.includes('2026') && option.includes('4 in stock'))).toBe(true);
     expect(options.some((option) => option.includes('2027') && option.includes('2 in stock'))).toBe(true);
@@ -161,7 +165,8 @@ describe('Shopping list', () => {
     expect(container.textContent).toContain('Enter a whole number of units.');
     expect(container.querySelector('a')).toBeNull();
 
-    await setControl(inputNamed('Bread Quantity to buy'), '6');
+    await setControl(inputNamed('Bread Quantity to buy'), '4');
+    await setControl(inputNamed('Bread Price'), '12.50');
     const breadBatches = selectNamed('Bread Batch');
     const dated = [...(breadBatches?.options ?? [])].find((option) => option.textContent?.includes('2026'));
     await setControl(breadBatches, dated?.value ?? '');
@@ -178,10 +183,21 @@ describe('Shopping list', () => {
     expect(review).not.toContain('Salt');
     expect(review).toContain(dated?.textContent?.split(' · ')[0] ?? '');
     expect(review).toContain('9 in stock');
-    expect(inputNamed('Bread Quantity to buy')?.value).toBe('6');
+    expect(review).toContain('R 50.00');
+    expect(review).toContain('Total: R 50.00');
+    expect(inputNamed('Bread Quantity to buy')?.value).toBe('4');
     expect(inputNamed('Coke Quantity to buy')?.value).toBe('2');
 
-    await setControl(inputNamed('Bread Quantity to buy'), '8');
+    const href = container.querySelector('a')?.getAttribute('href') ?? '';
+    expect(href.startsWith('https://wa.me/?text=')).toBe(true);
+    const decoded = decodeURIComponent(href.slice('https://wa.me/?text='.length));
+    expect(decoded).toContain('Bread');
+    expect(decoded).toContain('4 × R 12.50 = R 50.00');
+    expect(decoded).toContain('Total: R 50.00');
+    expect(decoded).toContain('Coke · 2');
+    expect(decoded).not.toContain('in stock');
+    expect(decoded.includes('%')).toBe(false);
+
     const removeCoke = [...container.querySelectorAll('button')].find(
       (button) => button.textContent?.includes('Remove') && button.parentElement?.textContent?.includes('Coke')
     );
@@ -190,17 +206,8 @@ describe('Shopping list', () => {
     });
     expect(container.textContent).not.toContain('Coke');
 
-    const href = container.querySelector('a')?.getAttribute('href') ?? '';
-    expect(href.startsWith('https://wa.me/?text=')).toBe(true);
-    const decoded = decodeURIComponent(href.slice('https://wa.me/?text='.length));
-    expect(decoded).toContain('Bread');
-    expect(decoded).toContain('buy 8');
-    expect(decoded).toContain('9 in stock');
-    expect(decoded).not.toContain('Coke');
-    expect(decoded.includes('%')).toBe(false);
-
     await click('Back to products');
-    expect(inputNamed('Bread Quantity to buy')?.value).toBe('8');
+    expect(inputNamed('Bread Quantity to buy')?.value).toBe('4');
     expect(inputNamed('Coke Quantity to buy')?.value).toBe('');
     expect(await db.batches.count()).toBe(0);
     expect(await db.movements.count()).toBe(0);

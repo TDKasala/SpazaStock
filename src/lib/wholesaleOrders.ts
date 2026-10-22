@@ -121,17 +121,40 @@ export function outstandingQuantity(ordered: number, received: number): number {
 
 export interface ShoppingListLine {
   name: string;
-  /** Calendar label for the chosen expiry batch. Null when no batch was chosen. */
+  /** Calendar label for the chosen expiry date. Null when no batch was chosen. */
   batchLabel: string | null;
-  stockLabel: string;
-  buyLabel: string;
+  quantity: number;
+  /** Blank stays off the total. Zero is a real price. */
+  unitCost: number | null;
 }
 
-/** Plain text for the shopping list and the WhatsApp message. Callers encode it for the link. */
-export function shoppingListText(heading: string, lines: ShoppingListLine[]): string {
+/**
+ * The order for WhatsApp: product, chosen date, quantity, and price.
+ * Stock on hand is not included. Callers encode the text for the link.
+ */
+export function shoppingListText(
+  heading: string,
+  lines: ShoppingListLine[],
+  labels: { line: string; total: string }
+): string {
   const rows = lines.map((line) => {
-    const batch = line.batchLabel ? `${line.batchLabel} · ` : '';
-    return `${line.name} · ${batch}${line.stockLabel} · ${line.buyLabel}`;
+    const parts = [line.name];
+    if (line.batchLabel) parts.push(line.batchLabel);
+    const amount = lineTotal(line.quantity, line.unitCost);
+    if (line.unitCost != null && amount != null) {
+      parts.push(
+        labels.line
+          .replaceAll('{{quantity}}', String(line.quantity))
+          .replaceAll('{{each}}', formatRand(line.unitCost))
+          .replaceAll('{{amount}}', formatRand(amount))
+      );
+    } else {
+      parts.push(String(line.quantity));
+    }
+    return parts.join(' · ');
   });
-  return [heading, ...rows].join('\n');
+  const parts = [heading, ...rows];
+  const sum = orderTotal(lines.map((line) => ({ quantity: line.quantity, unitCost: line.unitCost })));
+  if (sum != null) parts.push(`${labels.total}: ${formatRand(sum)}`);
+  return parts.join('\n');
 }

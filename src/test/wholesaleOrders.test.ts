@@ -33,13 +33,18 @@ describe('suggested wholesale lines', () => {
   });
 
   it('writes a shopping list and encodes an ampersand for WhatsApp', () => {
-    const text = shoppingListText('Shopping list', [
-      { name: 'Fish & Chips', batchLabel: '1 Dec 2026', stockLabel: '4 in stock', buyLabel: 'buy 6' },
-      { name: 'Coke', batchLabel: null, stockLabel: '10 in stock', buyLabel: 'buy 2' },
-    ]);
-    expect(text).toBe(
-      'Shopping list\nFish & Chips · 1 Dec 2026 · 4 in stock · buy 6\nCoke · 10 in stock · buy 2'
+    const text = shoppingListText(
+      'Shopping list',
+      [
+        { name: 'Fish & Chips', batchLabel: '1 Dec 2026', quantity: 4, unitCost: 12.5 },
+        { name: 'Coke', batchLabel: null, quantity: 2, unitCost: null },
+      ],
+      { line: '{{quantity}} × {{each}} = {{amount}}', total: 'Total' }
     );
+    expect(text).toBe(
+      'Shopping list\nFish & Chips · 1 Dec 2026 · 4 × R 12.50 = R 50.00\nCoke · 2\nTotal: R 50.00'
+    );
+    expect(text).not.toContain('in stock');
     expect(whatsappShareUrl(text)).toContain('Fish%20%26%20Chips');
   });
 });
