@@ -127,11 +127,12 @@ export const StockLevelSettings: React.FC<StockLevelSettingsProps> = ({
   };
 
   return (
-    <section className="rounded-2xl border border-zinc-800 bg-zinc-950 p-3.5 space-y-3">
-      <h3 className="text-xs font-semibold text-zinc-100 flex items-center gap-1.5">
+    <details className="rounded-2xl border border-zinc-800 bg-zinc-950 p-3.5 group">
+      <summary className="text-xs font-semibold text-zinc-100 flex items-center gap-1.5 cursor-pointer list-none">
         <Package className="w-3.5 h-3.5 text-zinc-400" />
         {t('intelligence.levelsTitle')}
-      </h3>
+      </summary>
+      <div className="mt-3 space-y-3">
       <p className="text-[11px] text-zinc-400 leading-relaxed">{t('intelligence.levelsHint')}</p>
       <p className="text-[11px] text-zinc-400 leading-relaxed">{t('intelligence.levelsPhone')}</p>
       {!canEdit && <p className="text-[11px] text-zinc-500">{t('intelligence.levelsReadOnly')}</p>}
@@ -215,6 +216,7 @@ export const StockLevelSettings: React.FC<StockLevelSettingsProps> = ({
         )}
       </div>
       {saved && <p className="text-xs text-emerald-400">{t('intelligence.levelsSaved')}</p>}
-    </section>
+      </div>
+    </details>
   );
 };

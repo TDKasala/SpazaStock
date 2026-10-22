@@ -66,6 +66,16 @@ const batches = [batch('bread', 3, null), batch('bread', 9, '2020-01-01')];
 let container: HTMLDivElement;
 let root: Root;
 
+async function openLevels() {
+  const panel = container.querySelector('details');
+  if (!(panel instanceof HTMLDetailsElement)) throw new Error('Missing stock levels');
+  if (panel.open) return;
+  await act(async () => {
+    panel.querySelector('summary')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  });
+  expect(panel.open).toBe(true);
+}
+
 async function render(canEdit: boolean) {
   await act(async () => {
     root.render(
@@ -117,6 +127,11 @@ afterEach(() => {
 describe('stock level settings', () => {
   it('shows the product picture beside the name', async () => {
     await render(true);
+    const panel = container.querySelector('details');
+    expect(panel).toBeInstanceOf(HTMLDetailsElement);
+    expect((panel as HTMLDetailsElement).open).toBe(false);
+    expect(container.querySelector('summary')?.textContent).toContain('Stock levels');
+    await openLevels();
     await act(async () => {
       await Promise.resolve();
     });
@@ -127,6 +142,7 @@ describe('stock level settings', () => {
 
   it('saves a minimum and clears it when the field is left blank', async () => {
     await render(true);
+    await openLevels();
     expect(container.textContent).toContain('3 on hand');
     expect(container.textContent).not.toContain('Milk');
 
@@ -143,16 +159,18 @@ describe('stock level settings', () => {
             products={saved}
             batches={batches}
             timezone="Africa/Johannesburg"
-          />
-        </LanguageProvider>
-      );
-    });
+        />
+      </LanguageProvider>
+    );
+  });
+    await openLevels();
     await typeAndLeave(field('Bread'), '');
     expect(setProductMinStock).toHaveBeenCalledWith('bread', null, shopId);
   });
 
   it('rejects a number that is not a whole unit count', async () => {
     await render(true);
+    await openLevels();
     await typeAndLeave(field('Coke'), '1.5');
     expect(setProductMinStock).not.toHaveBeenCalled();
     expect(container.textContent).toContain('Enter a whole number, or leave it blank.');
@@ -160,6 +178,7 @@ describe('stock level settings', () => {
 
   it('lets staff read the minimums without changing them', async () => {
     await render(false);
+    await openLevels();
     const input = field('Coke');
     expect(input.disabled).toBe(true);
     expect(input.value).toBe('2');
@@ -170,6 +189,7 @@ describe('stock level settings', () => {
 
   it('narrows the list by product name', async () => {
     await render(true);
+    await openLevels();
     const search = container.querySelector('input[aria-label="Search products"]');
     if (!(search instanceof HTMLInputElement)) throw new Error('Missing search');
     await act(async () => {
