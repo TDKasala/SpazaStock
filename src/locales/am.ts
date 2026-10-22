@@ -725,7 +725,6 @@ export const am: Translations = {
       priceInvalid: 'ዜሮ ወይም ከዚያ በላይ ዋጋ ያስገቡ፣ ወይም ባዶ ይተዉት።',
     },
     review: {
-      open: 'ካታሎግ',
       title: 'የሚሸጡት እቃዎች',
       body: 'በመደርደሪያዎ ላይ ያለውን ያረጋግጡ እና የማይሸጡትን ይደብቁ። የቀረውን በኋላ መጨረስ ይችላሉ።',
       progress: 'ከ{{total}} {{done}} ተገምግሟል',

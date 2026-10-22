@@ -729,7 +729,6 @@ export const en = {
       priceInvalid: 'Enter a price of zero or more, or leave it blank.',
     },
     review: {
-      open: 'Catalogue',
       title: 'Products you sell',
       body: 'Confirm what is on your shelves and hide what you do not sell. You can finish the rest later.',
       progress: '{{done}} of {{total}} reviewed',

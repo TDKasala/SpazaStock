@@ -7,7 +7,6 @@ import type { LowStockItem } from '../../lib/lowStock';
 import { PushAlertsToggle } from '../expiry/PushAlertsToggle';
 import { ReminderSettings } from '../expiry/ReminderSettings';
 import { StockIntelligenceCard } from '../dashboard/StockIntelligenceCard';
-import { CatalogReview } from '../catalog/CatalogReview';
 import { StockLevelSettings } from '../stock/StockLevelSettings';
 import { WholesaleOrders } from '../wholesale/WholesaleOrders';
 import { Button } from '../ui/Button';
@@ -31,7 +30,6 @@ export const MoreView: React.FC<MoreViewProps> = ({
 }) => {
   const { t } = useLanguage();
   const { shop } = useShop();
-  const [reviewing, setReviewing] = useState(false);
   const [ordering, setOrdering] = useState(false);
 
   if (ordering && shop) {
@@ -48,22 +46,9 @@ export const MoreView: React.FC<MoreViewProps> = ({
     );
   }
 
-  if (reviewing && shop) {
-    return (
-      <CatalogReview
-        shopId={shop.id}
-        canEdit={can(shop.role, 'products.edit')}
-        onClose={() => setReviewing(false)}
-      />
-    );
-  }
-
   return (
     <div className="space-y-5 pb-24">
       <h2 className="text-lg font-bold text-zinc-100">{t('navigation.more')}</h2>
-      <Button variant="outline" fullWidth onClick={() => setReviewing(true)}>
-        {t('catalog.review.open')}
-      </Button>
       <Button variant="outline" fullWidth onClick={() => setOrdering(true)}>
         {t('wholesale.open')}
       </Button>

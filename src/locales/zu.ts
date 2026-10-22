@@ -743,7 +743,6 @@ export const zu: Translations = {
       priceInvalid: 'Faka intengo enguziro noma ngaphezulu, noma uyishiye ingenalutho.',
     },
     review: {
-      open: 'Uhlu',
       title: 'Imikhiqizo oyidayisayo',
       body: 'Qinisekisa okuseshalofini lakho bese ufihla ongakudayisi. Ungaqeda okusele kamuva.',
       progress: '{{done}} kwangu-{{total}} sekubhekwe',

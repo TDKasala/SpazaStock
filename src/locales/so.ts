@@ -733,7 +733,6 @@ export const so: Translations = {
       priceInvalid: 'Geli qiime eber ama ka sareeya, ama ka tag madhan.',
     },
     review: {
-      open: 'Liiska',
       title: 'Alaabta aad iibiso',
       body: 'Xaqiiji waxa khaanadahaaga saaran oo qari waxaadan iibin. Inta hartay waad dhamayn kartaa dambe.',
       progress: '{{done}} ka mid ah {{total}} waa la eegay',

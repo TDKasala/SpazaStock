@@ -96,7 +96,7 @@ describe('low stock phone alerts', () => {
     await rpc(pg, outsider, 'set_product_min_stock', { p_shop_id: otherShop, p_product_id: quiet.id, p_min_stock: 1 });
     await stockIn(pg, outsider, otherShop, quiet.id, 20);
 
-    const at = '2026-10-21T02:00:00Z';
+    const at = `${today}T02:00:00Z`;
     expect(await generate(at)).toBe(2);
     expect(await notifyCount(shop, bread.id)).toBe(2);
     expect(await notifyCount(otherShop)).toBe(0);
@@ -108,7 +108,7 @@ describe('low stock phone alerts', () => {
     );
     expect(notes.map((row) => row.user_id).sort()).toEqual([owner.id, manager.id].sort());
     expect(notes.every((row) => row.title === 'Low stock: Bread' && row.body === '2 on hand, minimum 5.')).toBe(true);
-    expect(notes.every((row) => new Date(row.push_next_at).toISOString() === '2026-10-21T05:00:00.000Z')).toBe(true);
+    expect(notes.every((row) => new Date(row.push_next_at).toISOString() === `${today}T05:00:00.000Z`)).toBe(true);
     expect(await notifyCount(shop)).toBe(2);
 
     expect(await generate(at)).toBe(0);
