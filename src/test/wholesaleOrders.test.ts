@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { whatsappShareUrl } from '../lib/invite';
-import { lineTotal, orderSummaryText, orderTotal, suggestedOrderLines } from '../lib/wholesaleOrders';
+import { lineTotal, orderSummaryText, orderTotal, shoppingListText, suggestedOrderLines } from '../lib/wholesaleOrders';
 
 describe('suggested wholesale lines', () => {
   const bread = { id: 'bread', name: 'Bread', minStockUnits: 5, targetStockUnits: 12, sellable: 2, archivedAt: null };
@@ -29,6 +29,17 @@ describe('suggested wholesale lines', () => {
     expect(text).toContain('Bread · 4 × R 12.50 = R 50.00 · Purchased');
     expect(text).toContain('Estimated total: R 50.00');
     expect(whatsappShareUrl(text)).toBe(`https://wa.me/?text=${encodeURIComponent(text)}`);
+    expect(whatsappShareUrl(text)).toContain('Fish%20%26%20Chips');
+  });
+
+  it('writes a shopping list and encodes an ampersand for WhatsApp', () => {
+    const text = shoppingListText('Shopping list', [
+      { name: 'Fish & Chips', batchLabel: '1 Dec 2026', stockLabel: '4 in stock', buyLabel: 'buy 6' },
+      { name: 'Coke', batchLabel: null, stockLabel: '10 in stock', buyLabel: 'buy 2' },
+    ]);
+    expect(text).toBe(
+      'Shopping list\nFish & Chips · 1 Dec 2026 · 4 in stock · buy 6\nCoke · 10 in stock · buy 2'
+    );
     expect(whatsappShareUrl(text)).toContain('Fish%20%26%20Chips');
   });
 });

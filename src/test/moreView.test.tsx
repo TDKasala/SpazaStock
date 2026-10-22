@@ -41,7 +41,7 @@ afterEach(() => {
 });
 
 describe('More page', () => {
-  it('opens wholesale orders without a catalogue button', async () => {
+  it('opens the shopping list without a catalogue button', async () => {
     await act(async () => {
       root.render(
         <LanguageProvider>
@@ -58,7 +58,7 @@ describe('More page', () => {
     });
 
     const labels = [...container.querySelectorAll('button')].map((button) => button.textContent?.trim());
-    expect(labels).toContain('Wholesale orders');
+    expect(labels).toContain('Shopping list');
     expect(labels).not.toContain('Catalogue');
   });
 });

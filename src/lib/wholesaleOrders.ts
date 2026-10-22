@@ -118,3 +118,20 @@ export function deliveryNeedsExpiry(
 export function outstandingQuantity(ordered: number, received: number): number {
   return Math.max(ordered - received, 0);
 }
+
+export interface ShoppingListLine {
+  name: string;
+  /** Calendar label for the chosen expiry batch. Null when no batch was chosen. */
+  batchLabel: string | null;
+  stockLabel: string;
+  buyLabel: string;
+}
+
+/** Plain text for the shopping list and the WhatsApp message. Callers encode it for the link. */
+export function shoppingListText(heading: string, lines: ShoppingListLine[]): string {
+  const rows = lines.map((line) => {
+    const batch = line.batchLabel ? `${line.batchLabel} · ` : '';
+    return `${line.name} · ${batch}${line.stockLabel} · ${line.buyLabel}`;
+  });
+  return [heading, ...rows].join('\n');
+}
