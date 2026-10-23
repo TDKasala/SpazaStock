@@ -10,6 +10,7 @@ import { StockView } from './components/views/StockView';
 import { SalesView } from './components/views/SalesView';
 import { AlertsView } from './components/views/AlertsView';
 import { MoreView } from './components/views/MoreView';
+import { WholesaleOrders } from './components/wholesale/WholesaleOrders';
 import { OfflineIndicator } from './components/pwa/OfflineIndicator';
 import { PWAInstallBanner, pwaInstallLayoutPadding } from './components/pwa/PWAInstallBanner';
 import { usePWAInstall } from './hooks/usePWAInstall';
@@ -57,7 +58,7 @@ function isAdminPath(): boolean {
 }
 
 /** 'team' is reached from the shop menu, not the bottom navigation. */
-export type AppTab = 'dashboard' | 'stock' | 'sales' | 'alerts' | 'more' | 'team';
+export type AppTab = 'dashboard' | 'stock' | 'sales' | 'alerts' | 'list' | 'more' | 'team';
 
 interface RegisterRequest {
   barcode: string;
@@ -255,6 +256,13 @@ export function AppContent() {
             refreshTrigger={refreshCounter}
             lowStock={intelligence.lowStock}
             products={intelligence.products}
+          />
+        )}
+        {currentTab === 'list' && (
+          <WholesaleOrders
+            products={intelligence.products}
+            batches={intelligence.batches}
+            timezone={intelligence.timezone}
           />
         )}
         {currentTab === 'more' && (

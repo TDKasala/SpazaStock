@@ -13,7 +13,7 @@ export interface WholesaleOrdersProps {
   products: Product[];
   batches: StockBatch[];
   timezone: string;
-  onClose: () => void;
+  onClose?: () => void;
 }
 
 interface ProductRow {
@@ -168,10 +168,12 @@ export const WholesaleOrders: React.FC<WholesaleOrdersProps> = ({ products, batc
 
   return (
     <div className="space-y-5 pb-24">
-      <button type="button" onClick={onClose} className="inline-flex items-center gap-1 text-sm text-zinc-300">
-        <ChevronLeft className="w-4 h-4" />
-        {t('wholesale.close')}
-      </button>
+      {onClose && (
+        <button type="button" onClick={onClose} className="inline-flex items-center gap-1 text-sm text-zinc-300">
+          <ChevronLeft className="w-4 h-4" />
+          {t('wholesale.close')}
+        </button>
+      )}
       <h2 className="text-lg font-bold text-zinc-100">{t('wholesale.title')}</h2>
       <input
         aria-label={t('wholesale.search')}
