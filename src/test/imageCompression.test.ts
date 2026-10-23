@@ -14,8 +14,8 @@ function blobOf(size: number, type: string): Blob {
 
 describe('validateImageFile', () => {
   it('accepts common photo formats within the size limit', () => {
-    for (const type of ['image/jpeg', 'image/png', 'image/webp', 'image/gif']) {
-      expect(validateImageFile({ type, size: 2_000_000 })).toBeNull();
+    for (const type of ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif', '']) {
+      expect(validateImageFile({ type, size: 25_000_000 })).toBeNull();
     }
   });
 

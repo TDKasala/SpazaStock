@@ -7,8 +7,21 @@ export const MAX_IMAGE_DIMENSION = 600;
 export const TARGET_IMAGE_BYTES = 100 * 1024;
 /** Matches the bucket's file size limit with some headroom (the bucket allows 256 KB). */
 export const MAX_IMAGE_BYTES = 250 * 1024;
-export const MAX_INPUT_BYTES = 20 * 1024 * 1024;
-export const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'] as const;
+/** A phone photo can be tens of megabytes. Anything larger is refused before it is opened. */
+export const MAX_INPUT_BYTES = 50 * 1024 * 1024;
+export const ACCEPTED_IMAGE_TYPES = [
+  'image/jpeg',
+  'image/jpg',
+  'image/pjpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+  'image/heic',
+  'image/heif',
+] as const;
+
+/** Sizes tried, largest first, when a picture is still too big after lowering the quality. */
+const DIMENSION_STEPS = [600, 480, 360, 240];
 
 const QUALITIES = [0.82, 0.74, 0.66, 0.58, 0.5];
 
@@ -30,7 +43,10 @@ export interface CompressedImage {
 }
 
 export function validateImageFile(file: { type: string; size: number }): ImageErrorCode | null {
-  if (!(ACCEPTED_IMAGE_TYPES as readonly string[]).includes(file.type)) return 'unsupported';
+  const type = file.type.toLowerCase();
+  // A phone gallery often leaves the type blank. The decoder rejects it if it is not a picture.
+  const typeKnown = type !== '' && type !== 'application/octet-stream';
+  if (typeKnown && !(ACCEPTED_IMAGE_TYPES as readonly string[]).includes(type)) return 'unsupported';
   if (file.size > MAX_INPUT_BYTES) return 'too_large';
   return null;
 }
@@ -74,10 +90,21 @@ export async function encodeWithinBudget(
 
 async function decode(file: Blob): Promise<CanvasImageSource & { width: number; height: number }> {
   if (typeof createImageBitmap === 'function') {
+    // A multi-megabyte phone photo is scaled while it is opened. Smaller files keep their real size,
+    // so a little picture is not stretched up to 600 pixels.
+    const scaled: ImageBitmapOptions = { imageOrientation: 'from-image' };
+    if (file.size > 4 * 1024 * 1024) {
+      scaled.resizeWidth = MAX_IMAGE_DIMENSION;
+      scaled.resizeQuality = 'high';
+    }
     try {
-      return await createImageBitmap(file, { imageOrientation: 'from-image' });
+      return await createImageBitmap(file, scaled);
     } catch {
-      // Fall back to an <img>, which some browsers decode more formats with.
+      try {
+        return await createImageBitmap(file, { imageOrientation: 'from-image' });
+      } catch {
+        // Fall back to an <img>, which some browsers decode more formats with.
+      }
     }
   }
   const url = URL.createObjectURL(file);
@@ -103,21 +130,35 @@ export async function compressProductImage(file: File): Promise<CompressedImage>
   }
   if (!source.width || !source.height) throw new ImageCompressionError('decode_failed');
 
-  const { width, height } = fitWithin(source.width, source.height);
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new ImageCompressionError('decode_failed');
-  // JPEG has no transparency; a white background keeps transparent PNGs readable.
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, width, height);
-  ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(source, 0, 0, width, height);
-  if ('close' in source && typeof source.close === 'function') source.close();
-
-  const { blob, mimeType } = await encodeWithinBudget(
-    (type, quality) => new Promise((resolve) => canvas.toBlob(resolve, type, quality))
-  );
-  return { bytes: await blob.arrayBuffer(), mimeType, width, height };
+  try {
+    let lastTooBig: ImageCompressionError | null = null;
+    for (const max of DIMENSION_STEPS) {
+      const fitted = fitWithin(source.width, source.height, max);
+      const canvas = document.createElement('canvas');
+      canvas.width = fitted.width;
+      canvas.height = fitted.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new ImageCompressionError('decode_failed');
+      // JPEG has no transparency; a white background keeps transparent PNGs readable.
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, fitted.width, fitted.height);
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(source, 0, 0, fitted.width, fitted.height);
+      try {
+        const { blob, mimeType } = await encodeWithinBudget(
+          (type, quality) => new Promise((resolve) => canvas.toBlob(resolve, type, quality))
+        );
+        return { bytes: await blob.arrayBuffer(), mimeType, width: fitted.width, height: fitted.height };
+      } catch (err) {
+        if (err instanceof ImageCompressionError && err.code === 'still_too_large') {
+          lastTooBig = err;
+          continue;
+        }
+        throw err;
+      }
+    }
+    throw lastTooBig ?? new ImageCompressionError('still_too_large');
+  } finally {
+    if ('close' in source && typeof source.close === 'function') source.close();
+  }
 }

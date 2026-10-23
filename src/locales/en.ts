@@ -535,7 +535,7 @@ export const en = {
     saveFailed: 'The product was saved, but the picture could not be stored. Tap save to continue and add it later.',
     errors: {
       unsupported: 'Choose a JPEG, PNG, WebP or GIF picture.',
-      too_large: 'This picture is too big (over 20 MB). Choose a smaller one.',
+      too_large: 'This picture is too big (over 50 MB). Choose a smaller one.',
       decode_failed: 'This picture could not be opened. Try another one.',
       still_too_large: 'This picture could not be made small enough. Try another photo.',
     },

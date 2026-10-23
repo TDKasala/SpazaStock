@@ -531,7 +531,7 @@ export const am: Translations = {
     saveFailed: 'ምርቱ ተቀምጧል፣ ግን ፎቶው መቀመጥ አልቻለም። ለመቀጠል አስቀምጥን ይጫኑ፣ ፎቶውን በኋላ ያክሉ።',
     errors: {
       unsupported: 'JPEG፣ PNG፣ WebP ወይም GIF ፎቶ ይምረጡ።',
-      too_large: 'ይህ ፎቶ በጣም ትልቅ ነው (ከ20 MB በላይ)። ትንሽ ይምረጡ።',
+      too_large: 'ይህ ፎቶ በጣም ትልቅ ነው (ከ50 MB በላይ)። ትንሽ ይምረጡ።',
       decode_failed: 'ይህ ፎቶ መከፈት አልቻለም። ሌላ ይሞክሩ።',
       still_too_large: 'ይህ ፎቶ በበቂ ሁኔታ መቀነስ አልቻለም። ሌላ ፎቶ ይሞክሩ።',
     },

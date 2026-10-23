@@ -546,7 +546,7 @@ export const zu: Translations = {
     saveFailed: 'Umkhiqizo ugciniwe, kodwa isithombe asikwazanga ukugcinwa. Cindezela ukugcina ukuze uqhubeke, usifake kamuva.',
     errors: {
       unsupported: 'Khetha isithombe se-JPEG, PNG, WebP noma GIF.',
-      too_large: 'Lesi sithombe sikhulu kakhulu (ngaphezu kuka-20 MB). Khetha esincane.',
+      too_large: 'Lesi sithombe sikhulu kakhulu (ngaphezu kuka-50 MB). Khetha esincane.',
       decode_failed: 'Lesi sithombe asikwazanga ukuvulwa. Zama esinye.',
       still_too_large: 'Lesi sithombe asikwazanga ukwenziwa sibe sincane ngokwanele. Zama esinye isithombe.',
     },

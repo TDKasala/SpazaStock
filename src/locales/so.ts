@@ -539,7 +539,7 @@ export const so: Translations = {
     saveFailed: 'Alaabta waa la kaydiyay, laakiin sawirka lama kaydin karin. Riix kaydi si aad u sii wadato, hadhowna ku dar.',
     errors: {
       unsupported: 'Dooro sawir JPEG, PNG, WebP ama GIF ah.',
-      too_large: 'Sawirkan aad buu u weyn yahay (in ka badan 20 MB). Dooro mid ka yar.',
+      too_large: 'Sawirkan aad buu u weyn yahay (in ka badan 50 MB). Dooro mid ka yar.',
       decode_failed: 'Sawirkan lama furi karin. Isku day mid kale.',
       still_too_large: 'Sawirkan lama yareyn karin ilaa cabbirka loo baahan yahay. Isku day sawir kale.',
     },
