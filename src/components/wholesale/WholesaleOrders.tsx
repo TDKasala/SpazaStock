@@ -1,10 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { ChevronLeft, MessageCircle } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
-import { parseLocalISODate } from '../../lib/dates';
 import { isBatchExpired, todayInZone } from '../../lib/expiry';
 import { whatsappShareUrl } from '../../lib/invite';
-import { intlTag, isLocale } from '../../lib/languages';
 import { parseMinStock } from '../../lib/lowStock';
 import { formatRand, lineTotal, orderTotal, parseEstimatedCost, shoppingListText } from '../../lib/wholesaleOrders';
 import type { Product, StockBatch } from '../../types';
@@ -21,7 +19,6 @@ export interface WholesaleOrdersProps {
 interface ProductRow {
   product: Product;
   sellable: number;
-  expiryBatches: StockBatch[];
 }
 
 const fieldClass = 'w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-3 text-sm text-zinc-100';
@@ -33,16 +30,6 @@ function sellableUnits(productId: string, batches: StockBatch[], today: string):
     .reduce((sum, batch) => sum + batch.quantity, 0);
 }
 
-function formatExpiry(expiry: string, locale: string): string {
-  const date = parseLocalISODate(expiry);
-  if (!date) return expiry;
-  return date.toLocaleDateString(isLocale(locale) ? intlTag(locale) : 'en-ZA', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
-}
-
 /** Blank or zero stays off the list. Anything else must be a whole number of units. */
 function parseBuy(text: string): number | null | 'invalid' {
   const parsed = parseMinStock(text);
@@ -52,12 +39,11 @@ function parseBuy(text: string): number | null | 'invalid' {
 }
 
 export const WholesaleOrders: React.FC<WholesaleOrdersProps> = ({ products, batches, timezone, onClose }) => {
-  const { t, locale } = useLanguage();
+  const { t } = useLanguage();
   const today = useMemo(() => todayInZone(timezone), [timezone]);
   const [query, setQuery] = useState('');
   const [quantities, setQuantities] = useState<Record<string, string>>({});
   const [prices, setPrices] = useState<Record<string, string>>({});
-  const [batchChoice, setBatchChoice] = useState<Record<string, string>>({});
   const [reviewIds, setReviewIds] = useState<string[] | null>(null);
   const [checked, setChecked] = useState(false);
 
@@ -67,15 +53,6 @@ export const WholesaleOrders: React.FC<WholesaleOrdersProps> = ({ products, batc
       .map((product) => ({
         product,
         sellable: sellableUnits(product.id, batches, today),
-        expiryBatches: batches
-          .filter(
-            (batch) =>
-              batch.productId === product.id &&
-              batch.quantity > 0 &&
-              batch.expiryDate != null &&
-              !isBatchExpired(batch, today)
-          )
-          .sort((a, b) => (a.expiryDate ?? '').localeCompare(b.expiryDate ?? '')),
       }))
       .sort((a, b) => a.product.name.localeCompare(b.product.name));
   }, [products, batches, today]);
@@ -93,16 +70,6 @@ export const WholesaleOrders: React.FC<WholesaleOrdersProps> = ({ products, batc
     return typeof parsed === 'number' ? parsed : null;
   };
 
-  const chosenBatch = (row: ProductRow): StockBatch | null => {
-    const id = batchChoice[row.product.id];
-    return row.expiryBatches.find((batch) => batch.id === id) ?? null;
-  };
-
-  const batchLabel = (batch: StockBatch): string => {
-    const date = batch.expiryDate ? formatExpiry(batch.expiryDate, locale) : '';
-    return `${date} · ${t('wholesale.inStock', { count: batch.quantity })}`;
-  };
-
   const openReview = () => {
     setChecked(true);
     const ids = rows
@@ -115,10 +82,9 @@ export const WholesaleOrders: React.FC<WholesaleOrdersProps> = ({ products, batc
     if (!reviewIds?.includes(row.product.id)) return [];
     const quantity = parseBuy(quantityOf(row.product.id));
     if (typeof quantity !== 'number') return [];
-    const batch = chosenBatch(row);
     return [{
       name: row.product.name,
-      batchLabel: batch?.expiryDate ? formatExpiry(batch.expiryDate, locale) : null,
+      batchLabel: null,
       quantity,
       unitCost: unitCostOf(row.product.id),
     }];
@@ -133,26 +99,10 @@ export const WholesaleOrders: React.FC<WholesaleOrdersProps> = ({ products, batc
     const amount = typeof parsed === 'number' ? lineTotal(parsed, typeof cost === 'number' ? cost : null) : null;
     return (
       <div key={row.product.id} className="rounded-xl border border-zinc-800 p-3">
-        <div className="overflow-x-auto">
-          <div className="flex flex-nowrap items-center gap-2 min-w-max">
+        <div className="flex flex-wrap items-center gap-2">
             <ProductThumbnail path={row.product.imagePath} size="sm" alt={row.product.name} />
-            <p className="w-28 truncate text-sm font-semibold text-zinc-100">{row.product.name}</p>
+            <p className="min-w-0 flex-1 truncate text-sm font-semibold text-zinc-100">{row.product.name}</p>
             <p className="shrink-0 text-xs text-zinc-400">{t('wholesale.inStock', { count: row.sellable })}</p>
-            {row.expiryBatches.length > 0 && (
-              <select
-                aria-label={`${row.product.name} ${t('wholesale.batch')}`}
-                value={batchChoice[row.product.id] ?? ''}
-                onChange={(event) => setBatchChoice((current) => ({ ...current, [row.product.id]: event.target.value }))}
-                className={`${compactClass} w-40`}
-              >
-                <option value="">{t('wholesale.noBatch')}</option>
-                {row.expiryBatches.map((batch) => (
-                  <option key={batch.id} value={batch.id}>
-                    {batchLabel(batch)}
-                  </option>
-                ))}
-              </select>
-            )}
             <input
               aria-label={`${row.product.name} ${t('wholesale.buy')}`}
               inputMode="numeric"
@@ -175,7 +125,6 @@ export const WholesaleOrders: React.FC<WholesaleOrdersProps> = ({ products, batc
                 {t('wholesale.remove')}
               </Button>
             )}
-          </div>
         </div>
         {checked && parsed === 'invalid' && <p className="mt-2 text-xs text-rose-300">{t('catalog.intake.quantityInvalid')}</p>}
         {checked && cost === 'invalid' && <p className="mt-2 text-xs text-rose-300">{t('wholesale.priceInvalid')}</p>}

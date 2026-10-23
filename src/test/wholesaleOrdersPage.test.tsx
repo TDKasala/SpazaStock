@@ -70,10 +70,6 @@ function inputNamed(label: string): HTMLInputElement | null {
   return container.querySelector(`input[aria-label="${label}"]`);
 }
 
-function selectNamed(label: string): HTMLSelectElement | null {
-  return container.querySelector(`select[aria-label="${label}"]`);
-}
-
 function buttonNamed(text: string): HTMLButtonElement | undefined {
   return [...container.querySelectorAll('button')].find((button) => button.textContent?.includes(text));
 }
@@ -118,7 +114,7 @@ afterEach(() => {
 });
 
 describe('Shopping list', () => {
-  it('lists every active product and its sellable stock, with a batch choice only for expiry batches', async () => {
+  it('lists every active product and its sellable stock on one wrapping line', async () => {
     await render();
     const text = container.textContent ?? '';
     expect(text).toContain('Bread');
@@ -138,18 +134,12 @@ describe('Shopping list', () => {
     expect(text).toContain('0 in stock');
     expect(text).not.toContain('Wholesaler');
 
-    const breadBatches = selectNamed('Bread Batch');
-    expect(breadBatches).toBeTruthy();
-    const line = breadBatches?.closest('div');
-    expect(line?.className).toContain('flex-nowrap');
-    expect(line?.contains(inputNamed('Bread Quantity to buy') as Node)).toBe(true);
+    expect(container.querySelector('select')).toBeNull();
+    expect(container.querySelector('.overflow-x-auto')).toBeNull();
+    const line = inputNamed('Bread Quantity to buy')?.parentElement;
+    expect(line?.className).toContain('flex-wrap');
+    expect(line?.className).not.toContain('flex-nowrap');
     expect(line?.contains(inputNamed('Bread Price') as Node)).toBe(true);
-    const options = [...(breadBatches?.options ?? [])].map((option) => option.textContent ?? '');
-    expect(options.some((option) => option.includes('2026') && option.includes('4 in stock'))).toBe(true);
-    expect(options.some((option) => option.includes('2027') && option.includes('2 in stock'))).toBe(true);
-    expect(options.some((option) => option.includes('2020'))).toBe(false);
-    expect(selectNamed('Coke Batch')).toBeNull();
-    expect(selectNamed('Salt Batch')).toBeNull();
 
     await setControl(inputNamed('Search products'), 'salt');
     expect(container.textContent).toContain('Salt');
@@ -167,9 +157,6 @@ describe('Shopping list', () => {
 
     await setControl(inputNamed('Bread Quantity to buy'), '4');
     await setControl(inputNamed('Bread Price'), '12.50');
-    const breadBatches = selectNamed('Bread Batch');
-    const dated = [...(breadBatches?.options ?? [])].find((option) => option.textContent?.includes('2026'));
-    await setControl(breadBatches, dated?.value ?? '');
     await setControl(inputNamed('Coke Quantity to buy'), '2');
     await click('Review list');
 
@@ -181,7 +168,6 @@ describe('Shopping list', () => {
     expect(review).toContain('Bread');
     expect(review).toContain('Coke');
     expect(review).not.toContain('Salt');
-    expect(review).toContain(dated?.textContent?.split(' · ')[0] ?? '');
     expect(review).toContain('9 in stock');
     expect(review).toContain('R 50.00');
     expect(review).toContain('Total: R 50.00');
