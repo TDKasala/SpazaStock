@@ -45,7 +45,7 @@ Type facts that shape the transform:
 
 ## 3. How the move works
 
-The whole process is one script, `scripts/migrate-data/`, run three ways: **export**, **load** and **verify**.
+The whole process lives in `scripts/migrate-data/`, run three ways: **export** (written: `npm run data:export`, see its [README](../scripts/migrate-data/README.md)), **load** and **verify**.
 It is run against a staging Cloudflare environment as many times as needed before production.
 
 ### Step 1: export (read-only on Supabase)
