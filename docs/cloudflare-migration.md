@@ -2,6 +2,8 @@
 
 Audit date: 2026-11-21. Starting point: commit `38dba60`.
 
+Moving the existing data is planned separately in [`data-migration.md`](data-migration.md).
+
 This document has three parts: what the app uses today, how each piece maps onto Cloudflare,
 and the order to move it in. Phase 1 (hosting) is already in the repository and works next to
 Vercel, so nothing in production changes until DNS is switched.
