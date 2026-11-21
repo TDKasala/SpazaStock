@@ -1,0 +1,26 @@
+{
+  // SpazaStock on Cloudflare Workers. Replaces vercel.json (hosting) and, step by step, the
+  // Supabase Edge Functions. See docs/cloudflare-migration.md.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "spazastock",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    // /admin, /login and any other client route fall back to index.html.
+    "not_found_handling": "single-page-application",
+    // The API, plus /assets/* so a stale hashed file 404s instead of becoming index.html.
+    // Everything else is served straight from the asset layer without running the Worker.
+    "run_worker_first": ["/api/*", "/assets/*"]
+  },
+  "observability": { "enabled": true },
+  "vars": {
+    // Set to the real project URL before the first deploy (it is public, like VITE_SUPABASE_URL).
+    "SUPABASE_URL": "https://your-project-ref.supabase.co"
+  }
+  // Secrets (never in this file): wrangler secret put SUPABASE_ANON_KEY
+  //                                wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+  // Phase 2+ adds here: "triggers": { "crons": [...] }, "r2_buckets", "d1_databases", "send_email".
+}
