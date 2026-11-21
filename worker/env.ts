@@ -2,6 +2,8 @@
 export interface Env {
   /** Static front end built by Vite into dist/. */
   ASSETS: Fetcher;
+  /** Shared D1 database (migrations/d1). Not used by any route yet. */
+  DB: D1Database;
   /** https://<project-ref>.supabase.co, a plain var while the database is still on Supabase. */
   SUPABASE_URL: string;
   /** Public anon / sb_publishable_ key: `wrangler secret put SUPABASE_ANON_KEY`. */

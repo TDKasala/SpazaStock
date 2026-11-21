@@ -29,3 +29,53 @@ upload or paste it anywhere, and delete it once the cutover is verified.
 
 `src/test/db/dataExport.test.ts` runs the export against all migrations on PGlite, so a schema change
 that would break it, or a new table it would miss, fails the test suite.
+
+## Schemas (Option A: D1 + one Durable Object per shop)
+
+`npm run data:schema` regenerates both SQLite schemas from `supabase/migrations` (on PGlite, no network):
+
+| File | Database | Holds |
+|---|---|---|
+| `migrations/d1/0001_initial.sql` | shared D1 (`DB` binding) | users, shops, members, invites, profiles, notifications and push, plans and subscriptions, shared catalog, platform admin and audit |
+| `worker/shop/schema.sql` | each shop's Durable Object | products, packagings, barcodes, batches, movements, sales, voids, discrepancies, expiry and low-stock alerts, wholesale orders |
+
+Which table goes where is set in `lib/partition.ts`; the generator refuses a table that is not listed.
+Conventions: tables are `STRICT`; ids stay the same; money becomes whole cents in `<name>_cents` columns;
+timestamps are ISO-8601 UTC with milliseconds (`2026-11-21T14:00:00.123Z`, same as JavaScript's
+`toISOString()`); booleans are 0/1; jsonb and arrays are JSON text.
+
+The end of each file lists what SQLite cannot express and the Worker must enforce: regex CHECKs (phone,
+email, image path, codes), defaults taken from the signed-in user (`auth.uid()`) or `gen_random_uuid()`,
+and foreign keys between D1 and a shop object (`shop_id`, user ids, a product's catalog link).
+Two more differences to keep in mind when porting code:
+- SQLite's `lower()` only folds ASCII. `wholesalers_active_name_idx` relies on it, so the Worker should
+  store or compare a Unicode-lowercased name.
+- Catalog search used Postgres trigram indexes; on D1 it needs an FTS5 table (to add with the catalog port).
+
+`src/test/db/dataLoad.test.ts` fails when the committed schemas are out of date with the migrations.
+
+## Prepare the load (steps 2 and 3)
+
+```
+npm run data:prepare -- --export scripts/migrate-data/export/<timestamp>
+```
+
+1. Converts every row as above (money from the exact decimal text, never through floating point).
+2. Recomputes every total in the export manifest from the converted rows: row counts per table, users,
+   and per shop members, products, batches, units in stock, movements, sales count and total in cents,
+   sale items and voided units. Any difference stops it.
+3. Rehearses the load into local SQLite built from both schemas, with every type, CHECK, UNIQUE and
+   foreign key enforced. Any rejected row stops it.
+
+Only then it writes, into `<export>/load/` (private, git-ignored like the export):
+`d1-data.sql` for D1, `shops/<shop-id>.json` per shop for its Durable Object, and `report.json`.
+
+Loading D1 (needs the database created and its id in `wrangler.jsonc`):
+
+```
+npx wrangler d1 migrations apply spazastock --remote
+npx wrangler d1 execute spazastock --remote --file <export>/load/d1-data.sql
+```
+
+The same two commands with `--local` load a local D1 for testing. The shop bundles are imported by the
+shop Durable Object, which is built next.

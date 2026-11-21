@@ -180,6 +180,8 @@ async function exportRows(
   select: string,
   order: string
 ): Promise<number> {
+  // Every table gets a file, empty or not, so the loader can tell "no rows" from "missing".
+  await sink.appendLines(file, []);
   let offset = 0;
   for (;;) {
     const rows = await query(`select ${select} as line from ${from} t order by ${order} limit $1 offset $2`, [

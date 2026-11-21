@@ -64,7 +64,11 @@ It is run against a staging Cloudflare environment as many times as needed befor
 
 ### Step 2: transform + load
 
-- Types as listed in section 1: numeric → integer cents, timestamps → ISO UTC, uuid/jsonb/array → text. The
+Status: schemas (`npm run data:schema`) and conversion + verification + local rehearsal
+(`npm run data:prepare`) are written and tested; D1 loading uses `wrangler d1 execute`. Still to build:
+the shop Durable Object's import endpoint, then the post-load verify against the live D1 and objects.
+
+- Types as listed in section 1: numeric → integer cents (columns renamed `*_cents`), timestamps → ISO UTC with milliseconds, uuid/jsonb/array → text. The
   same UUIDs are kept everywhere, so every reference stays valid and phones' local IndexedDB copies still match.
 - **Option A (D1 + a Durable Object per shop):** global tables (users, shops index, members, invites, catalog,
   plans, subscriptions, admins, audit log, push subscriptions) → `wrangler d1 execute --file` in batches.
