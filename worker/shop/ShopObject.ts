@@ -147,6 +147,32 @@ export class ShopObject extends DurableObject {
     return this.sql.all('SELECT 1 AS x FROM products WHERE catalog_product_id = ? AND archived_at IS NULL LIMIT 1', catalogId).length > 0;
   }
 
+  /** Product lookup: this shop's product with one of these barcodes, directly or as an extra barcode. */
+  async findByBarcodes(candidates: string[]): Promise<ApiRow | null> {
+    if (!candidates.length) return null;
+    const marks = candidates.map(() => '?').join(', ');
+    const own = this.sql.all(`SELECT * FROM products WHERE barcode IN (${marks}) LIMIT 1`, ...candidates)[0];
+    if (own) return toApiRows('products', [own])[0];
+    const link = this.sql.all<{ product_id: string }>(
+      `SELECT product_id FROM product_barcodes WHERE barcode IN (${marks}) AND unlinked_at IS NULL LIMIT 1`,
+      ...candidates
+    )[0];
+    if (!link) return null;
+    const row = this.sql.all('SELECT * FROM products WHERE id = ?', link.product_id)[0];
+    return row ? toApiRows('products', [row])[0] : null;
+  }
+
+  private lookupWindow = { minute: '', count: 0 };
+
+  /** Product lookup rate limit: at most `perMinute` lookups per shop per minute. */
+  async allowLookup(perMinute: number): Promise<boolean> {
+    const minute = new Date().toISOString().slice(0, 16);
+    if (this.lookupWindow.minute !== minute) this.lookupWindow = { minute, count: 0 };
+    if (this.lookupWindow.count >= perMinute) return false;
+    this.lookupWindow.count++;
+    return true;
+  }
+
   /** Owners and managers marking a stock discrepancy resolved (the app's direct table update). */
   async resolveDiscrepancy(id: string, resolvedAt: string | null): Promise<ApiRow[]> {
     const changed = this.sql.run('UPDATE stock_discrepancies SET resolved_at = ? WHERE id = ?', resolvedAt, id);

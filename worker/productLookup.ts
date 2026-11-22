@@ -1,13 +1,10 @@
-// product-lookup on Cloudflare Workers: a port of supabase/functions/product-lookup/index.ts.
+// product-lookup on Cloudflare: identifies a barcode for Smart Product Scan.
 //
-// Served same-origin at POST /api/product-lookup, so the browser needs no CORS preflight (the
-// CORS headers stay so a separately hosted front end still works during the move). Still reads
-// the Supabase database with the user's JWT for the membership check and the service role for
-// the shared catalog, cache and rate limit, exactly like the Edge Function. When the data moves
-// off Supabase (see docs/cloudflare-migration.md, phase 3) only the queries below change; the
-// pure helpers in logic.ts stay as they are.
+// Ported from supabase/functions/product-lookup/index.ts. Looks up this shop (its Durable
+// Object), then the shared catalog (D1), then the Open Food Facts cache (D1), then Open Food
+// Facts itself. Never writes shop products or the catalog. Rate-limited per shop in the shop's
+// object. The pure helpers in logic.ts are shared with the old Edge Function and its tests.
 
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import {
   OFF_TIMEOUT_MS,
   OFF_USER_AGENT,
@@ -19,7 +16,6 @@ import {
   mapOffProduct,
   mapShopProductRow,
   offProductUrl,
-  rateWindowStart,
   shopBarcodeCandidates,
   suggestionFromCatalog,
   suggestionFromShopProduct,
@@ -32,10 +28,11 @@ import {
   type ProductCategory,
   type ShopProductPayload,
 } from '../supabase/functions/product-lookup/logic.ts';
+import { first, run } from './db/d1';
 import type { Env } from './env';
-
-const PRODUCT_COLUMNS =
-  'id, shop_id, barcode, name, category, buying_price, selling_price, created_at, updated_at, archived_at, brand, size, image_path, listed, catalog_product_id';
+import { authFor } from './api/authRoutes';
+import { membership } from './d1/common';
+import { shopStub } from './api/rpc';
 
 /** The shop app calls this from another site, so the browser preflight must succeed or the scan never runs. */
 const CORS_HEADERS = {
@@ -52,137 +49,35 @@ function json(body: LookupResponse, status = 200): Response {
   });
 }
 
-function serviceClient(env: Env): SupabaseClient {
-  return createClient(env.SUPABASE_URL!, env.SUPABASE_SERVICE_ROLE_KEY!, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-}
-
-function userClient(env: Env, authHeader: string): SupabaseClient {
-  return createClient(env.SUPABASE_URL!, env.SUPABASE_ANON_KEY!, {
-    global: { headers: { Authorization: authHeader } },
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-}
-
-async function assertActiveMember(user: SupabaseClient, shopId: string, userId: string): Promise<boolean> {
-  const { data, error } = await user
-    .from('shop_members')
-    .select('id')
-    .eq('shop_id', shopId)
-    .eq('user_id', userId)
-    .eq('status', 'active')
-    .maybeSingle();
-  return !error && Boolean(data);
-}
-
-async function checkRateLimit(admin: SupabaseClient, shopId: string): Promise<boolean> {
-  const windowStart = rateWindowStart();
-  const { data: existing } = await admin
-    .from('product_lookup_rate')
-    .select('request_count')
-    .eq('shop_id', shopId)
-    .eq('window_start', windowStart)
-    .maybeSingle();
-
-  const count = existing?.request_count ?? 0;
-  if (count >= RATE_LIMIT_PER_MINUTE) return false;
-
-  if (existing) {
-    const { error } = await admin
-      .from('product_lookup_rate')
-      .update({ request_count: count + 1 })
-      .eq('shop_id', shopId)
-      .eq('window_start', windowStart);
-    return !error;
-  }
-
-  const { error } = await admin.from('product_lookup_rate').insert({
-    shop_id: shopId,
-    window_start: windowStart,
-    request_count: 1,
-  });
-  // A concurrent insert races: re-read and accept if still under the limit.
-  if (error) {
-    const { data: again } = await admin
-      .from('product_lookup_rate')
-      .select('request_count')
-      .eq('shop_id', shopId)
-      .eq('window_start', windowStart)
-      .maybeSingle();
-    if (!again || again.request_count >= RATE_LIMIT_PER_MINUTE) return false;
-    await admin
-      .from('product_lookup_rate')
-      .update({ request_count: again.request_count + 1 })
-      .eq('shop_id', shopId)
-      .eq('window_start', windowStart);
-  }
-  return true;
-}
-
-async function findShopProduct(
-  admin: SupabaseClient,
-  shopId: string,
-  candidates: string[]
-): Promise<ShopProductPayload | null> {
-  const { data: own } = await admin
-    .from('products')
-    .select(PRODUCT_COLUMNS)
-    .eq('shop_id', shopId)
-    .in('barcode', candidates)
-    .limit(1)
-    .maybeSingle();
-  if (own) return mapShopProductRow(own as Record<string, unknown>);
-
-  const { data: link } = await admin
-    .from('product_barcodes')
-    .select('product_id')
-    .eq('shop_id', shopId)
-    .in('barcode', candidates)
-    .is('unlinked_at', null)
-    .limit(1)
-    .maybeSingle();
-  if (!link?.product_id) return null;
-
-  const { data: viaAlias } = await admin
-    .from('products')
-    .select(PRODUCT_COLUMNS)
-    .eq('shop_id', shopId)
-    .eq('id', link.product_id)
-    .maybeSingle();
-  return viaAlias ? mapShopProductRow(viaAlias as Record<string, unknown>) : null;
+async function findShopProduct(env: Env, shopId: string, candidates: string[]): Promise<ShopProductPayload | null> {
+  const row = await shopStub(env, shopId).findByBarcodes(candidates);
+  return row ? mapShopProductRow(row) : null;
 }
 
 async function findCatalogProduct(
-  admin: SupabaseClient,
+  env: Env,
   candidates: string[]
 ): Promise<{ suggestion: LookupSuggestion; catalog: CatalogMatch } | null> {
   for (const code of candidates) {
-    const { data: link } = await admin
-      .from('catalog_barcodes')
-      .select('barcode, catalog_product_id, kind, units_per_package')
-      .eq('barcode', code)
-      .maybeSingle();
+    const link = await first<{ barcode: string; catalog_product_id: string; kind: string; units_per_package: number | null }>(
+      env.DB,
+      'SELECT barcode, catalog_product_id, kind, units_per_package FROM catalog_barcodes WHERE barcode = ?',
+      code
+    );
     if (!link?.catalog_product_id) continue;
-
-    const { data: product } = await admin
-      .from('catalog_products')
-      .select(
-        'id, name, brand, category, package_size, package_quantity, package_unit, image_url, image_path, ingredients, verification_status'
-      )
-      .eq('id', link.catalog_product_id)
-      .maybeSingle();
+    const product = await first<Record<string, string | number | null>>(
+      env.DB,
+      `SELECT id, name, brand, category, package_size, package_quantity, package_unit, image_url, image_path, ingredients, verification_status
+         FROM catalog_products WHERE id = ?`,
+      link.catalog_product_id
+    );
     const name = typeof product?.name === 'string' ? product.name.trim() : '';
     if (!product || !name) continue;
-
-    const { data: unit } = await admin
-      .from('catalog_barcodes')
-      .select('barcode')
-      .eq('catalog_product_id', product.id)
-      .eq('kind', 'unit')
-      .limit(1)
-      .maybeSingle();
-
+    const unit = await first<{ barcode: string }>(
+      env.DB,
+      `SELECT barcode FROM catalog_barcodes WHERE catalog_product_id = ? AND kind = 'unit' LIMIT 1`,
+      String(product.id)
+    );
     const verificationStatus = product.verification_status as CatalogVerification;
     const kind = (link.kind as CatalogBarcodeKind) ?? 'unit';
     const packageQuantity = product.package_quantity == null ? null : Number(product.package_quantity);
@@ -219,35 +114,34 @@ async function findCatalogProduct(
 }
 
 async function readCache(
-  admin: SupabaseClient,
+  env: Env,
   barcode: string
 ): Promise<{ status: 'found' | 'not_found'; suggestion: LookupSuggestion | null } | null> {
-  const { data } = await admin
-    .from('product_lookup_cache')
-    .select('status, payload, expires_at')
-    .eq('barcode', barcode)
-    .maybeSingle();
+  const data = await first<{ status: string; payload: string | null; expires_at: string }>(
+    env.DB,
+    'SELECT status, payload, expires_at FROM product_lookup_cache WHERE barcode = ?',
+    barcode
+  );
   if (!data) return null;
   if (new Date(data.expires_at).getTime() <= Date.now()) return null;
   if (data.status === 'not_found') return { status: 'not_found', suggestion: null };
-  return { status: 'found', suggestion: data.payload as LookupSuggestion };
+  return { status: 'found', suggestion: data.payload ? (JSON.parse(data.payload) as LookupSuggestion) : null };
 }
 
-async function writeCache(
-  admin: SupabaseClient,
-  barcode: string,
-  status: 'found' | 'not_found',
-  payload: LookupSuggestion | null
-): Promise<void> {
+async function writeCache(env: Env, barcode: string, status: 'found' | 'not_found', payload: LookupSuggestion | null): Promise<void> {
   const now = new Date();
-  await admin.from('product_lookup_cache').upsert({
+  await run(
+    env.DB,
+    `INSERT INTO product_lookup_cache (barcode, status, payload, provider, fetched_at, expires_at)
+     VALUES (?, ?, ?, 'open_food_facts', ?, ?)
+     ON CONFLICT (barcode) DO UPDATE SET status = excluded.status, payload = excluded.payload,
+       provider = excluded.provider, fetched_at = excluded.fetched_at, expires_at = excluded.expires_at`,
     barcode,
     status,
-    payload: status === 'found' ? payload : null,
-    provider: 'open_food_facts',
-    fetched_at: now.toISOString(),
-    expires_at: cacheExpiresAt(status, now),
-  });
+    status === 'found' ? JSON.stringify(payload) : null,
+    now.toISOString(),
+    cacheExpiresAt(status, now)
+  );
 }
 
 async function lookupOff(
@@ -295,28 +189,21 @@ export async function handleProductLookup(req: Request, env: Env): Promise<Respo
   const rawBarcode = typeof body.barcode === 'string' ? body.barcode : '';
   if (!shopId || !rawBarcode.trim()) return json({ status: 'unavailable' }, 400);
 
-  const user = userClient(env, authHeader);
-  const {
-    data: { user: authUser },
-    error: authError,
-  } = await user.auth.getUser();
-  if (authError || !authUser) return json({ status: 'forbidden' }, 401);
-
-  if (!(await assertActiveMember(user, shopId, authUser.id))) {
-    return json({ status: 'forbidden' }, 403);
-  }
+  const session = await authFor(env).userForToken(authHeader.slice(7).trim());
+  if (!session || session.claims.recovery) return json({ status: 'forbidden' }, 401);
+  const shop = shopId.toLowerCase();
+  if (!(await membership(env.DB, shop, session.user.id))) return json({ status: 'forbidden' }, 403);
 
   const trimmed = rawBarcode.replace(/\s/g, '');
   const canonical = canonicalizeBarcode(rawBarcode);
   const repliedBarcode = canonical ?? trimmed;
 
-  const admin = serviceClient(env);
-  if (!(await checkRateLimit(admin, shopId))) {
+  if (!(await shopStub(env, shop).allowLookup(RATE_LIMIT_PER_MINUTE))) {
     return json({ status: 'rate_limited', barcode: repliedBarcode }, 429);
   }
 
   const candidates = shopBarcodeCandidates(rawBarcode);
-  const shopProduct = await findShopProduct(admin, shopId, candidates);
+  const shopProduct = await findShopProduct(env, shop, candidates);
   if (shopProduct) {
     return json({
       status: 'found',
@@ -327,7 +214,7 @@ export async function handleProductLookup(req: Request, env: Env): Promise<Respo
     });
   }
 
-  const catalogHit = await findCatalogProduct(admin, candidates);
+  const catalogHit = await findCatalogProduct(env, candidates);
   if (catalogHit) {
     return json({
       status: 'found',
@@ -341,7 +228,7 @@ export async function handleProductLookup(req: Request, env: Env): Promise<Respo
   // Open Food Facts only accepts a GTIN. A shop code still matches the catalog above.
   if (!canonical) return json({ status: 'invalid_barcode', barcode: trimmed });
 
-  const cached = await readCache(admin, canonical);
+  const cached = await readCache(env, canonical);
   if (cached?.status === 'not_found') {
     return json({ status: 'not_found', barcode: canonical, matchSource: 'cache' });
   }
@@ -362,11 +249,11 @@ export async function handleProductLookup(req: Request, env: Env): Promise<Respo
     return json({ status: 'rate_limited', barcode: canonical }, 429);
   }
   if (off.outcome === 'not_found') {
-    await writeCache(admin, canonical, 'not_found', null);
+    await writeCache(env, canonical, 'not_found', null);
     return json({ status: 'not_found', barcode: canonical, matchSource: 'open_food_facts' });
   }
 
-  await writeCache(admin, canonical, 'found', off.suggestion);
+  await writeCache(env, canonical, 'found', off.suggestion);
   return json({
     status: 'found',
     barcode: canonical,

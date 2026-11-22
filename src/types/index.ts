@@ -6,6 +6,10 @@ export type ScanMode = 'lookup' | 'sell' | 'stock_in';
 
 export interface EnvValidationResult {
   isValid: boolean;
+  /** 'cloudflare' when VITE_BACKEND=cloudflare: the app talks to the Worker API on this origin. */
+  backend: 'supabase' | 'cloudflare';
+  /** Cloudflare backend: API origin ('' for the same origin as the app). */
+  apiBase?: string;
   supabaseUrl?: string;
   supabaseAnonKey?: string;
   appName: string;

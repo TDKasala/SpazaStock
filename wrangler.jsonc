@@ -35,18 +35,11 @@
     }
   ],
   "r2_buckets": [{ "binding": "IMAGES", "bucket_name": "spazastock-product-images" }],
-  "vars": {
-    // Set to the real project URL before the first deploy (it is public, like VITE_SUPABASE_URL).
-    // Only the transition-era /api/product-lookup still reads Supabase.
-    "SUPABASE_URL": "https://nvyzwpqibexqsvwnxqiq.supabase.co"
-  },
   // Secrets (never in this file), per environment:
   //   wrangler secret put AUTH_SECRET            32+ random characters, signs access tokens
   //   wrangler secret put VAPID_PUBLIC_KEY       copied unchanged from Supabase Vault
   //   wrangler secret put VAPID_PRIVATE_KEY      copied unchanged from Supabase Vault
   //   wrangler secret put VAPID_SUBJECT          copied unchanged from Supabase Vault
-  //   wrangler secret put SUPABASE_ANON_KEY      transition only (product lookup)
-  //   wrangler secret put SUPABASE_SERVICE_ROLE_KEY  transition only (product lookup)
   // Email: add "send_email": [{ "name": "EMAIL" }] and the EMAIL_FROM var once a domain is
   // onboarded to Cloudflare Email Sending. Until then sign-in codes are written to the logs.
 
@@ -62,8 +55,7 @@
           "migrations_dir": "migrations/d1"
         }
       ],
-      "r2_buckets": [{ "binding": "IMAGES", "bucket_name": "spazastock-product-images-staging" }],
-      "vars": { "SUPABASE_URL": "https://nvyzwpqibexqsvwnxqiq.supabase.co" }
+      "r2_buckets": [{ "binding": "IMAGES", "bucket_name": "spazastock-product-images-staging" }]
     }
   }
 }

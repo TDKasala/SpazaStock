@@ -20,11 +20,4 @@ export interface Env {
   VAPID_PUBLIC_KEY?: string;
   VAPID_PRIVATE_KEY?: string;
   VAPID_SUBJECT?: string;
-  /**
-   * Transition only: the Supabase project the legacy routes still read (product lookup before
-   * the catalog moves). Unset once everything is on Cloudflare.
-   */
-  SUPABASE_URL?: string;
-  SUPABASE_ANON_KEY?: string;
-  SUPABASE_SERVICE_ROLE_KEY?: string;
 }

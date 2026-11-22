@@ -32,6 +32,8 @@ export interface ShopApi {
   stats: ShopObject['stats'];
   catalogLinks: ShopObject['catalogLinks'];
   usesCatalogProduct: ShopObject['usesCatalogProduct'];
+  findByBarcodes: ShopObject['findByBarcodes'];
+  allowLookup: ShopObject['allowLookup'];
 }
 
 export function shopStub(env: Env, shopId: string): ShopApi {
