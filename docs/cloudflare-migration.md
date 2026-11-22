@@ -8,6 +8,55 @@ This document has three parts: what the app uses today, how each piece maps onto
 and the order to move it in. Phase 1 (hosting) is already in the repository and works next to
 Vercel, so nothing in production changes until DNS is switched.
 
+## 0. Status (2026-11-22): Option A is built; deploy and data load are next
+
+**Decision:** Option A, fully Cloudflare. Shared data lives in D1. Each shop's ledger lives in its
+own Durable Object (SQLite).
+
+| Piece | State | Where |
+|---|---|---|
+| Hosting (PWA, headers, SPA routes) | done | `wrangler.jsonc`, `public/_headers`, `worker/index.ts` |
+| Auth (code sign-up/sign-in, passwords, reset, sessions) | done, tested | `worker/auth`, `migrations/d1/0002_auth.sql` |
+| Shop ledger: stock, sales, voids, expiry, products, packs, barcodes, wholesale, alerts | done, checked call-by-call against Postgres | `worker/shop` |
+| Shared functions: shops, team, invites, push, sync reports, catalog (search, adopt, review, confirm, intake, submissions) | done, checked against Postgres | `worker/d1` |
+| Sync pull, direct table reads, pictures (R2), product lookup | done | `worker/api`, `worker/productLookup.ts` |
+| Cron alerts + Web Push (WebCrypto) | done, tested with an independent receiver | `worker/cron.ts`, `worker/push` |
+| App switch | done: `VITE_BACKEND=cloudflare` uses `src/lib/cloud/cloudClient.ts`, without it the app still uses Supabase | `src/lib/supabase.ts` |
+| Data export, convert, verify, rehearse | done | `scripts/migrate-data` |
+| Platform admin console (27 `admin_*` functions) | **not yet ported** | see task list below |
+| Cloudflare resources | created: D1 `spazastock` (b231f3db…), `spazastock-staging` (bf9e655e…), R2 `spazastock-product-images[-staging]` | |
+| Staging/production deploy | **not done** (needs your Cloudflare API token on the machine that deploys) | runbook below |
+
+Proof so far: the differential tests in `src/test/worker` run each ported function against the original
+Postgres function (PGlite with the real migrations) and the TypeScript port, then compare results, error
+codes and messages, and the rows left behind. On `wrangler dev`, the real app in a browser signed in,
+loaded its shop and synced stock through the Worker with no errors.
+
+### Deploy runbook (staging first)
+
+Run on a machine with `CLOUDFLARE_API_TOKEN` set (Workers, D1, R2, Durable Objects edit):
+
+```bash
+npm ci
+# 1. Shared database schema + reference data
+npx wrangler d1 migrations apply spazastock-staging --env staging --remote
+# 2. Secrets (each command prompts for the value)
+openssl rand -base64 48 | npx wrangler secret put AUTH_SECRET --env staging
+npx wrangler secret put VAPID_PUBLIC_KEY --env staging    # copy from Supabase Vault, unchanged
+npx wrangler secret put VAPID_PRIVATE_KEY --env staging   # copy from Supabase Vault, unchanged
+npx wrangler secret put VAPID_SUBJECT --env staging       # copy from Supabase Vault, unchanged
+# 3. Build the app for the Cloudflare backend and deploy
+VITE_BACKEND=cloudflare npm run build
+npx wrangler deploy --env staging
+```
+
+Sign-in codes are written to the Worker logs (`npx wrangler tail --env staging`) until email is set up.
+To send real email, onboard a domain to Cloudflare Email Sending (`npx wrangler email sending enable <domain>`),
+then add `"send_email": [{ "name": "EMAIL" }]` and `"vars": { "EMAIL_FROM": "no-reply@<domain>" }` to the environment.
+
+Production is the same without `--env staging` (database `spazastock`, Worker `spazastock`), done at
+cutover after the data load (`docs/data-migration.md`).
+
 ## 1. What runs where today
 
 ### Vercel: hosting only
