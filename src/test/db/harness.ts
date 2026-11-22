@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { PGlite, type Transaction } from '@electric-sql/pglite';
 
-const MIGRATIONS_DIR = join(__dirname, '..', '..', '..', 'supabase', 'migrations');
+const MIGRATIONS_DIR = join(import.meta.dirname, '..', '..', '..', 'supabase', 'migrations');
 
 const SUPABASE_STANDINS = `
   create role anon nologin;

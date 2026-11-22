@@ -19,9 +19,10 @@ export async function lookupProductByBarcode(barcode: string, shopId: string): P
   if (!client || !navigator.onLine) return { status: 'unavailable' };
 
   try {
-    const { data, error } = await client.functions.invoke<ProductLookupResult>('product-lookup', {
-      body: { barcode, shopId },
-    });
+    const workerUrl = import.meta.env.VITE_PRODUCT_LOOKUP_URL?.trim();
+    const { data, error } = workerUrl
+      ? await lookupViaWorker(client, workerUrl, barcode, shopId)
+      : await client.functions.invoke<ProductLookupResult>('product-lookup', { body: { barcode, shopId } });
     if (error || !data || typeof data !== 'object' || !('status' in data)) {
       return { status: 'unavailable' };
     }
@@ -29,6 +30,28 @@ export async function lookupProductByBarcode(barcode: string, shopId: string): P
   } catch {
     return { status: 'unavailable' };
   }
+}
+
+/**
+ * Cloudflare Worker route (VITE_PRODUCT_LOOKUP_URL, e.g. /api/product-lookup). Mirrors
+ * functions.invoke: the user's access token as Bearer, and any non-2xx answer is an error.
+ */
+async function lookupViaWorker(
+  client: NonNullable<ReturnType<typeof getSupabase>>,
+  url: string,
+  barcode: string,
+  shopId: string
+): Promise<{ data: ProductLookupResult | null; error: unknown }> {
+  const { data: auth } = await client.auth.getSession();
+  const token = auth.session?.access_token;
+  if (!token) return { data: null, error: 'signed_out' };
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ barcode, shopId }),
+  });
+  if (!res.ok) return { data: null, error: res.status };
+  return { data: (await res.json()) as ProductLookupResult, error: null };
 }
 
 function normalizeLookupResult(data: ProductLookupResult): ProductLookupResult {

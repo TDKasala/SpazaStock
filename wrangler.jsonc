@@ -1,0 +1,61 @@
+{
+  // SpazaStock on Cloudflare Workers: the PWA, the API, auth, each shop's ledger (Durable
+  // Objects), shared data (D1), pictures (R2) and scheduled alerts (Cron Triggers).
+  // See docs/cloudflare-migration.md.
+  //
+  // Production is the top level; `--env staging` deploys spazastock-staging with its own
+  // database and bucket. Bindings are not inherited by environments, so each repeats them.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "spazastock",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "rules": [{ "type": "Text", "globs": ["**/*.sql"], "fallthrough": true }],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    // /admin, /login and any other client route fall back to index.html.
+    "not_found_handling": "single-page-application",
+    // The API, plus /assets/* so a stale hashed file 404s instead of becoming index.html.
+    // Everything else is served straight from the asset layer without running the Worker.
+    "run_worker_first": ["/api/*", "/assets/*"]
+  },
+  "observability": { "enabled": true },
+  // pg_cron's schedules: alerts every 15 minutes, Web Push every 5.
+  "triggers": { "crons": ["*/15 * * * *", "*/5 * * * *"] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ShopObject"] }],
+
+  "durable_objects": { "bindings": [{ "name": "SHOP", "class_name": "ShopObject" }] },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "spazastock",
+      "database_id": "b231f3db-9cba-4be8-bfd5-dd7272aa9d7f",
+      "migrations_dir": "migrations/d1"
+    }
+  ],
+  "r2_buckets": [{ "binding": "IMAGES", "bucket_name": "spazastock-product-images" }],
+  // Secrets (never in this file), per environment:
+  //   wrangler secret put AUTH_SECRET            32+ random characters, signs access tokens
+  //   wrangler secret put VAPID_PUBLIC_KEY       copied unchanged from Supabase Vault
+  //   wrangler secret put VAPID_PRIVATE_KEY      copied unchanged from Supabase Vault
+  //   wrangler secret put VAPID_SUBJECT          copied unchanged from Supabase Vault
+  // Email: add "send_email": [{ "name": "EMAIL" }] and the EMAIL_FROM var once a domain is
+  // onboarded to Cloudflare Email Sending. Until then sign-in codes are written to the logs.
+
+  "env": {
+    "staging": {
+      "name": "spazastock-staging",
+      "durable_objects": { "bindings": [{ "name": "SHOP", "class_name": "ShopObject" }] },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "spazastock-staging",
+          "database_id": "bf9e655e-99a7-488a-855d-4e3afe120b85",
+          "migrations_dir": "migrations/d1"
+        }
+      ],
+      "r2_buckets": [{ "binding": "IMAGES", "bucket_name": "spazastock-product-images-staging" }]
+    }
+  }
+}

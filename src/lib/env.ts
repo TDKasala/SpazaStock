@@ -7,6 +7,17 @@ import { EnvValidationResult } from '../types';
  */
 export function validateEnv(): EnvValidationResult {
   const errors: string[] = [];
+
+  // On Cloudflare the Worker serves the API on the app's own origin: no keys in the browser.
+  if (import.meta.env.VITE_BACKEND?.trim() === 'cloudflare') {
+    return {
+      isValid: true,
+      backend: 'cloudflare',
+      apiBase: import.meta.env.VITE_API_BASE?.trim() ?? '',
+      appName: import.meta.env.VITE_APP_NAME?.trim() || 'SpazaStock',
+      errors,
+    };
+  }
   
   // Safely read from import.meta.env
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim();
@@ -48,6 +59,7 @@ export function validateEnv(): EnvValidationResult {
 
   return {
     isValid,
+    backend: 'supabase',
     supabaseUrl: isValid ? supabaseUrl : undefined,
     supabaseAnonKey: isValid ? supabaseAnonKey : undefined,
     appName,
