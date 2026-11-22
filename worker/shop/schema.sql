@@ -39,6 +39,7 @@ CREATE UNIQUE INDEX products_shop_barcode_key ON products (shop_id, barcode);
 CREATE UNIQUE INDEX products_shop_catalog_active_key ON products (shop_id, catalog_product_id) WHERE ((catalog_product_id IS NOT NULL) AND (archived_at IS NULL));
 CREATE UNIQUE INDEX products_shop_id_id_key ON products (shop_id, id);
 CREATE INDEX products_shop_updated_idx ON products (shop_id, updated_at);
+CREATE TRIGGER products_set_updated_at AFTER UPDATE ON products FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at BEGIN UPDATE products SET updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE rowid = NEW.rowid; END;
 
 CREATE TABLE sales (
   id TEXT NOT NULL,
@@ -60,6 +61,7 @@ CREATE UNIQUE INDEX sales_shop_idempotency_key ON sales (shop_id, idempotency_ke
 CREATE INDEX sales_shop_sold_at_idx ON sales (shop_id, sold_at DESC);
 CREATE INDEX sales_shop_updated_idx ON sales (shop_id, updated_at);
 CREATE INDEX sales_sold_by_idx ON sales (sold_by);
+CREATE TRIGGER sales_set_updated_at AFTER UPDATE ON sales FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at BEGIN UPDATE sales SET updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE rowid = NEW.rowid; END;
 
 CREATE TABLE wholesalers (
   id TEXT NOT NULL,
@@ -78,6 +80,7 @@ CREATE TABLE wholesalers (
 CREATE UNIQUE INDEX wholesalers_active_name_idx ON wholesalers (shop_id, lower(name)) WHERE (archived_at IS NULL);
 CREATE UNIQUE INDEX wholesalers_shop_id_key ON wholesalers (shop_id, id);
 CREATE INDEX wholesalers_shop_updated_idx ON wholesalers (shop_id, updated_at);
+CREATE TRIGGER wholesalers_set_updated_at AFTER UPDATE ON wholesalers FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at BEGIN UPDATE wholesalers SET updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE rowid = NEW.rowid; END;
 
 CREATE TABLE low_stock_episodes (
   shop_id TEXT NOT NULL,
@@ -100,6 +103,7 @@ CREATE TABLE low_stock_dismissals (
 ) STRICT;
 CREATE UNIQUE INDEX low_stock_dismissals_shop_product_key ON low_stock_dismissals (shop_id, product_id);
 CREATE INDEX low_stock_dismissals_shop_updated_idx ON low_stock_dismissals (shop_id, updated_at);
+CREATE TRIGGER low_stock_dismissals_set_updated_at AFTER UPDATE ON low_stock_dismissals FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at BEGIN UPDATE low_stock_dismissals SET updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE rowid = NEW.rowid; END;
 
 CREATE TABLE product_packagings (
   id TEXT NOT NULL,
@@ -122,6 +126,7 @@ CREATE INDEX product_packagings_created_by_idx ON product_packagings (created_by
 CREATE UNIQUE INDEX product_packagings_shop_product_id_key ON product_packagings (shop_id, product_id, id);
 CREATE INDEX product_packagings_shop_product_idx ON product_packagings (shop_id, product_id);
 CREATE INDEX product_packagings_shop_updated_idx ON product_packagings (shop_id, updated_at);
+CREATE TRIGGER product_packagings_set_updated_at AFTER UPDATE ON product_packagings FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at BEGIN UPDATE product_packagings SET updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE rowid = NEW.rowid; END;
 
 CREATE TABLE sale_items (
   id TEXT NOT NULL,
@@ -146,6 +151,7 @@ CREATE TABLE sale_items (
 CREATE INDEX sale_items_shop_product_idx ON sale_items (shop_id, product_id);
 CREATE INDEX sale_items_shop_sale_idx ON sale_items (shop_id, sale_id);
 CREATE INDEX sale_items_shop_updated_idx ON sale_items (shop_id, updated_at);
+CREATE TRIGGER sale_items_set_updated_at AFTER UPDATE ON sale_items FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at BEGIN UPDATE sale_items SET updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE rowid = NEW.rowid; END;
 
 CREATE TABLE wholesale_orders (
   id TEXT NOT NULL,
@@ -162,6 +168,7 @@ CREATE TABLE wholesale_orders (
 ) STRICT;
 CREATE UNIQUE INDEX wholesale_orders_shop_id_key ON wholesale_orders (shop_id, id);
 CREATE INDEX wholesale_orders_shop_updated_idx ON wholesale_orders (shop_id, updated_at);
+CREATE TRIGGER wholesale_orders_set_updated_at AFTER UPDATE ON wholesale_orders FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at BEGIN UPDATE wholesale_orders SET updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE rowid = NEW.rowid; END;
 
 CREATE TABLE product_barcodes (
   id TEXT NOT NULL,
@@ -186,6 +193,7 @@ CREATE INDEX product_barcodes_created_by_idx ON product_barcodes (created_by);
 CREATE INDEX product_barcodes_packaging_idx ON product_barcodes (shop_id, product_id, packaging_id);
 CREATE INDEX product_barcodes_shop_updated_idx ON product_barcodes (shop_id, updated_at);
 CREATE INDEX product_barcodes_unlinked_by_idx ON product_barcodes (unlinked_by);
+CREATE TRIGGER product_barcodes_set_updated_at AFTER UPDATE ON product_barcodes FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at BEGIN UPDATE product_barcodes SET updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE rowid = NEW.rowid; END;
 
 CREATE TABLE sale_item_voids (
   id TEXT NOT NULL,
@@ -229,6 +237,7 @@ CREATE INDEX stock_discrepancies_sale_id_idx ON stock_discrepancies (sale_id);
 CREATE INDEX stock_discrepancies_sale_item_id_idx ON stock_discrepancies (sale_item_id);
 CREATE INDEX stock_discrepancies_shop_product_idx ON stock_discrepancies (shop_id, product_id);
 CREATE INDEX stock_discrepancies_shop_updated_idx ON stock_discrepancies (shop_id, updated_at);
+CREATE TRIGGER stock_discrepancies_set_updated_at AFTER UPDATE ON stock_discrepancies FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at BEGIN UPDATE stock_discrepancies SET updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE rowid = NEW.rowid; END;
 
 CREATE TABLE wholesale_order_items (
   id TEXT NOT NULL,
@@ -249,6 +258,7 @@ CREATE TABLE wholesale_order_items (
 ) STRICT;
 CREATE UNIQUE INDEX wholesale_order_items_active_product_idx ON wholesale_order_items (order_id, product_id) WHERE (removed_at IS NULL);
 CREATE INDEX wholesale_order_items_shop_updated_idx ON wholesale_order_items (shop_id, updated_at);
+CREATE TRIGGER wholesale_order_items_set_updated_at AFTER UPDATE ON wholesale_order_items FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at BEGIN UPDATE wholesale_order_items SET updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE rowid = NEW.rowid; END;
 
 CREATE TABLE wholesale_order_receipts (
   id TEXT NOT NULL,
@@ -263,6 +273,7 @@ CREATE TABLE wholesale_order_receipts (
 ) STRICT;
 CREATE UNIQUE INDEX wholesale_order_receipts_shop_id_key ON wholesale_order_receipts (shop_id, id);
 CREATE INDEX wholesale_order_receipts_shop_updated_idx ON wholesale_order_receipts (shop_id, updated_at);
+CREATE TRIGGER wholesale_order_receipts_set_updated_at AFTER UPDATE ON wholesale_order_receipts FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at BEGIN UPDATE wholesale_order_receipts SET updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE rowid = NEW.rowid; END;
 
 CREATE TABLE stock_batches (
   id TEXT NOT NULL,
@@ -300,6 +311,7 @@ CREATE INDEX stock_batches_product_id_idx ON stock_batches (product_id);
 CREATE INDEX stock_batches_received_barcode_idx ON stock_batches (received_barcode_id);
 CREATE INDEX stock_batches_received_by_idx ON stock_batches (received_by);
 CREATE INDEX stock_batches_shop_updated_idx ON stock_batches (shop_id, updated_at);
+CREATE TRIGGER stock_batches_set_updated_at AFTER UPDATE ON stock_batches FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at BEGIN UPDATE stock_batches SET updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE rowid = NEW.rowid; END;
 
 CREATE TABLE wholesale_order_receipt_lines (
   id TEXT NOT NULL,
@@ -319,6 +331,7 @@ CREATE TABLE wholesale_order_receipt_lines (
 CREATE UNIQUE INDEX wholesale_order_receipt_lines_batch_id_key ON wholesale_order_receipt_lines (batch_id);
 CREATE INDEX wholesale_order_receipt_lines_item_idx ON wholesale_order_receipt_lines (order_item_id);
 CREATE INDEX wholesale_order_receipt_lines_shop_updated_idx ON wholesale_order_receipt_lines (shop_id, updated_at);
+CREATE TRIGGER wholesale_order_receipt_lines_set_updated_at AFTER UPDATE ON wholesale_order_receipt_lines FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at BEGIN UPDATE wholesale_order_receipt_lines SET updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE rowid = NEW.rowid; END;
 
 CREATE TABLE expiry_alerts (
   id TEXT NOT NULL,
@@ -349,6 +362,7 @@ CREATE UNIQUE INDEX expiry_alerts_dedup_key ON expiry_alerts (batch_id, expiry_d
 CREATE INDEX expiry_alerts_open_idx ON expiry_alerts (shop_id) WHERE (resolved_at IS NULL);
 CREATE INDEX expiry_alerts_shop_product_idx ON expiry_alerts (shop_id, product_id);
 CREATE INDEX expiry_alerts_shop_updated_idx ON expiry_alerts (shop_id, updated_at);
+CREATE TRIGGER expiry_alerts_set_updated_at AFTER UPDATE ON expiry_alerts FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at BEGIN UPDATE expiry_alerts SET updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE rowid = NEW.rowid; END;
 
 CREATE TABLE stock_movements (
   id TEXT NOT NULL,
@@ -383,6 +397,7 @@ CREATE INDEX stock_movements_shop_created_idx ON stock_movements (shop_id, creat
 CREATE UNIQUE INDEX stock_movements_shop_idempotency_key ON stock_movements (shop_id, idempotency_key);
 CREATE INDEX stock_movements_shop_product_idx ON stock_movements (shop_id, product_id);
 CREATE INDEX stock_movements_shop_updated_idx ON stock_movements (shop_id, updated_at);
+CREATE TRIGGER stock_movements_set_updated_at AFTER UPDATE ON stock_movements FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at BEGIN UPDATE stock_movements SET updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE rowid = NEW.rowid; END;
 
 CREATE TABLE expiry_resolutions (
   id TEXT NOT NULL,

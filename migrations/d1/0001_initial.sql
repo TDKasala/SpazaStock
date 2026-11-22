@@ -47,6 +47,7 @@ CREATE TABLE platform_admins (
 ) STRICT;
 CREATE INDEX platform_admins_granted_by_idx ON platform_admins (granted_by);
 CREATE INDEX platform_admins_revoked_by_idx ON platform_admins (revoked_by);
+CREATE TRIGGER platform_admins_set_updated_at AFTER UPDATE ON platform_admins FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at BEGIN UPDATE platform_admins SET updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE rowid = NEW.rowid; END;
 
 CREATE TABLE platform_role_permissions (
   role TEXT NOT NULL,
@@ -94,6 +95,7 @@ CREATE TABLE catalog_products (
 CREATE INDEX catalog_products_common_category_name_idx ON catalog_products (category, name, id) WHERE common;
 CREATE INDEX catalog_products_common_name_idx ON catalog_products (name, id) WHERE common;
 CREATE INDEX catalog_products_updated_idx ON catalog_products (updated_at);
+CREATE TRIGGER catalog_products_set_updated_at AFTER UPDATE ON catalog_products FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at BEGIN UPDATE catalog_products SET updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE rowid = NEW.rowid; END;
 
 CREATE TABLE membership_events (
   id TEXT NOT NULL,
@@ -129,6 +131,7 @@ CREATE TABLE plans (
   CHECK (((price_cents IS NULL) OR ((price_cents >= 0) AND (price_cents <= 100000000)))),
   CHECK (((trial_days >= 0) AND (trial_days <= 365)))
 ) STRICT;
+CREATE TRIGGER plans_set_updated_at AFTER UPDATE ON plans FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at BEGIN UPDATE plans SET updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE rowid = NEW.rowid; END;
 
 CREATE TABLE platform_audit_log (
   id INTEGER NOT NULL,
@@ -156,6 +159,8 @@ CREATE INDEX platform_audit_log_actor_idx ON platform_audit_log (actor_id, occur
 CREATE INDEX platform_audit_log_occurred_idx ON platform_audit_log (occurred_at DESC);
 CREATE INDEX platform_audit_log_shop_idx ON platform_audit_log (shop_id, occurred_at DESC);
 CREATE INDEX platform_audit_log_target_idx ON platform_audit_log (target_id);
+CREATE TRIGGER platform_audit_log_reject_update BEFORE UPDATE ON platform_audit_log BEGIN SELECT RAISE(ABORT, 'platform_audit_log is append-only'); END;
+CREATE TRIGGER platform_audit_log_reject_delete BEFORE DELETE ON platform_audit_log BEGIN SELECT RAISE(ABORT, 'platform_audit_log is append-only'); END;
 
 CREATE TABLE product_lookup_cache (
   barcode TEXT NOT NULL,
@@ -180,6 +185,7 @@ CREATE TABLE profiles (
   FOREIGN KEY (id) REFERENCES users (id) ON DELETE CASCADE,
   CHECK (((display_name IS NULL) OR ((length(trim(display_name)) >= 1) AND (length(trim(display_name)) <= 80))))
 ) STRICT;
+CREATE TRIGGER profiles_set_updated_at AFTER UPDATE ON profiles FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at BEGIN UPDATE profiles SET updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE rowid = NEW.rowid; END;
 
 CREATE TABLE push_subscriptions (
   id TEXT NOT NULL,
@@ -202,6 +208,7 @@ CREATE TABLE push_subscriptions (
 ) STRICT;
 CREATE UNIQUE INDEX push_subscriptions_endpoint_key ON push_subscriptions (endpoint);
 CREATE INDEX push_subscriptions_user_id_idx ON push_subscriptions (user_id);
+CREATE TRIGGER push_subscriptions_set_updated_at AFTER UPDATE ON push_subscriptions FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at BEGIN UPDATE push_subscriptions SET updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE rowid = NEW.rowid; END;
 
 CREATE TABLE shops (
   id TEXT NOT NULL,
@@ -240,6 +247,7 @@ CREATE INDEX shops_created_at_idx ON shops (created_at DESC);
 CREATE INDEX shops_owner_id_idx ON shops (owner_id);
 CREATE INDEX shops_status_created_idx ON shops (status, created_at DESC);
 CREATE INDEX shops_suspended_by_idx ON shops (suspended_by);
+CREATE TRIGGER shops_set_updated_at AFTER UPDATE ON shops FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at BEGIN UPDATE shops SET updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE rowid = NEW.rowid; END;
 
 CREATE TABLE subscription_events (
   id INTEGER NOT NULL,
@@ -259,6 +267,8 @@ CREATE TABLE subscription_events (
 CREATE INDEX subscription_events_occurred_idx ON subscription_events (occurred_at);
 CREATE INDEX subscription_events_shop_idx ON subscription_events (shop_id, occurred_at DESC);
 CREATE INDEX subscription_events_status_idx ON subscription_events (new_status, occurred_at);
+CREATE TRIGGER subscription_events_reject_update BEFORE UPDATE ON subscription_events BEGIN SELECT RAISE(ABORT, 'subscription_events is append-only'); END;
+CREATE TRIGGER subscription_events_reject_delete BEFORE DELETE ON subscription_events BEGIN SELECT RAISE(ABORT, 'subscription_events is append-only'); END;
 
 CREATE TABLE catalog_barcodes (
   barcode TEXT NOT NULL,
@@ -277,6 +287,7 @@ CREATE TABLE catalog_barcodes (
   CHECK ((((kind = 'pack') AND ((units_per_package >= 2) AND (units_per_package <= 10000))) OR ((kind IN ('unit', 'alternate')) AND (units_per_package IS NULL))))
 ) STRICT;
 CREATE INDEX catalog_barcodes_product_idx ON catalog_barcodes (catalog_product_id);
+CREATE TRIGGER catalog_barcodes_set_updated_at AFTER UPDATE ON catalog_barcodes FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at BEGIN UPDATE catalog_barcodes SET updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE rowid = NEW.rowid; END;
 
 CREATE TABLE catalog_corrections (
   id TEXT NOT NULL,
@@ -310,6 +321,7 @@ CREATE TABLE catalog_corrections (
   CHECK ((status IN ('pending', 'applied', 'dismissed')))
 ) STRICT;
 CREATE INDEX catalog_corrections_product_idx ON catalog_corrections (catalog_product_id, status);
+CREATE TRIGGER catalog_corrections_set_updated_at AFTER UPDATE ON catalog_corrections FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at BEGIN UPDATE catalog_corrections SET updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE rowid = NEW.rowid; END;
 
 CREATE TABLE notifications (
   id TEXT NOT NULL,
@@ -341,6 +353,7 @@ CREATE INDEX notifications_push_due_idx ON notifications (push_next_at) WHERE (p
 CREATE INDEX notifications_push_failed_idx ON notifications (updated_at) WHERE (push_status = 'failed');
 CREATE INDEX notifications_shop_updated_idx ON notifications (shop_id, updated_at);
 CREATE INDEX notifications_user_read_idx ON notifications (user_id, read_at);
+CREATE TRIGGER notifications_set_updated_at AFTER UPDATE ON notifications FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at BEGIN UPDATE notifications SET updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE rowid = NEW.rowid; END;
 
 CREATE TABLE plan_entitlements (
   plan_code TEXT NOT NULL,
@@ -354,6 +367,7 @@ CREATE TABLE plan_entitlements (
   CHECK (((limit_value IS NULL) OR ((limit_value >= 0) AND (limit_value <= 1000000))))
 ) STRICT;
 CREATE INDEX plan_entitlements_key_idx ON plan_entitlements (key);
+CREATE TRIGGER plan_entitlements_set_updated_at AFTER UPDATE ON plan_entitlements FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at BEGIN UPDATE plan_entitlements SET updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE rowid = NEW.rowid; END;
 
 CREATE TABLE platform_features (
   key TEXT NOT NULL,
@@ -365,6 +379,7 @@ CREATE TABLE platform_features (
   FOREIGN KEY (updated_by) REFERENCES users (id) ON DELETE SET NULL
 ) STRICT;
 CREATE INDEX platform_features_updated_by_idx ON platform_features (updated_by);
+CREATE TRIGGER platform_features_set_updated_at AFTER UPDATE ON platform_features FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at BEGIN UPDATE platform_features SET updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE rowid = NEW.rowid; END;
 
 CREATE TABLE shop_members (
   id TEXT NOT NULL,
@@ -401,6 +416,7 @@ CREATE UNIQUE INDEX shop_members_pending_email_key ON shop_members (shop_id, inv
 CREATE INDEX shop_members_shop_updated_idx ON shop_members (shop_id, updated_at);
 CREATE UNIQUE INDEX shop_members_shop_user_key ON shop_members (shop_id, user_id);
 CREATE INDEX shop_members_user_id_idx ON shop_members (user_id);
+CREATE TRIGGER shop_members_set_updated_at AFTER UPDATE ON shop_members FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at BEGIN UPDATE shop_members SET updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE rowid = NEW.rowid; END;
 
 CREATE TABLE subscriptions (
   id TEXT NOT NULL,
@@ -426,6 +442,7 @@ CREATE INDEX subscriptions_plan_idx ON subscriptions (plan);
 CREATE UNIQUE INDEX subscriptions_provider_subscription_key ON subscriptions (provider, provider_subscription_id) WHERE (provider_subscription_id IS NOT NULL);
 CREATE UNIQUE INDEX subscriptions_shop_id_key ON subscriptions (shop_id);
 CREATE INDEX subscriptions_status_idx ON subscriptions (status);
+CREATE TRIGGER subscriptions_set_updated_at AFTER UPDATE ON subscriptions FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at BEGIN UPDATE subscriptions SET updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE rowid = NEW.rowid; END;
 
 CREATE TABLE sync_failure_reports (
   shop_id TEXT NOT NULL,

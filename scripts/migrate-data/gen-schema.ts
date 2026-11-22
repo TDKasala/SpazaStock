@@ -2,6 +2,7 @@
  * Regenerates the Cloudflare SQLite schemas from supabase/migrations:
  *   migrations/d1/0001_initial.sql   shared D1 database
  *   worker/shop/schema.sql           per-shop Durable Object database
+ *   worker/db/columns.ts             column kinds the Worker uses to shape rows for the app
  *
  *   npm run data:schema
  *
@@ -16,6 +17,7 @@ import { generateSchemas } from './lib/sqliteSchema.ts';
 export const ROOT = join(import.meta.dirname, '..', '..');
 export const D1_SCHEMA_PATH = join(ROOT, 'migrations', 'd1', '0001_initial.sql');
 export const SHOP_SCHEMA_PATH = join(ROOT, 'worker', 'shop', 'schema.sql');
+export const COLUMNS_PATH = join(ROOT, 'worker', 'db', 'columns.ts');
 
 const pg = await createDatabase();
 try {
@@ -23,6 +25,7 @@ try {
   for (const [path, sql] of [
     [D1_SCHEMA_PATH, schemas.d1],
     [SHOP_SCHEMA_PATH, schemas.shop],
+    [COLUMNS_PATH, schemas.columnsModule],
   ] as const) {
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, sql);
