@@ -8,7 +8,7 @@ import { createDatabase, rpc, type User } from '../db/harness';
 import { freshD1 } from './nodeD1';
 import { TABLES } from '../../../worker/db/columns';
 import { DbError } from '../../../worker/db/errors';
-import { D1_FUNCTIONS } from '../../../worker/d1/functions';
+import { ANON_FUNCTIONS, D1_FUNCTIONS } from '../../../worker/d1/functions';
 import { convertValue, parseExact } from '../../../scripts/migrate-data/lib/transform';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -127,7 +127,10 @@ export async function createD1Pair(): Promise<D1Pair> {
         pgOut = { error: { code: e.code ?? 'unknown', message: e.message ?? '' } };
       }
       let d1Out: Outcome;
-      try {
+      if (user === null && !ANON_FUNCTIONS.has(fn)) {
+        // The Worker refuses these before they run, with Postgres's message for the anon role.
+        d1Out = { error: { code: '42501', message: `permission denied for function ${fn}` } };
+      } else try {
         const ctx = { userId: user?.id ?? null, email: user?.email ?? null, now: new Date().toISOString() };
         const data = await D1_FUNCTIONS[fn](d1, ctx, args);
         // rpc() returns a record function's row as its single value; void returns null.
