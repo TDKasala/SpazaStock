@@ -258,6 +258,10 @@ export async function buildLoadPlan(manifest: ExportManifest, readLines: ReadLin
   }));
 
   const d1Statements: string[] = ['PRAGMA defer_foreign_keys = true;'];
+  // The production copy replaces whatever is there (reference data seeded by 0003, test rows).
+  const d1Order = manifest.tables.filter((t) => storeOf(t.name) === 'd1').map((t) => sqliteTableName(t.name));
+  for (const table of [...d1Order].reverse()) d1Statements.push(`DELETE FROM ${table};`);
+  d1Statements.push('DELETE FROM sessions;', 'DELETE FROM auth_codes;', 'DELETE FROM users;');
   const d1Rows: Record<string, number> = { users: users.length };
   for (const u of users) d1Statements.push(insertStatement('users', u));
   for (const t of manifest.tables) {

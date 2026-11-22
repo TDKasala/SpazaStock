@@ -1,13 +1,30 @@
 /** Bindings and secrets of the SpazaStock Worker (see wrangler.jsonc). */
+import type { ShopObject } from './shop/ShopObject';
+
 export interface Env {
   /** Static front end built by Vite into dist/. */
   ASSETS: Fetcher;
-  /** Shared D1 database (migrations/d1). Not used by any route yet. */
+  /** Shared D1 database (migrations/d1). */
   DB: D1Database;
-  /** https://<project-ref>.supabase.co, a plain var while the database is still on Supabase. */
-  SUPABASE_URL: string;
-  /** Public anon / sb_publishable_ key: `wrangler secret put SUPABASE_ANON_KEY`. */
-  SUPABASE_ANON_KEY: string;
-  /** Bypasses RLS. Only ever a Worker secret: `wrangler secret put SUPABASE_SERVICE_ROLE_KEY`. */
-  SUPABASE_SERVICE_ROLE_KEY: string;
+  /** One Durable Object per shop: that shop's ledger. */
+  SHOP: DurableObjectNamespace<ShopObject>;
+  /** Product pictures (keys as in Supabase Storage: <shop-id>/<hash>.webp, catalog/<id>.webp). */
+  IMAGES: R2Bucket;
+  /** Cloudflare Email Sending, for sign-in codes. Optional in local development. */
+  EMAIL?: SendEmail;
+  /** Sender address on a domain onboarded to Email Sending, e.g. no-reply@spazastock.co.za. */
+  EMAIL_FROM?: string;
+  /** Signs access tokens. `wrangler secret put AUTH_SECRET` (32+ random characters). */
+  AUTH_SECRET: string;
+  /** Web Push keys, copied unchanged from Supabase Vault so existing subscriptions keep working. */
+  VAPID_PUBLIC_KEY?: string;
+  VAPID_PRIVATE_KEY?: string;
+  VAPID_SUBJECT?: string;
+  /**
+   * Transition only: the Supabase project the legacy routes still read (product lookup before
+   * the catalog moves). Unset once everything is on Cloudflare.
+   */
+  SUPABASE_URL?: string;
+  SUPABASE_ANON_KEY?: string;
+  SUPABASE_SERVICE_ROLE_KEY?: string;
 }

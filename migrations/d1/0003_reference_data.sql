@@ -1,0 +1,50 @@
+-- Reference data the Postgres migrations seeded: shop roles and their permissions, platform
+-- roles, plans and their entitlements, feature flags. Generated once from supabase/migrations.
+-- INSERT OR IGNORE: the production import replaces these tables with the live rows anyway.
+
+INSERT OR IGNORE INTO entitlement_catalog (key, kind, description) VALUES ('expiry_push', 'boolean', 'Expiry alerts delivered as push notifications');
+INSERT OR IGNORE INTO entitlement_catalog (key, kind, description) VALUES ('team.max_members', 'limit', 'Team members, joined or invited, including owners');
+INSERT OR IGNORE INTO role_permissions (role, permission) VALUES ('manager', 'expiry.manage');
+INSERT OR IGNORE INTO role_permissions (role, permission) VALUES ('manager', 'inventory.view');
+INSERT OR IGNORE INTO role_permissions (role, permission) VALUES ('manager', 'orders.manage');
+INSERT OR IGNORE INTO role_permissions (role, permission) VALUES ('manager', 'products.edit');
+INSERT OR IGNORE INTO role_permissions (role, permission) VALUES ('manager', 'sales.record');
+INSERT OR IGNORE INTO role_permissions (role, permission) VALUES ('manager', 'stock.adjust');
+INSERT OR IGNORE INTO role_permissions (role, permission) VALUES ('manager', 'stock.receive');
+INSERT OR IGNORE INTO role_permissions (role, permission) VALUES ('owner', 'billing.view');
+INSERT OR IGNORE INTO role_permissions (role, permission) VALUES ('owner', 'expiry.manage');
+INSERT OR IGNORE INTO role_permissions (role, permission) VALUES ('owner', 'inventory.view');
+INSERT OR IGNORE INTO role_permissions (role, permission) VALUES ('owner', 'orders.manage');
+INSERT OR IGNORE INTO role_permissions (role, permission) VALUES ('owner', 'products.edit');
+INSERT OR IGNORE INTO role_permissions (role, permission) VALUES ('owner', 'sales.record');
+INSERT OR IGNORE INTO role_permissions (role, permission) VALUES ('owner', 'shop.settings');
+INSERT OR IGNORE INTO role_permissions (role, permission) VALUES ('owner', 'stock.adjust');
+INSERT OR IGNORE INTO role_permissions (role, permission) VALUES ('owner', 'stock.receive');
+INSERT OR IGNORE INTO role_permissions (role, permission) VALUES ('owner', 'team.manage');
+INSERT OR IGNORE INTO role_permissions (role, permission) VALUES ('staff', 'inventory.view');
+INSERT OR IGNORE INTO role_permissions (role, permission) VALUES ('staff', 'sales.record');
+INSERT OR IGNORE INTO role_permissions (role, permission) VALUES ('staff', 'stock.receive');
+INSERT OR IGNORE INTO platform_role_permissions (role, permission) VALUES ('analyst', 'analytics.view');
+INSERT OR IGNORE INTO platform_role_permissions (role, permission) VALUES ('billing', 'billing.manage');
+INSERT OR IGNORE INTO platform_role_permissions (role, permission) VALUES ('billing', 'billing.view');
+INSERT OR IGNORE INTO platform_role_permissions (role, permission) VALUES ('billing', 'tenants.view');
+INSERT OR IGNORE INTO platform_role_permissions (role, permission) VALUES ('superadmin', 'admins.manage');
+INSERT OR IGNORE INTO platform_role_permissions (role, permission) VALUES ('superadmin', 'analytics.view');
+INSERT OR IGNORE INTO platform_role_permissions (role, permission) VALUES ('superadmin', 'audit.view');
+INSERT OR IGNORE INTO platform_role_permissions (role, permission) VALUES ('superadmin', 'billing.manage');
+INSERT OR IGNORE INTO platform_role_permissions (role, permission) VALUES ('superadmin', 'billing.view');
+INSERT OR IGNORE INTO platform_role_permissions (role, permission) VALUES ('superadmin', 'catalog.verify');
+INSERT OR IGNORE INTO platform_role_permissions (role, permission) VALUES ('superadmin', 'operations.view');
+INSERT OR IGNORE INTO platform_role_permissions (role, permission) VALUES ('superadmin', 'plans.manage');
+INSERT OR IGNORE INTO platform_role_permissions (role, permission) VALUES ('superadmin', 'tenants.export');
+INSERT OR IGNORE INTO platform_role_permissions (role, permission) VALUES ('superadmin', 'tenants.manage');
+INSERT OR IGNORE INTO platform_role_permissions (role, permission) VALUES ('superadmin', 'tenants.view');
+INSERT OR IGNORE INTO platform_role_permissions (role, permission) VALUES ('support', 'operations.view');
+INSERT OR IGNORE INTO platform_role_permissions (role, permission) VALUES ('support', 'tenants.view');
+INSERT OR IGNORE INTO plans (code, name, price_cents, currency, billing_interval, trial_days, grace_days, is_active) VALUES ('free', 'Free', 0, 'ZAR', 'month', 0, 0, 1);
+INSERT OR IGNORE INTO plans (code, name, price_cents, currency, billing_interval, trial_days, grace_days, is_active) VALUES ('pro', 'Pro', NULL, 'ZAR', 'month', 14, 7, 1);
+INSERT OR IGNORE INTO plan_entitlements (plan_code, key, enabled, limit_value) VALUES ('free', 'expiry_push', 1, NULL);
+INSERT OR IGNORE INTO plan_entitlements (plan_code, key, enabled, limit_value) VALUES ('pro', 'expiry_push', 1, NULL);
+INSERT OR IGNORE INTO plan_entitlements (plan_code, key, enabled, limit_value) VALUES ('free', 'team.max_members', 1, NULL);
+INSERT OR IGNORE INTO plan_entitlements (plan_code, key, enabled, limit_value) VALUES ('pro', 'team.max_members', 1, NULL);
+INSERT OR IGNORE INTO platform_features (key, enabled) VALUES ('expiry_push', 1);

@@ -148,3 +148,23 @@ export function uuidArg(value: unknown): string | null {
   }
   return value.toLowerCase();
 }
+
+/** private.has_platform_permission: an active platform admin whose role grants it. */
+export async function hasPlatformPermission(db: D1Like, userId: string | null, permission: string): Promise<boolean> {
+  if (!userId) return false;
+  return Boolean(
+    await first(
+      db,
+      `SELECT 1 AS x FROM platform_admins a JOIN platform_role_permissions rp ON rp.role = a.role
+        WHERE a.user_id = ? AND a.status = 'active' AND rp.permission = ?`,
+      userId,
+      permission
+    )
+  );
+}
+
+/** private.platform_role */
+export async function platformRole(db: D1Like, userId: string | null): Promise<string | null> {
+  if (!userId) return null;
+  return (await first<{ role: string }>(db, `SELECT role FROM platform_admins WHERE user_id = ? AND status = 'active'`, userId))?.role ?? null;
+}

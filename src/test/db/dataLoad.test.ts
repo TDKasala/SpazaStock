@@ -6,7 +6,7 @@
  * Also fails when migrations/d1/0001_initial.sql or worker/shop/schema.sql are out of date.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { PGlite } from '@electric-sql/pglite';
@@ -38,6 +38,12 @@ import {
 import { rehearse } from '../../../scripts/migrate-data/lib/rehearse';
 
 const ROOT = join(import.meta.dirname, '..', '..', '..');
+const allD1Migrations = () =>
+  readdirSync(join(ROOT, 'migrations', 'd1'))
+    .filter((f) => f.endsWith('.sql'))
+    .sort()
+    .map((f) => readFileSync(join(ROOT, 'migrations', 'd1', f), 'utf8'))
+    .join('\n');
 const ISO_MS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
 let pg: PGlite;
@@ -141,7 +147,7 @@ describe('converted data', () => {
   });
 
   it('loads into the generated schemas with every constraint and foreign key enforced', () => {
-    const result = rehearse(plan, schemas.d1, schemas.shop);
+    const result = rehearse(plan, allD1Migrations(), schemas.shop);
     expect(result.errors).toEqual([]);
     for (const t of manifest.tables) {
       const name = t.name.slice(t.name.indexOf('.') + 1);
@@ -189,7 +195,7 @@ describe('converted data', () => {
     const broken = structuredClone(plan);
     const products = broken.shops.find((s) => s.shopId === shopA)!.tables.find((t) => t.table === 'products')!;
     products.rows[0].selling_price_cents = -1;
-    expect(rehearse(broken, schemas.d1, schemas.shop).errors.join('\n')).toMatch(/CHECK constraint failed/);
+    expect(rehearse(broken, allD1Migrations(), schemas.shop).errors.join('\n')).toMatch(/CHECK constraint failed/);
   });
 });
 

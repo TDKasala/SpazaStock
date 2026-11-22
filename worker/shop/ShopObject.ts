@@ -107,21 +107,18 @@ export class ShopObject extends DurableObject {
   }
 
   /**
-   * Rows changed after `since` (updated_at, then id), as the app's delta pull expects. sale_items
-   * carry their sale's sold_at and idempotency_key, like the PostgREST embed did.
+   * The app's delta pull: rows with updated_at after `since`, ordered by updated_at then id, one
+   * page at an offset (PostgREST .gt().order().range()). sale_items carry their sale's sold_at
+   * and idempotency_key, like the PostgREST embed did.
    */
-  async pull(table: string, since: string, sinceId: string | null, limit: number): Promise<ApiRow[]> {
+  async pull(table: string, since: string, offset: number, limit: number): Promise<ApiRow[]> {
     if (!PULL_TABLES.has(table)) throw new DbError('42501', `Table ${table} cannot be pulled.`);
     const size = Math.max(1, Math.min(limit, 1000));
     const rows = this.sql.all(
-      `SELECT * FROM ${table}
-        WHERE updated_at > ? OR (updated_at = ? AND ? IS NOT NULL AND id > ?)
-        ORDER BY updated_at, id LIMIT ?`,
-      since,
-      since,
-      sinceId,
-      sinceId,
-      size
+      `SELECT * FROM ${table} WHERE updated_at > ? ORDER BY updated_at, id LIMIT ? OFFSET ?`,
+      new Date(since).toISOString(),
+      size,
+      Math.max(0, offset)
     );
     const out = toApiRows(table, rows);
     if (table === 'sale_items' && out.length) {
@@ -137,6 +134,12 @@ export class ShopObject extends DurableObject {
       for (const r of out) r.sales = sales.get(String(r.sale_id)) ?? null;
     }
     return out;
+  }
+
+  /** Owners and managers marking a stock discrepancy resolved (the app's direct table update). */
+  async resolveDiscrepancy(id: string, resolvedAt: string | null): Promise<ApiRow[]> {
+    const changed = this.sql.run('UPDATE stock_discrepancies SET resolved_at = ? WHERE id = ?', resolvedAt, id);
+    return changed ? toApiRows('stock_discrepancies', this.sql.all('SELECT * FROM stock_discrepancies WHERE id = ?', id)) : [];
   }
 
   /** Reads rows for the app's other direct table reads (by id or by an exact column match). */
