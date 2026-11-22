@@ -192,3 +192,30 @@ describe('shop set-up from the common catalogue', () => {
     await sameShared('staff', 'list_shop_catalog_review', { p_shop_id: p.shopId, p_status: 'selling' });
   });
 });
+
+describe('catalogue review', () => {
+  it('sells and hides common catalogue products the same way', async () => {
+    const { rows } = await p.pg.query<{ id: string }>('select id from public.catalog_products');
+    const entriesFor = async () => {
+      const out: Record<string, unknown> = {};
+      for (const { id } of rows) {
+        const i = (await catalogInputs(id)) as { catalogProduct?: Record<string, unknown>; catalogBarcodes?: unknown[] };
+        const { rows: c } = await p.pg.query<{ common: boolean }>('select common from public.catalog_products where id = $1', [id]);
+        out[id] = { product: { ...i.catalogProduct, common: c[0].common }, barcodes: i.catalogBarcodes };
+      }
+      return out;
+    };
+    const run = async (decisions: unknown) => {
+      const r = await p.call(p.owner, 'review_shop_catalog', { p_shop_id: p.shopId, p_decisions: decisions }, { catalogEntries: await entriesFor() });
+      expect(r.sq).toEqual(r.pg);
+      const t = await p.tables();
+      for (const table of Object.keys(t.pg)) expect(t.sq[table], table).toEqual(t.pg[table]);
+    };
+    await run([{ catalog_product_id: oil, decision: 'hide' }]);
+    await run([{ catalog_product_id: oil, decision: 'sell', buying_price: 30, selling_price: '45.5' }]);
+    await run([{ catalog_product_id: oil, decision: 'maybe' }]);
+    await run([{ catalog_product_id: soap, decision: 'sell' }]);
+    await run([]);
+    await run(Array.from({ length: 51 }, () => ({ catalog_product_id: oil, decision: 'sell' })));
+  });
+});

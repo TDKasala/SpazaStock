@@ -91,11 +91,9 @@ async function shopInputs(env: Env, name: string, shopId: string, args: Record<s
       );
     }
   }
-  if (name === 'confirm_shop_catalog' && Array.isArray(args.p_selections)) {
-    inputs.catalogEntries = await catalogEntries(
-      env,
-      (args.p_selections as Record<string, unknown>[]).map((s) => String(s?.catalog_product_id ?? ''))
-    );
+  const choices = name === 'confirm_shop_catalog' ? args.p_selections : name === 'review_shop_catalog' ? args.p_decisions : null;
+  if (Array.isArray(choices)) {
+    inputs.catalogEntries = await catalogEntries(env, (choices as Record<string, unknown>[]).map((s) => String(s?.catalog_product_id ?? '')));
   }
   if (name === 'set_product_image' && typeof args.p_image_path === 'string') {
     const path = args.p_image_path.trim();

@@ -250,42 +250,41 @@ export interface CatalogEntryInput {
   barcodes: CatalogBarcodeInput[];
 }
 
-/**
- * public.confirm_shop_catalog: adds the chosen common catalog products while a shop is set up.
- * inputs.catalogEntries: each selected catalog product (with common flag) and its barcodes.
- */
-export function confirmShopCatalog(call: ShopCall, sql: SyncSql, a: Args): ApiRow {
-  const { ctx } = call;
-  if (!ctx.permissions.includes('products.edit') || ctx.userId === null) throw forbiddenShop();
-  if (!ctx.shopActive) throw suspendedShop();
-  const selections = a.p_selections;
-  if (!Array.isArray(selections)) throw invalid('Choose catalogue products as a list.');
-  const entries = (call.inputs.catalogEntries as Record<string, CatalogEntryInput> | undefined) ?? {};
-  const seen = new Set<string>();
-  const results: ApiRow[] = [];
-  for (const raw of selections as Record<string, unknown>[]) {
-    const idText = raw?.catalog_product_id == null || raw.catalog_product_id === '' ? null : String(raw.catalog_product_id);
-    if (idText === null || !/^[0-9a-f-]{36}$/i.test(idText)) throw invalid('Catalog product id is required.');
-    const catalogId = idText.toLowerCase();
-    if (seen.has(catalogId)) continue;
-    seen.add(catalogId);
-    const buying = raw.buying_price == null || raw.buying_price === '' ? null : optionalCents(raw.buying_price);
-    const selling = raw.selling_price == null || raw.selling_price === '' ? null : optionalCents(raw.selling_price);
-    if ((buying !== null && buying < 0) || (selling !== null && selling < 0)) throw invalid('Prices cannot be negative.');
-    const entry = entries[catalogId];
-    if (!entry) throw notFound('Catalog product not found.');
-    if (!entry.product.common) throw invalid('Only a common catalogue product can be added while setting up a shop.');
+interface CatalogChoice {
+  catalogId: string;
+  buying: number | null;
+  selling: number | null;
+  /** review_shop_catalog: sell (listed) or hide; confirm_shop_catalog leaves listing alone. */
+  listed: boolean | null;
+}
 
-    let product = one(sql, 'SELECT * FROM products WHERE shop_id = ? AND catalog_product_id = ? AND archived_at IS NULL', ctx.shopId, catalogId);
+/** Shared body of confirm_shop_catalog and review_shop_catalog: add or update each chosen product. */
+function applyCatalogChoices(call: ShopCall, sql: SyncSql, choices: CatalogChoice[], notCommon: string): ApiRow[] {
+  const { ctx } = call;
+  const entries = (call.inputs.catalogEntries as Record<string, CatalogEntryInput> | undefined) ?? {};
+  const results: ApiRow[] = [];
+  const setListed = (id: string, listed: boolean | null) => {
+    if (listed === null) return;
+    sql.run('UPDATE products SET listed = ? WHERE id = ? AND shop_id = ? AND listed IS NOT ?', listed ? 1 : 0, id, ctx.shopId, listed ? 1 : 0);
+  };
+  for (const choice of choices) {
+    const entry = entries[choice.catalogId];
+    if (!entry) throw notFound('Catalog product not found.');
+    if (!entry.product.common) throw invalid(notCommon);
+    let product = one(sql, 'SELECT * FROM products WHERE shop_id = ? AND catalog_product_id = ? AND archived_at IS NULL', ctx.shopId, choice.catalogId);
     let created = false;
     let links: { packagings: ApiRow[]; barcodes: ApiRow[] } = { packagings: [], barcodes: [] };
-    if (!product) {
+    if (product) {
+      setListed(String(product.id), choice.listed);
+      product = get(sql, 'products', String(product.id));
+    } else {
       const primary = primaryBarcode(entry.barcodes);
       if (!primary) throw invalid('This catalog product has no single-item barcode.');
       const byBarcode = one(sql, 'SELECT * FROM products WHERE shop_id = ? AND barcode = ?', ctx.shopId, primary);
       if (byBarcode && byBarcode.archived_at === null && byBarcode.catalog_product_id === null) {
-        const other = one(sql, 'SELECT 1 AS x FROM products WHERE shop_id = ? AND catalog_product_id = ? AND archived_at IS NULL AND id <> ?', ctx.shopId, catalogId, byBarcode.id);
-        if (!other) sql.run('UPDATE products SET catalog_product_id = ? WHERE id = ? AND catalog_product_id IS NULL', catalogId, byBarcode.id);
+        const other = one(sql, 'SELECT 1 AS x FROM products WHERE shop_id = ? AND catalog_product_id = ? AND archived_at IS NULL AND id <> ?', ctx.shopId, choice.catalogId, byBarcode.id);
+        if (!other) sql.run('UPDATE products SET catalog_product_id = ? WHERE id = ? AND catalog_product_id IS NULL', choice.catalogId, byBarcode.id);
+        setListed(String(byBarcode.id), choice.listed);
         product = get(sql, 'products', String(byBarcode.id));
       } else if (byBarcode) {
         if (byBarcode.archived_at === null) throw conflict(`Barcode ${primary} is already used in this shop.`);
@@ -301,14 +300,15 @@ export function confirmShopCatalog(call: ShopCall, sql: SyncSql, a: Args): ApiRo
           barcode: primary,
           name: entry.product.name,
           category: entry.product.category,
-          buying_price_cents: buying,
-          selling_price_cents: selling,
+          buying_price_cents: choice.buying,
+          selling_price_cents: choice.selling,
           created_at: ctx.now,
           updated_at: ctx.now,
           brand: entry.product.brand,
           size: entry.product.package_size,
-          catalog_product_id: catalogId,
+          catalog_product_id: choice.catalogId,
           image_path: entry.product.image_path,
+          ...(choice.listed === null ? {} : { listed: choice.listed ? 1 : 0 }),
         });
         product = get(sql, 'products', id);
         created = true;
@@ -317,7 +317,69 @@ export function confirmShopCatalog(call: ShopCall, sql: SyncSql, a: Args): ApiRo
     }
     results.push({ created, product: toApiRow('products', product), packagings: links.packagings, barcodes: links.barcodes });
   }
+  return results;
+}
+
+function catalogIdOf(raw: Record<string, unknown> | null | undefined): string {
+  const idText = raw?.catalog_product_id == null || raw.catalog_product_id === '' ? null : String(raw.catalog_product_id);
+  if (idText === null || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idText)) {
+    throw invalid('Catalog product id is required.');
+  }
+  return idText.toLowerCase();
+}
+
+function choicePrices(raw: Record<string, unknown>): { buying: number | null; selling: number | null } {
+  const buying = raw.buying_price == null || raw.buying_price === '' ? null : optionalCents(raw.buying_price);
+  const selling = raw.selling_price == null || raw.selling_price === '' ? null : optionalCents(raw.selling_price);
+  if ((buying !== null && buying < 0) || (selling !== null && selling < 0)) throw invalid('Prices cannot be negative.');
+  return { buying, selling };
+}
+
+function assertEditor(ctx: ShopCall['ctx']): void {
+  if (!ctx.permissions.includes('products.edit') || ctx.userId === null) throw forbiddenShop();
+  if (!ctx.shopActive) throw suspendedShop();
+}
+
+/**
+ * public.confirm_shop_catalog: adds the chosen common catalog products while a shop is set up.
+ * inputs.catalogEntries: each selected catalog product (with common flag) and its barcodes.
+ */
+export function confirmShopCatalog(call: ShopCall, sql: SyncSql, a: Args): ApiRow {
+  assertEditor(call.ctx);
+  if (!Array.isArray(a.p_selections)) throw invalid('Choose catalogue products as a list.');
+  const choices: CatalogChoice[] = [];
+  const seen = new Set<string>();
+  // Postgres validated and applied each selection in turn; an error leaves nothing behind either way.
+  const results: ApiRow[] = [];
+  for (const raw of a.p_selections as Record<string, unknown>[]) {
+    const catalogId = catalogIdOf(raw);
+    if (seen.has(catalogId)) continue;
+    seen.add(catalogId);
+    const choice = { catalogId, ...choicePrices(raw), listed: null };
+    choices.push(choice);
+    results.push(...applyCatalogChoices(call, sql, [choice], 'Only a common catalogue product can be added while setting up a shop.'));
+  }
   call.effects.push({ kind: 'clear_catalog_prompt' });
+  return { ok: true, products: results };
+}
+
+/** public.review_shop_catalog: sell or hide each common catalogue product (up to 50 at a time). */
+export function reviewShopCatalog(call: ShopCall, sql: SyncSql, a: Args): ApiRow {
+  assertEditor(call.ctx);
+  const decisions = a.p_decisions;
+  if (!Array.isArray(decisions) || decisions.length === 0) throw invalid('Choose at least one catalogue product.');
+  if (decisions.length > 50) throw invalid('Review up to 50 products at a time.');
+  const seen = new Set<string>();
+  const results: ApiRow[] = [];
+  for (const raw of decisions as Record<string, unknown>[]) {
+    const catalogId = catalogIdOf(raw);
+    if (seen.has(catalogId)) continue;
+    seen.add(catalogId);
+    if (raw.decision !== 'sell' && raw.decision !== 'hide') throw invalid('Choose sell or hide.');
+    const listed = raw.decision === 'sell';
+    const prices = listed ? choicePrices(raw) : { buying: null, selling: null };
+    results.push(...applyCatalogChoices(call, sql, [{ catalogId, ...prices, listed }], 'Only a common catalogue product can be reviewed for this shop.'));
+  }
   return { ok: true, products: results };
 }
 
