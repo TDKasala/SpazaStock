@@ -60,7 +60,7 @@ describe('push queue', () => {
     for (const [id, email] of [[owner.id, owner.email], [staff.id, staff.email]]) {
       d1.db.prepare(`insert into users (id, email, created_at, updated_at) values (?, ?, ?, ?)`).run(id, email, now, now);
     }
-    d1.db.prepare(`insert into plans (code, name) values ('free', 'Free')`).run();
+    d1.db.prepare(`insert or ignore into plans (code, name) values ('free', 'Free')`).run();
     d1.db.prepare(`insert into shops (id, owner_id, name) values (?, ?, 'Push shop')`).run(shopId, owner.id);
     d1.db.prepare(`insert into subscriptions (id, shop_id) values ('11111111-1111-4111-8111-111111111111', ?)`).run(shopId);
     d1.db.prepare(`insert into shop_members (id, shop_id, user_id, role) values ('22222222-2222-4222-8222-222222222222', ?, ?, 'owner')`).run(shopId, owner.id);

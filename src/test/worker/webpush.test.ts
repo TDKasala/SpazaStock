@@ -91,7 +91,7 @@ describe('web push', () => {
     d1.db.exec('PRAGMA foreign_keys = OFF');
     const now = new Date(Date.now() - 1000).toISOString();
     const { target } = subscription();
-    d1.db.exec(`insert into plans (code, name) values ('free', 'Free')`);
+    d1.db.exec(`insert or ignore into plans (code, name) values ('free', 'Free')`);
     d1.db.exec(`insert into users (id, email, created_at, updated_at) values ('u1', 'a@example.com', '${now}', '${now}')`);
     d1.db.exec(`insert into shops (id, owner_id, name) values ('s1', 'u1', 'Shop')`);
     d1.db.exec(`insert into subscriptions (id, shop_id) values ('sub', 's1')`);

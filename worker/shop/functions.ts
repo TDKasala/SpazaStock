@@ -2,6 +2,7 @@
 import type { ApiRow } from '../db/rows';
 import type { SyncSql } from '../db/sql';
 import type { ShopCall } from './context';
+import * as catalog from './catalog';
 import * as products from './products';
 import * as wholesale from './wholesale';
 import * as stock from './stock';
@@ -35,4 +36,5 @@ export const SHOP_FUNCTIONS: Record<string, ShopFunction> = {
   set_wholesale_order_status: wholesale.setWholesaleOrderStatus,
   set_wholesale_item_purchased: wholesale.setWholesaleItemPurchased,
   receive_wholesale_order: wholesale.receiveWholesaleOrder,
+  adopt_catalog_product: catalog.adoptCatalogProduct,
 };

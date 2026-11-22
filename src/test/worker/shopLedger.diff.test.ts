@@ -23,6 +23,10 @@ afterEach(async () => {
 /** Calls both sides, requires the same outcome, and returns the Postgres answer. */
 async function same(user: 'owner' | 'manager' | 'staff' | null, fn: string, args: Record<string, unknown>) {
   const r = await p.call(user ? p[user] : null, fn, args);
+  // Postgres orders an order's lines by created_at only; lines saved together tie, in any order.
+  if (fn === 'save_wholesale_order') {
+    for (const out of [r.pg, r.sq] as { data?: { items?: { id: string }[] } }[]) out.data?.items?.sort((x, y) => x.id.localeCompare(y.id));
+  }
   expect(r.sq, `${fn} ${JSON.stringify(args)}`).toEqual(r.pg);
   return r;
 }

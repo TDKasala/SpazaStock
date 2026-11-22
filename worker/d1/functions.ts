@@ -1,6 +1,7 @@
 /** Every shared-database RPC the Worker serves from D1, by its Postgres function name. */
 import type { D1Like } from '../db/d1';
 import type { D1Ctx } from './common';
+import * as catalog from './catalog';
 import * as push from './push';
 import * as team from './team';
 
@@ -21,6 +22,11 @@ export const D1_FUNCTIONS: Record<string, D1Function> = {
   save_push_subscription: push.savePushSubscription,
   delete_push_subscription: push.deletePushSubscription,
   report_sync_failures: push.reportSyncFailures,
+  // These also read the shop's Durable Object, through CatalogCtx.shop.
+  search_catalog: catalog.searchCatalog as D1Function,
+  list_common_catalog: catalog.listCommonCatalog as D1Function,
+  link_catalog_barcode: catalog.linkCatalogBarcode as D1Function,
+  set_catalog_image: catalog.setCatalogImage as D1Function,
 };
 
 /** Functions callable without a session (granted to the anon role in Postgres). */

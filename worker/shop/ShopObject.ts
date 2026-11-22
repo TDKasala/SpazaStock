@@ -16,6 +16,7 @@ import { TABLES } from '../db/columns';
 import { SHOP_FUNCTIONS } from './functions';
 import { generateExpiryAlerts, generateLowStockAlerts } from './alerts';
 import { insert } from './common';
+import { catalogLinks, type CatalogLinkState } from './catalog';
 import type { ShopCtx, ShopEffect, ShopInputs } from './context';
 
 /** Schema versions applied in order; version 1 is the generated schema. */
@@ -134,6 +135,16 @@ export class ShopObject extends DurableObject {
       for (const r of out) r.sales = sales.get(String(r.sale_id)) ?? null;
     }
     return out;
+  }
+
+  /** Catalog search's view of this shop: products linked to the catalog, with stock state. */
+  async catalogLinks(shopId: string, today: string): Promise<CatalogLinkState[]> {
+    return catalogLinks(this.sql, shopId, today);
+  }
+
+  /** Whether an active product in this shop is linked to the catalog product. */
+  async usesCatalogProduct(catalogId: string): Promise<boolean> {
+    return this.sql.all('SELECT 1 AS x FROM products WHERE catalog_product_id = ? AND archived_at IS NULL LIMIT 1', catalogId).length > 0;
   }
 
   /** Owners and managers marking a stock discrepancy resolved (the app's direct table update). */

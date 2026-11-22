@@ -1,0 +1,147 @@
+// @vitest-environment node
+/**
+ * Catalog functions that span the shared catalog (D1) and a shop's ledger (its Durable Object)
+ * must answer like Postgres, where both lived in one database.
+ */
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { randomUUID } from 'node:crypto';
+import { createPair, type Pair } from './diff';
+import { mirrorD1 } from './d1diff';
+import { query, rpc } from '../db/harness';
+import { catalogLinks } from '../../../worker/shop/catalog';
+import { D1_FUNCTIONS } from '../../../worker/d1/functions';
+import { DbError } from '../../../worker/db/errors';
+import type { CatalogCtx } from '../../../worker/d1/catalog';
+
+let p: Pair;
+const oil = randomUUID();
+const soap = randomUUID();
+
+beforeEach(async () => {
+  p = await createPair();
+  p.known.add(oil);
+  p.known.add(soap);
+  await query(
+    p.pg,
+    'service',
+    `insert into public.catalog_products (id, name, brand, category, package_size, source, verification_status, common, image_path)
+     values ($1, 'Sunflower Oil', 'Sun', 'groceries', '750ml', 'user', 'verified', true, $3),
+            ($2, 'Bath soap', 'Lux', 'personal_care', '100g', 'user', 'verified', false, null)`,
+    [oil, soap, `catalog/${oil}.webp`]
+  );
+  await query(
+    p.pg,
+    'service',
+    `insert into public.catalog_barcodes (barcode, catalog_product_id, kind, units_per_package, source)
+     values ('6001000000001', $1, 'unit', null, 'user'), ('6001000000002', $1, 'alternate', null, 'user'),
+            ('6001000000006', $1, 'pack', 6, 'user'), ('6002000000001', $2, 'unit', null, 'user')`,
+    [oil, soap]
+  );
+}, 60_000);
+
+afterEach(async () => {
+  await p?.close();
+});
+
+/** inputs.catalogProduct / catalogBarcodes as the Worker reads them from D1. */
+async function catalogInputs(id: string) {
+  const { rows } = await p.pg.query<Record<string, unknown>>('select id, name, brand, category, package_size, image_path from public.catalog_products where id = $1', [id]);
+  const { rows: codes } = await p.pg.query<{ barcode: string; kind: string; units_per_package: number | null; created_at: Date }>(
+    'select barcode, kind, units_per_package, created_at from public.catalog_barcodes where catalog_product_id = $1',
+    [id]
+  );
+  return rows[0]
+    ? { catalogProduct: rows[0], catalogBarcodes: codes.map((c) => ({ ...c, created_at: new Date(c.created_at).toISOString() })), catalog: { [id]: { id, image_path: rows[0].image_path as string | null } } }
+    : {};
+}
+
+async function sameShop(user: 'owner' | 'staff', fn: string, args: Record<string, unknown>, catalogId: string) {
+  const r = await p.call(p[user], fn, args, await catalogInputs(catalogId));
+  expect(r.sq, `${fn} ${JSON.stringify(args)}`).toEqual(r.pg);
+  const t = await p.tables();
+  for (const table of Object.keys(t.pg)) expect(t.sq[table], table).toEqual(t.pg[table]);
+}
+
+/** Runs a D1 catalog function against a D1 copy of Postgres, with the shop read from SQLite. */
+async function sameShared(user: 'owner' | 'staff', fn: string, args: Record<string, unknown>) {
+  const d1 = await mirrorD1(p.pg);
+  const ctx: CatalogCtx = {
+    userId: p[user].id,
+    email: p[user].email,
+    now: new Date().toISOString(),
+    shop: () => ({
+      catalogLinks: async (today) => catalogLinks(p.sql, p.shopId, today),
+      usesCatalogProduct: async (id) => p.sql.all('SELECT 1 AS x FROM products WHERE catalog_product_id = ? AND archived_at IS NULL', id).length > 0,
+    }),
+    imageExists: async () => true,
+  };
+  let d1Out: unknown;
+  try {
+    d1Out = { data: JSON.parse(JSON.stringify((await D1_FUNCTIONS[fn](d1, ctx, args)) ?? null)) };
+  } catch (err) {
+    if (!(err instanceof DbError)) throw err;
+    d1Out = { error: { code: err.code, message: err.message } };
+  }
+  let pgOut: unknown;
+  try {
+    pgOut = { data: await rpc(p.pg, p[user], fn, args) };
+  } catch (err) {
+    const e = err as { code: string; message: string };
+    pgOut = { error: { code: e.code, message: e.message } };
+  }
+  const strip = (v: unknown) => JSON.parse(JSON.stringify(v), (k, x) => (k === 'created_at' || k === 'updated_at' ? undefined : x));
+  expect(strip(d1Out), `${fn} ${JSON.stringify(args)}`).toEqual(strip(pgOut));
+  d1.db.close();
+}
+
+describe('catalog adoption', () => {
+  it('adopts a catalog product with its barcodes and packs, and replays, the same way', async () => {
+    const id = randomUUID();
+    const args = { p_id: id, p_shop_id: p.shopId, p_catalog_product_id: oil, p_buying_price: 30, p_selling_price: 42.99, p_created_at: new Date(Date.now() - 60_000).toISOString() };
+    await sameShop('staff', 'adopt_catalog_product', args, oil);
+    await sameShop('staff', 'adopt_catalog_product', { ...args, p_id: randomUUID() }, oil);
+    await sameShop('staff', 'adopt_catalog_product', { ...args, p_buying_price: -1 }, oil);
+    const missing = randomUUID();
+    p.known.add(missing);
+    await sameShop('staff', 'adopt_catalog_product', { ...args, p_catalog_product_id: missing }, missing);
+  });
+
+  it('links an existing shop product with the same barcode instead of duplicating it', async () => {
+    const existing = randomUUID();
+    await p.call(p.owner, 'upsert_product', { p_id: existing, p_shop_id: p.shopId, p_barcode: '6002000000001', p_name: 'My soap', p_category: 'other', p_buying_price: 5, p_selling_price: 8, p_created_at: null });
+    await sameShop('owner', 'adopt_catalog_product', { p_id: randomUUID(), p_shop_id: p.shopId, p_catalog_product_id: soap }, soap);
+  });
+});
+
+describe('catalog search and links', () => {
+  it('searches by name, brand and barcode with shop filters the same way', async () => {
+    await sameShop('owner', 'adopt_catalog_product', { p_id: randomUUID(), p_shop_id: p.shopId, p_catalog_product_id: oil }, oil);
+    for (const extra of [
+      {},
+      { p_query: 'oil' },
+      { p_query: 'LUX' },
+      { p_query: '600100000000' },
+      { p_query: '100%_' },
+      { p_in_shop: true },
+      { p_in_shop: false },
+      { p_stock: 'out' },
+      { p_stock: 'in' },
+      { p_category: 'groceries', p_limit: 1, p_offset: 0 },
+      { p_category: 'cars' },
+      { p_stock: 'plenty' },
+    ]) {
+      await sameShared('staff', 'search_catalog', { p_shop_id: p.shopId, ...extra });
+    }
+    await sameShared('staff', 'list_common_catalog', { p_shop_id: p.shopId });
+  });
+
+  it('links catalog barcodes and pictures the same way', async () => {
+    await sameShared('staff', 'link_catalog_barcode', { p_shop_id: p.shopId, p_catalog_product_id: oil, p_barcode: '6001000000099', p_kind: 'alternate' });
+    await sameShop('owner', 'adopt_catalog_product', { p_id: randomUUID(), p_shop_id: p.shopId, p_catalog_product_id: soap }, soap);
+    await sameShared('staff', 'link_catalog_barcode', { p_shop_id: p.shopId, p_catalog_product_id: soap, p_barcode: '6001000000001', p_kind: 'alternate' });
+    await sameShared('staff', 'link_catalog_barcode', { p_shop_id: p.shopId, p_catalog_product_id: soap, p_barcode: '6002000000024', p_kind: 'pack', p_units_per_package: 1 });
+    await sameShared('staff', 'link_catalog_barcode', { p_shop_id: p.shopId, p_catalog_product_id: soap, p_barcode: '6002000000002', p_kind: 'alternate', p_units_per_package: 3 });
+    await sameShared('staff', 'set_catalog_image', { p_shop_id: p.shopId, p_catalog_product_id: soap, p_image_path: `catalog/${oil}.webp` });
+    await sameShared('staff', 'set_catalog_image', { p_shop_id: p.shopId, p_catalog_product_id: oil, p_image_path: `catalog/${oil}.webp` });
+  });
+});

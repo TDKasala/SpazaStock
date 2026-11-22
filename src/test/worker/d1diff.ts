@@ -46,8 +46,12 @@ export interface D1Pair {
   close(): Promise<void>;
 }
 
-export async function createD1Pair(): Promise<D1Pair> {
-  const pg = await createDatabase();
+/** A fresh D1 holding a copy of the Postgres shared tables and users (see createD1Pair). */
+export async function mirrorD1(pg: PGlite) {
+  return (await d1Tools(pg)).mirror();
+}
+
+async function d1Tools(pg: PGlite) {
   const types: Record<string, Record<string, string>> = {};
   const { rows: cols } = await pg.query<{ t: string; c: string; ty: string }>(
     `select c.relname as t, a.attname as c, format_type(a.atttypid, a.atttypmod) as ty
@@ -83,7 +87,7 @@ export async function createD1Pair(): Promise<D1Pair> {
     for (const [table] of d1Tables) {
       for (const row of await pgRows(table)) {
         const c = Object.keys(row);
-        d1.db.prepare(`insert into ${table} (${c.join(', ')}) values (${c.map(() => '?').join(', ')})`).run(...(c.map((k) => row[k]) as never[]));
+        d1.db.prepare(`insert or replace into ${table} (${c.join(', ')}) values (${c.map(() => '?').join(', ')})`).run(...(c.map((k) => row[k]) as never[]));
       }
     }
     d1.db.exec('PRAGMA foreign_keys = ON');
@@ -97,6 +101,12 @@ export async function createD1Pair(): Promise<D1Pair> {
   };
   const sort = (rows: unknown[]) => rows.map((r) => JSON.stringify(r)).sort();
 
+  return { mirror, pgRows, d1Tables, parseJson, sort };
+}
+
+export async function createD1Pair(): Promise<D1Pair> {
+  const pg = await createDatabase();
+  const { mirror, pgRows, d1Tables, parseJson, sort } = await d1Tools(pg);
   return {
     pg,
     async call(user, fn, args = {}) {

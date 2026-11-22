@@ -3,7 +3,7 @@
  * shop's Durable Object after the caller's membership is resolved from D1; shared functions run
  * on D1. Replaces PostgREST + SECURITY DEFINER functions + RLS.
  */
-import { first, type D1Like } from '../db/d1';
+import { all, first, type D1Like } from '../db/d1';
 import { DbError, forbidden } from '../db/errors';
 import type { Env } from '../env';
 import type { ShopObject } from '../shop/ShopObject';
@@ -11,7 +11,8 @@ import { SHOP_FUNCTIONS } from '../shop/functions';
 import type { CatalogFact, ShopCtx, ShopInputs } from '../shop/context';
 import { productImageShop } from '../shop/products';
 import { ANON_FUNCTIONS, D1_FUNCTIONS } from '../d1/functions';
-import { membership, type D1Ctx } from '../d1/common';
+import { membership } from '../d1/common';
+import type { CatalogCtx } from '../d1/catalog';
 import { applyEffects } from '../d1/push';
 import { fail, ok } from './http';
 
@@ -29,6 +30,8 @@ export interface ShopApi {
   resolveDiscrepancy: ShopObject['resolveDiscrepancy'];
   importBundle: ShopObject['importBundle'];
   stats: ShopObject['stats'];
+  catalogLinks: ShopObject['catalogLinks'];
+  usesCatalogProduct: ShopObject['usesCatalogProduct'];
 }
 
 export function shopStub(env: Env, shopId: string): ShopApi {
@@ -58,6 +61,18 @@ async function shopInputs(env: Env, name: string, shopId: string, args: Record<s
     const row = await first<CatalogFact>(env.DB, 'SELECT id, image_path FROM catalog_products WHERE id = ?', catalogId.toLowerCase());
     if (row) inputs.catalog = { [row.id]: row };
   }
+  if (name === 'adopt_catalog_product' && catalogId) {
+    const id = catalogId.toLowerCase();
+    const product = await first(env.DB, 'SELECT id, name, brand, category, package_size, image_path FROM catalog_products WHERE id = ?', id);
+    if (product) {
+      inputs.catalogProduct = product;
+      inputs.catalogBarcodes = await all(
+        env.DB,
+        'SELECT barcode, kind, units_per_package, created_at FROM catalog_barcodes WHERE catalog_product_id = ?',
+        id
+      );
+    }
+  }
   if (name === 'set_product_image' && typeof args.p_image_path === 'string') {
     const path = args.p_image_path.trim();
     if (path && productImageShop(path) === shopId && (await env.IMAGES.head(path))) inputs.imagesPresent = [path];
@@ -84,7 +99,16 @@ export async function handleRpc(env: Env, name: string, args: Record<string, unk
 
     const d1Fn = D1_FUNCTIONS[name];
     if (d1Fn) {
-      const ctx: D1Ctx = { userId: caller?.userId ?? null, email: caller?.email ?? null, now };
+      const ctx: CatalogCtx = {
+        userId: caller?.userId ?? null,
+        email: caller?.email ?? null,
+        now,
+        shop: (shopId) => ({
+          catalogLinks: (today) => shopStub(env, shopId).catalogLinks(shopId, today),
+          usesCatalogProduct: (catalogId) => shopStub(env, shopId).usesCatalogProduct(catalogId),
+        }),
+        imageExists: async (key) => Boolean(await env.IMAGES.head(key)),
+      };
       return ok(await d1Fn(env.DB, ctx, args));
     }
 
