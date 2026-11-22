@@ -6,7 +6,7 @@
  *
  * 1. Converts every row (money → cents, timestamps → ISO UTC ms, booleans → 0/1, ids unchanged).
  * 2. Checks the converted rows reproduce every total in the export manifest.
- * 3. Rehearses the load on local SQLite built from migrations/d1/0001_initial.sql and
+ * 3. Rehearses the load on local SQLite built from every migration in migrations/d1 and
  *    worker/shop/schema.sql, with every constraint and foreign key enforced.
  * Only when all three pass does it write:
  *   <out>/d1-data.sql            rows for the shared D1 database (wrangler d1 execute --file)
@@ -15,7 +15,7 @@
  * The output holds password hashes and customer data, like the export: keep it private.
  */
 import { createReadStream } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { ExportManifest } from './lib/exportDatabase.ts';
@@ -56,10 +56,11 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const [d1Schema, shopSchema] = await Promise.all([
-    readFile(join(ROOT, 'migrations', 'd1', '0001_initial.sql'), 'utf8'),
-    readFile(join(ROOT, 'worker', 'shop', 'schema.sql'), 'utf8'),
-  ]);
+  // Every D1 migration, in order, as `wrangler d1 migrations apply` will run them.
+  const migrationsDir = join(ROOT, 'migrations', 'd1');
+  const files = (await readdir(migrationsDir)).filter((f) => f.endsWith('.sql')).sort();
+  const d1Schema = (await Promise.all(files.map((f) => readFile(join(migrationsDir, f), 'utf8')))).join('\n');
+  const shopSchema = await readFile(join(ROOT, 'worker', 'shop', 'schema.sql'), 'utf8');
   const rehearsal = rehearse(plan, d1Schema, shopSchema);
   console.log(`Rehearsed the load on local SQLite: D1 + ${plan.shops.length} shop databases`);
   if (!rehearsal.ok) {

@@ -1,0 +1,5 @@
+/** Sign-in email templates (from supabase/templates; {{ .Token }} is the six-digit code). */
+
+export const CONFIRMATION = "<h2>Confirm your SpazaStock account</h2>\n\n<p>Enter this code in the app to confirm your email address:</p>\n<p style=\"font-size: 28px; font-weight: bold; letter-spacing: 6px;\">{{ .Token }}</p>\n\n<p>The code expires in one hour. If you didn't create a SpazaStock account, you can ignore this email.</p>\n";
+export const MAGIC_LINK = "<h2>Your SpazaStock sign-in code</h2>\n\n<p>Enter this code in the app to sign in:</p>\n<p style=\"font-size: 28px; font-weight: bold; letter-spacing: 6px;\">{{ .Token }}</p>\n\n<p>The code expires in one hour. If you didn't request it, you can ignore this email.</p>\n";
+export const RECOVERY = "<h2>Reset your SpazaStock password</h2>\n\n<p>Enter this code in the app to choose a new password:</p>\n<p style=\"font-size: 28px; font-weight: bold; letter-spacing: 6px;\">{{ .Token }}</p>\n\n<p>The code expires in one hour. If you didn't ask to reset your password, you can ignore this email; your password has not changed.</p>\n";
