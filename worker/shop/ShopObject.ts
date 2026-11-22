@@ -17,6 +17,7 @@ import { SHOP_FUNCTIONS } from './functions';
 import { generateExpiryAlerts, generateLowStockAlerts } from './alerts';
 import { insert } from './common';
 import { catalogLinks, type CatalogLinkState } from './catalog';
+import { rangeMetrics, seriesCounts, tenantStats, type RangeMetrics, type TenantStats } from './metrics';
 import type { ShopCtx, ShopEffect, ShopInputs } from './context';
 
 /** Schema versions applied in order; version 1 is the generated schema. */
@@ -171,6 +172,21 @@ export class ShopObject extends DurableObject {
     if (this.lookupWindow.count >= perMinute) return false;
     this.lookupWindow.count++;
     return true;
+  }
+
+  /** Admin console: this shop's inventory and activity figures. */
+  async tenantStats(now: string): Promise<TenantStats> {
+    return tenantStats(this.sql, now);
+  }
+
+  /** Admin console: this shop's ledger totals over [from, to). */
+  async rangeMetrics(from: string, to: string): Promise<RangeMetrics> {
+    return rangeMetrics(this.sql, from, to);
+  }
+
+  /** Admin console: this shop's events per bucket for a growth chart. */
+  async seriesCounts(metric: string, from: string, to: string, timeZone: string, bucket: 'day' | 'week' | 'month'): Promise<Record<string, number>> {
+    return seriesCounts(this.sql, metric, from, to, timeZone, bucket);
   }
 
   /** Owners and managers marking a stock discrepancy resolved (the app's direct table update). */

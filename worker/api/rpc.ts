@@ -13,6 +13,7 @@ import { productImageShop } from '../shop/products';
 import { ANON_FUNCTIONS, D1_FUNCTIONS } from '../d1/functions';
 import { membership } from '../d1/common';
 import type { CatalogCtx } from '../d1/catalog';
+import type { AdminCtx } from '../d1/admin';
 import { applyEffects } from '../d1/push';
 import { fail, ok } from './http';
 
@@ -34,6 +35,9 @@ export interface ShopApi {
   usesCatalogProduct: ShopObject['usesCatalogProduct'];
   findByBarcodes: ShopObject['findByBarcodes'];
   allowLookup: ShopObject['allowLookup'];
+  tenantStats: ShopObject['tenantStats'];
+  rangeMetrics: ShopObject['rangeMetrics'];
+  seriesCounts: ShopObject['seriesCounts'];
 }
 
 export function shopStub(env: Env, shopId: string): ShopApi {
@@ -134,6 +138,16 @@ export async function handleRpc(env: Env, name: string, args: Record<string, unk
         }),
         imageExists: async (key) => Boolean(await env.IMAGES.head(key)),
       };
+      const adminCtx: CatalogCtx & AdminCtx = {
+        ...ctx,
+        shops: {
+          tenantStats: (shopId, at) => shopStub(env, shopId).tenantStats(at),
+          rangeMetrics: (shopId, from, to) => shopStub(env, shopId).rangeMetrics(from, to),
+          seriesCounts: (shopId, metric, from, to, tz, bucket) => shopStub(env, shopId).seriesCounts(metric, from, to, tz, bucket),
+        },
+        integrations: { push_keys: Boolean(env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY), push_subject: Boolean(env.VAPID_SUBJECT) },
+      };
+      if (name.startsWith('admin_')) return ok(await d1Fn(env.DB, adminCtx, args));
       return ok(await d1Fn(env.DB, ctx, args));
     }
 

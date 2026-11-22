@@ -117,6 +117,42 @@ async function memberEvents(db: D1Like, ctx: D1Ctx, before: MemberRow | null, af
   return out;
 }
 
+/**
+ * The rows a new shop needs (handle_new_shop, handle_new_shop_subscription and their history
+ * triggers): the shop, its owner membership, a free subscription.
+ */
+export async function newShopStatements(
+  db: D1Like,
+  ctx: D1Ctx,
+  ownerId: string,
+  name: string,
+  contact: ReturnType<typeof shopContact>,
+  location: ReturnType<typeof shopLocation>
+): Promise<{ shopId: string; stmts: Stmt[] }> {
+  const shopId = crypto.randomUUID();
+  const memberId = crypto.randomUUID();
+  const subscriptionId = crypto.randomUUID();
+  const member: MemberRow = { id: memberId, shop_id: shopId, user_id: ownerId, invited_email: null, role: 'owner', status: 'active', invite_token_hash: null };
+  return {
+    shopId,
+    stmts: [
+      [
+        `INSERT INTO shops (id, owner_id, name, phone, address, city, province, latitude, longitude, catalog_prompt_pending, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+        shopId, ownerId, name, contact.phone, contact.address, contact.city, contact.province, location.latitude, location.longitude, ctx.now, ctx.now,
+      ],
+      ['INSERT INTO shop_members (id, shop_id, user_id, role, joined_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)', memberId, shopId, ownerId, 'owner', ctx.now, ctx.now, ctx.now],
+      ...(await memberEvents(db, ctx, null, member)),
+      ['INSERT INTO subscriptions (id, shop_id, created_at, updated_at) VALUES (?, ?, ?, ?)', subscriptionId, shopId, ctx.now, ctx.now],
+      [
+        `INSERT INTO subscription_events (shop_id, subscription_id, actor_id, event, new_plan, new_status, details, occurred_at)
+         VALUES (?, ?, ?, 'created', 'free', 'active', ?, ?)`,
+        shopId, subscriptionId, ctx.userId, JSON.stringify({ trial_ends_at: null, current_period_end: null }), ctx.now,
+      ],
+    ],
+  };
+}
+
 /** public.create_shop: the caller becomes its owner; a free subscription is opened. */
 export async function createShop(db: D1Like, ctx: D1Ctx, a: Args): Promise<ApiRow> {
   if (!ctx.userId) throw forbidden('Sign in to create a shop.');
@@ -124,25 +160,8 @@ export async function createShop(db: D1Like, ctx: D1Ctx, a: Args): Promise<ApiRo
   if ([...name].length < 1 || [...name].length > 120) throw invalid('Shop name is required (up to 120 characters).');
   const contact = shopContact(a.p_phone, a.p_address, a.p_city, a.p_province);
   const location = shopLocation(a.p_latitude, a.p_longitude);
-  const shopId = crypto.randomUUID();
-  const memberId = crypto.randomUUID();
-  const subscriptionId = crypto.randomUUID();
-  const member: MemberRow = { id: memberId, shop_id: shopId, user_id: ctx.userId, invited_email: null, role: 'owner', status: 'active', invite_token_hash: null };
-  await batch(db, [
-    [
-      `INSERT INTO shops (id, owner_id, name, phone, address, city, province, latitude, longitude, catalog_prompt_pending, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
-      shopId, ctx.userId, name, contact.phone, contact.address, contact.city, contact.province, location.latitude, location.longitude, ctx.now, ctx.now,
-    ],
-    ['INSERT INTO shop_members (id, shop_id, user_id, role, joined_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)', memberId, shopId, ctx.userId, 'owner', ctx.now, ctx.now, ctx.now],
-    ...(await memberEvents(db, ctx, null, member)),
-    ['INSERT INTO subscriptions (id, shop_id, created_at, updated_at) VALUES (?, ?, ?, ?)', subscriptionId, shopId, ctx.now, ctx.now],
-    [
-      `INSERT INTO subscription_events (shop_id, subscription_id, actor_id, event, new_plan, new_status, details, occurred_at)
-       VALUES (?, ?, ?, 'created', 'free', 'active', ?, ?)`,
-      shopId, subscriptionId, ctx.userId, JSON.stringify({ trial_ends_at: null, current_period_end: null }), ctx.now,
-    ],
-  ]);
+  const { shopId, stmts } = await newShopStatements(db, ctx, ctx.userId, name, contact, location);
+  await batch(db, stmts);
   return shopSummary({ ...ctx, db }, shopId, 'owner', ctx.userId);
 }
 
