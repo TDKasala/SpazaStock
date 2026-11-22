@@ -49,7 +49,7 @@ export async function hashPassword(password: string): Promise<string> {
 
 async function pbkdf2(password: string, salt: Uint8Array, iterations: number): Promise<string> {
   const key = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveBits']);
-  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations }, key, 256);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: salt as BufferSource, iterations }, key, 256);
   return base64url(bits);
 }
 
@@ -92,7 +92,7 @@ export async function verifyAccessToken(token: string, secret: string, now = Dat
   const [header, body, sig] = parts;
   let ok = false;
   try {
-    ok = await crypto.subtle.verify('HMAC', await hmacKey(secret), fromBase64url(sig), enc.encode(`${header}.${body}`));
+    ok = await crypto.subtle.verify('HMAC', await hmacKey(secret), fromBase64url(sig) as BufferSource, enc.encode(`${header}.${body}`));
   } catch {
     return null;
   }
