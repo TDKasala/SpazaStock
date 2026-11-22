@@ -3,7 +3,7 @@
  * barcodes and packs (public.adopt_catalog_product + private.copy_catalog_barcodes), and the
  * per-shop state catalog search needs. Catalog rows come from D1 through ShopCall.inputs.
  */
-import { conflict, invalid, notFound } from '../db/errors';
+import { conflict, forbidden as forbiddenShop, invalid, notFound, suspended as suspendedShop } from '../db/errors';
 import { toApiRow, toApiRows, type ApiRow } from '../db/rows';
 import { one, type SyncSql } from '../db/sql';
 import { assertShopRole, type ShopCall } from './context';
@@ -243,4 +243,92 @@ export function catalogLinks(sql: SyncSql, shopId: string, today: string): Catal
       sellable: Number(r.sellable),
       expiring: Number(r.expiring) === 1,
     }));
+}
+
+export interface CatalogEntryInput {
+  product: CatalogProductInput & { common: boolean };
+  barcodes: CatalogBarcodeInput[];
+}
+
+/**
+ * public.confirm_shop_catalog: adds the chosen common catalog products while a shop is set up.
+ * inputs.catalogEntries: each selected catalog product (with common flag) and its barcodes.
+ */
+export function confirmShopCatalog(call: ShopCall, sql: SyncSql, a: Args): ApiRow {
+  const { ctx } = call;
+  if (!ctx.permissions.includes('products.edit') || ctx.userId === null) throw forbiddenShop();
+  if (!ctx.shopActive) throw suspendedShop();
+  const selections = a.p_selections;
+  if (!Array.isArray(selections)) throw invalid('Choose catalogue products as a list.');
+  const entries = (call.inputs.catalogEntries as Record<string, CatalogEntryInput> | undefined) ?? {};
+  const seen = new Set<string>();
+  const results: ApiRow[] = [];
+  for (const raw of selections as Record<string, unknown>[]) {
+    const idText = raw?.catalog_product_id == null || raw.catalog_product_id === '' ? null : String(raw.catalog_product_id);
+    if (idText === null || !/^[0-9a-f-]{36}$/i.test(idText)) throw invalid('Catalog product id is required.');
+    const catalogId = idText.toLowerCase();
+    if (seen.has(catalogId)) continue;
+    seen.add(catalogId);
+    const buying = raw.buying_price == null || raw.buying_price === '' ? null : optionalCents(raw.buying_price);
+    const selling = raw.selling_price == null || raw.selling_price === '' ? null : optionalCents(raw.selling_price);
+    if ((buying !== null && buying < 0) || (selling !== null && selling < 0)) throw invalid('Prices cannot be negative.');
+    const entry = entries[catalogId];
+    if (!entry) throw notFound('Catalog product not found.');
+    if (!entry.product.common) throw invalid('Only a common catalogue product can be added while setting up a shop.');
+
+    let product = one(sql, 'SELECT * FROM products WHERE shop_id = ? AND catalog_product_id = ? AND archived_at IS NULL', ctx.shopId, catalogId);
+    let created = false;
+    let links: { packagings: ApiRow[]; barcodes: ApiRow[] } = { packagings: [], barcodes: [] };
+    if (!product) {
+      const primary = primaryBarcode(entry.barcodes);
+      if (!primary) throw invalid('This catalog product has no single-item barcode.');
+      const byBarcode = one(sql, 'SELECT * FROM products WHERE shop_id = ? AND barcode = ?', ctx.shopId, primary);
+      if (byBarcode && byBarcode.archived_at === null && byBarcode.catalog_product_id === null) {
+        const other = one(sql, 'SELECT 1 AS x FROM products WHERE shop_id = ? AND catalog_product_id = ? AND archived_at IS NULL AND id <> ?', ctx.shopId, catalogId, byBarcode.id);
+        if (!other) sql.run('UPDATE products SET catalog_product_id = ? WHERE id = ? AND catalog_product_id IS NULL', catalogId, byBarcode.id);
+        product = get(sql, 'products', String(byBarcode.id));
+      } else if (byBarcode) {
+        if (byBarcode.archived_at === null) throw conflict(`Barcode ${primary} is already used in this shop.`);
+        product = byBarcode;
+      } else {
+        if (one(sql, 'SELECT 1 AS x FROM product_barcodes WHERE shop_id = ? AND barcode = ? AND unlinked_at IS NULL', ctx.shopId, primary)) {
+          throw conflict(`Barcode ${primary} is already linked to a product in this shop.`);
+        }
+        const id = uuid();
+        insert(sql, 'products', {
+          id,
+          shop_id: ctx.shopId,
+          barcode: primary,
+          name: entry.product.name,
+          category: entry.product.category,
+          buying_price_cents: buying,
+          selling_price_cents: selling,
+          created_at: ctx.now,
+          updated_at: ctx.now,
+          brand: entry.product.brand,
+          size: entry.product.package_size,
+          catalog_product_id: catalogId,
+          image_path: entry.product.image_path,
+        });
+        product = get(sql, 'products', id);
+        created = true;
+        links = copyCatalogBarcodes(call, sql, id, entry.barcodes);
+      }
+    }
+    results.push({ created, product: toApiRow('products', product), packagings: links.packagings, barcodes: links.barcodes });
+  }
+  call.effects.push({ kind: 'clear_catalog_prompt' });
+  return { ok: true, products: results };
+}
+
+/** The single-item barcode a catalog product is sold under: unit first, then oldest alternate. */
+export function primaryBarcode(barcodes: CatalogBarcodeInput[]): string | undefined {
+  return [...barcodes]
+    .filter((b) => b.kind === 'unit' || b.kind === 'alternate')
+    .sort(
+      (x, y) =>
+        (x.kind === 'unit' ? 0 : 1) - (y.kind === 'unit' ? 0 : 1) ||
+        (x.created_at < y.created_at ? -1 : x.created_at > y.created_at ? 1 : 0) ||
+        (x.barcode < y.barcode ? -1 : 1)
+    )[0]?.barcode;
 }

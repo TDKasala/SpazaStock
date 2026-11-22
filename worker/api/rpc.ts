@@ -53,6 +53,24 @@ export async function shopCtx(db: D1Like, shopId: string, caller: Caller | null,
   };
 }
 
+/** Catalog products (with their barcodes) by id, for functions that adopt several at once. */
+export async function catalogEntries(env: Env, ids: string[]): Promise<Record<string, unknown>> {
+  const out: Record<string, unknown> = {};
+  for (const raw of new Set(ids.map((i) => i.toLowerCase()).filter((i) => /^[0-9a-f-]{36}$/.test(i)))) {
+    const product = await first<Record<string, unknown>>(
+      env.DB,
+      'SELECT id, name, brand, category, package_size, image_path, common FROM catalog_products WHERE id = ?',
+      raw
+    );
+    if (!product) continue;
+    out[raw] = {
+      product: { ...product, common: product.common === 1 },
+      barcodes: await all(env.DB, 'SELECT barcode, kind, units_per_package, created_at FROM catalog_barcodes WHERE catalog_product_id = ?', raw),
+    };
+  }
+  return out;
+}
+
 /** Facts from D1/R2 a shop function needs (see ShopInputs). */
 async function shopInputs(env: Env, name: string, shopId: string, args: Record<string, unknown>): Promise<ShopInputs> {
   const inputs: ShopInputs = {};
@@ -72,6 +90,12 @@ async function shopInputs(env: Env, name: string, shopId: string, args: Record<s
         id
       );
     }
+  }
+  if (name === 'confirm_shop_catalog' && Array.isArray(args.p_selections)) {
+    inputs.catalogEntries = await catalogEntries(
+      env,
+      (args.p_selections as Record<string, unknown>[]).map((s) => String(s?.catalog_product_id ?? ''))
+    );
   }
   if (name === 'set_product_image' && typeof args.p_image_path === 'string') {
     const path = args.p_image_path.trim();

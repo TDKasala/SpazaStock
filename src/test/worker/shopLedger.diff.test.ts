@@ -328,7 +328,7 @@ describe('scheduled alerts', () => {
         )
       ).rows.map((n) => ({ ...n, push_next_at: new Date(n.push_next_at).toISOString() }));
     const asNotes = (effects: import('../../../worker/shop/context').ShopEffect[]) =>
-      effects.map((e) => ({ type: e.type, title: e.title, body: e.body, data: e.data, push_next_at: e.pushAt })).sort((x, y) => x.title.localeCompare(y.title));
+      (effects as import('../../../worker/shop/context').NotifyEffect[]).map((e) => ({ type: e.type, title: e.title, body: e.body, data: e.data, push_next_at: e.pushAt })).sort((x, y) => x.title.localeCompare(y.title));
     const alertIds = (rows: unknown[]) => rows.map((r) => r);
 
     const t1 = new Date().toISOString();

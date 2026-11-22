@@ -5,7 +5,7 @@
  */
 import { all, batch, first, run, type D1Like } from '../db/d1';
 import { forbidden, invalid } from '../db/errors';
-import type { ShopEffect } from '../shop/context';
+import type { NotifyEffect, ShopEffect } from '../shop/context';
 import { entitled, membership, shopIsActive, uuidArg, type D1Ctx, type Stmt } from './common';
 
 type Args = Record<string, unknown>;
@@ -93,7 +93,10 @@ export async function reportSyncFailures(db: D1Like, ctx: D1Ctx, a: Args): Promi
  * skip_inactive_recipient trigger kept others out). Pushes are queued only when pushAt is set.
  */
 export async function applyEffects(db: D1Like, shopId: string, effects: ShopEffect[], now: string): Promise<number> {
-  const notify = effects.filter((e) => e.kind === 'notify_roles');
+  if (effects.some((e) => e.kind === 'clear_catalog_prompt')) {
+    await run(db, 'UPDATE shops SET catalog_prompt_pending = 0 WHERE id = ?', shopId);
+  }
+  const notify = effects.filter((e): e is NotifyEffect => e.kind === 'notify_roles');
   if (!notify.length) return 0;
   const members = await all<{ user_id: string; role: string }>(
     db,

@@ -27,6 +27,7 @@ export const D1_FUNCTIONS: Record<string, D1Function> = {
   list_common_catalog: catalog.listCommonCatalog as D1Function,
   link_catalog_barcode: catalog.linkCatalogBarcode as D1Function,
   set_catalog_image: catalog.setCatalogImage as D1Function,
+  list_shop_catalog_review: catalog.listShopCatalogReview as D1Function,
 };
 
 /** Functions callable without a session (granted to the anon role in Postgres). */

@@ -187,3 +187,70 @@ export async function setCatalogImage(db: D1Like, ctx: CatalogCtx, a: Args): Pro
   await run(db, 'UPDATE catalog_products SET image_path = ? WHERE id = ? AND image_path IS NULL', path, catalogId);
   return (await first<{ image_path: string | null }>(db, 'SELECT image_path FROM catalog_products WHERE id = ?', catalogId))!.image_path;
 }
+
+/** public.list_shop_catalog_review: the common products, with what this shop sells, hides or skips. */
+export async function listShopCatalogReview(db: D1Like, ctx: CatalogCtx, a: Args): Promise<ApiRow> {
+  const shopId = uuidArg(a.p_shop_id);
+  const m = await requireMember(db, ctx, shopId);
+  const term = [...String(a.p_query ?? '').trim()].slice(0, 80).join('');
+  const status = String(a.p_status ?? '').trim() || null;
+  const category = String(a.p_category ?? '').trim() || null;
+  const stock = String(a.p_stock ?? '').trim() || null;
+  const limit = Math.min(Math.max(a.p_limit == null ? 20 : Number(a.p_limit), 1), 50);
+  const offset = Math.max(a.p_offset == null ? 0 : Number(a.p_offset), 0);
+  if (status !== null && !['open', 'selling', 'hidden'].includes(status)) throw invalid('Choose open, selling, or hidden.');
+  if (category !== null && !CATEGORIES.includes(category)) throw invalid('Choose a known category.');
+  if (stock !== null && !['in', 'out', 'low', 'expiring'].includes(stock)) throw invalid('Choose a known stock level.');
+
+  const common = await all<Record<string, string | number | null>>(
+    db,
+    'SELECT id, name, brand, category, package_size, image_url, image_path FROM catalog_products WHERE common = 1 ORDER BY name, id'
+  );
+  const links = new Map((await ctx.shop(shopId!).catalogLinks(localDate(ctx.now, m.timezone))).map((l) => [l.catalog_product_id, l]));
+  let selling = 0;
+  let hidden = 0;
+  let open = 0;
+  for (const c of common) {
+    const link = links.get(String(c.id));
+    if (!link) open++;
+    else if (link.listed) selling++;
+    else hidden++;
+  }
+
+  const pattern = `%${term.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')}%`;
+  const termMatches = new Set(
+    term === ''
+      ? common.map((c) => String(c.id))
+      : (
+          await all<{ id: string }>(
+            db,
+            `SELECT c.id FROM catalog_products c
+              WHERE c.common = 1 AND (c.name LIKE ? ESCAPE '\\' OR c.brand LIKE ? ESCAPE '\\'
+                OR EXISTS (SELECT 1 FROM catalog_barcodes b WHERE b.catalog_product_id = c.id AND b.barcode LIKE ? ESCAPE '\\'))`,
+            pattern,
+            pattern,
+            pattern
+          )
+        ).map((r) => r.id)
+  );
+  const matching = common.filter((c) => {
+    const link = links.get(String(c.id));
+    if (!termMatches.has(String(c.id))) return false;
+    if (category !== null && c.category !== category) return false;
+    if (status === 'open' && link) return false;
+    if (status === 'selling' && !link?.listed) return false;
+    if (status === 'hidden' && (!link || link.listed)) return false;
+    if (stock !== null && !matchesStockLevel(stock, link?.sellable ?? 0, link?.min_stock_units ?? null, link?.expiring ?? false)) return false;
+    return true;
+  });
+  const page = matching.slice(offset, offset + limit);
+  const barcodes = await barcodesFor(db, page.map((c) => String(c.id)));
+  return {
+    items: page.map((c) => {
+      const link = links.get(String(c.id));
+      return { ...c, shop_product_id: link?.product_id ?? null, listed: link ? link.listed : null, barcodes: barcodes.get(String(c.id)) ?? [] };
+    }),
+    total: matching.length,
+    progress: { total: common.length, selling, hidden, open },
+  };
+}

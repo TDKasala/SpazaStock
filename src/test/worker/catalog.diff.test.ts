@@ -89,7 +89,16 @@ async function sameShared(user: 'owner' | 'staff', fn: string, args: Record<stri
     const e = err as { code: string; message: string };
     pgOut = { error: { code: e.code, message: e.message } };
   }
-  const strip = (v: unknown) => JSON.parse(JSON.stringify(v), (k, x) => (k === 'created_at' || k === 'updated_at' ? undefined : x));
+  // Ids generated inside earlier calls are random on each side; ids the test chose must match.
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const strip = (v: unknown) =>
+    JSON.parse(JSON.stringify(v), (k, x) =>
+      k === 'created_at' || k === 'updated_at'
+        ? undefined
+        : typeof x === 'string' && uuid.test(x) && !p.known.has(x.toLowerCase())
+          ? '<generated id>'
+          : x
+    );
   expect(strip(d1Out), `${fn} ${JSON.stringify(args)}`).toEqual(strip(pgOut));
   d1.db.close();
 }
@@ -143,5 +152,43 @@ describe('catalog search and links', () => {
     await sameShared('staff', 'link_catalog_barcode', { p_shop_id: p.shopId, p_catalog_product_id: soap, p_barcode: '6002000000002', p_kind: 'alternate', p_units_per_package: 3 });
     await sameShared('staff', 'set_catalog_image', { p_shop_id: p.shopId, p_catalog_product_id: soap, p_image_path: `catalog/${oil}.webp` });
     await sameShared('staff', 'set_catalog_image', { p_shop_id: p.shopId, p_catalog_product_id: oil, p_image_path: `catalog/${oil}.webp` });
+  });
+});
+
+describe('shop set-up from the common catalogue', () => {
+  async function entries(ids: string[]) {
+    const out: Record<string, unknown> = {};
+    for (const id of ids) {
+      const inputs = (await catalogInputs(id)) as { catalogProduct?: Record<string, unknown>; catalogBarcodes?: unknown[] };
+      if (!inputs.catalogProduct) continue;
+      const { rows } = await p.pg.query<{ common: boolean }>('select common from public.catalog_products where id = $1', [id]);
+      out[id] = { product: { ...inputs.catalogProduct, common: rows[0].common }, barcodes: inputs.catalogBarcodes };
+    }
+    return out;
+  }
+
+  it('lists the review and confirms selections the same way', async () => {
+    for (const extra of [{}, { p_status: 'open' }, { p_status: 'selling' }, { p_status: 'nope' }, { p_query: 'sun' }]) {
+      await sameShared('staff', 'list_shop_catalog_review', { p_shop_id: p.shopId, ...extra });
+    }
+    const selections = [
+      { catalog_product_id: oil, buying_price: '30', selling_price: 42.5 },
+      { catalog_product_id: oil },
+      { catalog_product_id: soap },
+    ];
+    const run = async (user: 'owner' | 'staff', sel: unknown[]) => {
+      const r = await p.call(p[user], 'confirm_shop_catalog', { p_shop_id: p.shopId, p_selections: sel }, { catalogEntries: await entries([oil, soap]) });
+      expect(r.sq).toEqual(r.pg);
+      const t = await p.tables();
+      for (const table of Object.keys(t.pg)) expect(t.sq[table], table).toEqual(t.pg[table]);
+      return r;
+    };
+    await run('staff', [selections[0]]);
+    await run('owner', selections);
+    const ok = await run('owner', [selections[0], selections[1]]);
+    expect(ok.effects).toEqual([{ kind: 'clear_catalog_prompt' }]);
+    await run('owner', [{ catalog_product_id: 'not-a-uuid' }]);
+    await run('owner', [{ catalog_product_id: oil, selling_price: -1 }]);
+    await sameShared('staff', 'list_shop_catalog_review', { p_shop_id: p.shopId, p_status: 'selling' });
   });
 });

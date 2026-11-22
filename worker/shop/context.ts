@@ -20,7 +20,9 @@ export interface ShopCtx {
 }
 
 /** A change the shop object asks the Worker to make in D1 after the call, such as notifications. */
-export type ShopEffect = {
+export type ShopEffect = NotifyEffect | { kind: 'clear_catalog_prompt' };
+
+export type NotifyEffect = {
   kind: 'notify_roles';
   roles: ShopRole[];
   type: 'low_stock' | 'expiry' | 'stock_discrepancy' | 'member' | 'system';

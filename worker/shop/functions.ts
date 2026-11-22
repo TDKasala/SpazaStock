@@ -37,4 +37,5 @@ export const SHOP_FUNCTIONS: Record<string, ShopFunction> = {
   set_wholesale_item_purchased: wholesale.setWholesaleItemPurchased,
   receive_wholesale_order: wholesale.receiveWholesaleOrder,
   adopt_catalog_product: catalog.adoptCatalogProduct,
+  confirm_shop_catalog: catalog.confirmShopCatalog,
 };
