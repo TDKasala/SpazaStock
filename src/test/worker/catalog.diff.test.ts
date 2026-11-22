@@ -219,3 +219,52 @@ describe('catalogue review', () => {
     await run(Array.from({ length: 51 }, () => ({ catalog_product_id: oil, decision: 'sell' })));
   });
 });
+
+describe('catalogue submissions', () => {
+  it('adds, merges and files corrections the same way', async () => {
+    const base = { p_shop_id: p.shopId, p_category: 'snacks' };
+    await sameShared('staff', 'submit_catalog_product', { ...base, p_barcode: ' 6009000000001 ', p_name: 'Chips', p_brand: 'Simba', p_package_quantity: 0.12, p_package_unit: 'kg', p_image_url: 'http://not-https.example.com/x.jpg' });
+    await sameShared('staff', 'submit_catalog_product', { ...base, p_barcode: '6009000000002', p_name: '', p_brand: null });
+    await sameShared('staff', 'submit_catalog_product', { ...base, p_barcode: '6009000000003', p_name: 'X', p_category: 'cars' });
+    await sameShared('staff', 'submit_catalog_product', { ...base, p_barcode: '6009000000004', p_name: 'X', p_package_quantity: 0 });
+    // Verified product (oil): differences become a correction.
+    await sameShared('staff', 'submit_catalog_product', { ...base, p_barcode: '6001000000001', p_name: 'Sunflower Oil 2L', p_category: 'groceries', p_brand: 'Sun' });
+    await sameShared('staff', 'submit_catalog_product', { ...base, p_barcode: '6001000000001', p_name: 'Sunflower Oil', p_category: 'groceries' });
+    // Unverified product: merged by trust (external < user_submitted).
+    await query(p.pg, 'service', `insert into public.catalog_products (id, name, category, source, verification_status) values ($1, 'Old name', 'other', 'open_food_facts', 'external')`, [soap.replace(/.$/, 'f')]);
+    p.known.add(soap.replace(/.$/, 'f'));
+    await query(p.pg, 'service', `insert into public.catalog_barcodes (barcode, catalog_product_id, kind, source) values ('6009000000009', $1, 'unit', 'open_food_facts')`, [soap.replace(/.$/, 'f')]);
+    await sameShared('staff', 'submit_catalog_product', { ...base, p_barcode: '6009000000009', p_name: 'Better name', p_brand: 'Brand' });
+  });
+});
+
+describe('catalogue intake', () => {
+  it('adopts and stocks counted products, replays and refuses bad batches the same way', async () => {
+    const entries = async () => {
+      const out: Record<string, unknown> = {};
+      for (const id of [oil, soap]) {
+        const i = (await catalogInputs(id)) as { catalogProduct?: Record<string, unknown>; catalogBarcodes?: unknown[] };
+        out[id] = { product: { ...i.catalogProduct, common: true }, barcodes: i.catalogBarcodes };
+      }
+      return out;
+    };
+    const day = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+    const run = async (items: unknown) => {
+      const r = await p.call(p.staff, 'confirm_catalog_intake', { p_shop_id: p.shopId, p_items: items }, { catalogEntries: await entries() });
+      expect(r.sq).toEqual(r.pg);
+      const t = await p.tables();
+      for (const table of Object.keys(t.pg)) expect(t.sq[table], table).toEqual(t.pg[table]);
+    };
+    const productId = randomUUID();
+    const b1 = randomUUID();
+    const b2 = randomUUID();
+    const first = [{ catalog_product_id: oil, product_id: productId, buying_price: 31.555, selling_price: 45, batches: [{ id: b1, quantity: 6, expiry_date: day(30) }, { id: b2, quantity: '4', expiry_date: '' }] }];
+    await run(first);
+    await run(first);
+    await run([{ catalog_product_id: soap, product_id: randomUUID(), batches: [{ id: randomUUID(), quantity: 1, expiry_date: day(-1) }] }]);
+    await run([{ catalog_product_id: soap, product_id: randomUUID(), batches: [{ id: randomUUID(), quantity: 1.5 }] }]);
+    await run([{ catalog_product_id: soap, product_id: randomUUID(), batches: [] }]);
+    await run([{ catalog_product_id: oil, product_id: randomUUID(), batches: [{ id: randomUUID(), quantity: 2 }] }]);
+    await run([]);
+  });
+});

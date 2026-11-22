@@ -254,3 +254,192 @@ export async function listShopCatalogReview(db: D1Like, ctx: CatalogCtx, a: Args
     progress: { total: common.length, selling, hidden, open },
   };
 }
+
+const RANK: Record<string, number> = { external: 1, user_submitted: 2, verified: 3 };
+const rank = (status: unknown) => RANK[String(status)] ?? 0;
+
+/** private.merge_catalog_text / merge_catalog_number: the better-trusted source wins. */
+function merge<T>(stored: T | null, incoming: T | null, storedStatus: string, incomingStatus: string): T | null {
+  if (incoming === null) return stored;
+  if (stored === null) return incoming;
+  return rank(incomingStatus) > rank(storedStatus) ? incoming : stored;
+}
+
+/** private.optional_text with no current value. */
+function optionalText(value: unknown, max: number, label: string): string | null {
+  if (value === null || value === undefined) return null;
+  const clean = String(value).trim() || null;
+  if (clean !== null && [...clean].length > max) throw invalid(`${label} is too long (up to ${max} characters).`);
+  return clean;
+}
+
+/** private.clean_https_url */
+function cleanHttpsUrl(value: unknown): string | null {
+  const clean = value == null ? null : String(value).trim() || null;
+  if (clean === null || [...clean].length > 500 || !clean.startsWith('https://')) return null;
+  return clean;
+}
+
+/**
+ * public.submit_catalog_product: a shop adds a product to the shared catalog. A barcode already
+ * in the catalog updates an unverified product (merging by trust) or, for a verified one, files a
+ * correction for the platform team instead.
+ */
+export async function submitCatalogProduct(db: D1Like, ctx: CatalogCtx, a: Args): Promise<ApiRow> {
+  const shopId = uuidArg(a.p_shop_id);
+  if (!shopId) throw forbidden();
+  await assertShopRole(db, ctx, shopId, ['owner', 'manager', 'staff']);
+  const barcode = clean(a.p_barcode);
+  const name = String(a.p_name ?? '').trim();
+  const category = a.p_category == null ? null : String(a.p_category);
+  if (barcode === '' || [...barcode].length > 64) throw invalid('Barcode is required (up to 64 characters).');
+  if (name === '' || [...name].length > 200) throw invalid('Product name is required (up to 200 characters).');
+  if (category === null || !CATEGORIES.includes(category)) throw invalid('Unknown product category.');
+  const quantity = a.p_package_quantity == null ? null : Number(a.p_package_quantity);
+  if (quantity !== null && !(quantity > 0)) throw invalid('Package quantity must be greater than zero.');
+  const brand = optionalText(a.p_brand, 80, 'Brand');
+  const size = optionalText(a.p_package_size, 40, 'Size');
+  const unit = optionalText(a.p_package_unit, 16, 'Unit');
+  const ingredients = optionalText(a.p_ingredients, 4000, 'Ingredients');
+  const image = cleanHttpsUrl(a.p_image_url);
+  const productApi = async (id: string) => toApiRow('catalog_products', await first(db, 'SELECT * FROM catalog_products WHERE id = ?', id));
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const link = await first<{ catalog_product_id: string }>(db, 'SELECT catalog_product_id FROM catalog_barcodes WHERE barcode = ?', barcode);
+    if (link) {
+      const p = (await first<Record<string, string | number | null>>(db, 'SELECT * FROM catalog_products WHERE id = ?', link.catalog_product_id))!;
+      const status = String(p.verification_status);
+      if (status === 'verified') {
+        const differs = <T,>(incoming: T | null, stored: unknown, always = false) =>
+          (always || incoming !== null) && incoming !== stored ? incoming : null;
+        const proposed = {
+          proposed_name: name !== p.name ? name : null,
+          proposed_brand: differs(brand, p.brand),
+          proposed_category: category !== p.category ? category : null,
+          proposed_package_size: differs(size, p.package_size),
+          proposed_package_quantity: quantity !== null && quantity !== p.package_quantity ? quantity : null,
+          proposed_package_unit: differs(unit, p.package_unit),
+          proposed_ingredients: differs(ingredients, p.ingredients),
+          proposed_image_url: differs(image, p.image_url),
+        };
+        let correctionId: string | null = null;
+        if (Object.values(proposed).some((v) => v !== null)) {
+          correctionId =
+            (
+              await first<{ id: string }>(
+                db,
+                `SELECT id FROM catalog_corrections
+                  WHERE catalog_product_id = ? AND submitted_by = ? AND status = 'pending'
+                    AND proposed_name IS ? AND proposed_brand IS ? AND shop_id = ? LIMIT 1`,
+                String(p.id),
+                ctx.userId,
+                proposed.proposed_name,
+                proposed.proposed_brand,
+                shopId
+              )
+            )?.id ?? null;
+          if (!correctionId) {
+            correctionId = crypto.randomUUID();
+            await run(
+              db,
+              `INSERT INTO catalog_corrections (id, catalog_product_id, shop_id, proposed_name, proposed_brand, proposed_category,
+                 proposed_package_size, proposed_package_quantity, proposed_package_unit, proposed_ingredients, proposed_image_url,
+                 reason, submitted_by, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              correctionId,
+              String(p.id),
+              shopId,
+              proposed.proposed_name,
+              proposed.proposed_brand,
+              proposed.proposed_category,
+              proposed.proposed_package_size,
+              proposed.proposed_package_quantity,
+              proposed.proposed_package_unit,
+              proposed.proposed_ingredients,
+              proposed.proposed_image_url,
+              'Details differ from the verified catalog product.',
+              ctx.userId,
+              ctx.now,
+              ctx.now
+            );
+          }
+        }
+        return { product: await productApi(String(p.id)), correction_id: correctionId, created: false };
+      }
+      const promote = rank('user_submitted') > rank(status);
+      await run(
+        db,
+        `UPDATE catalog_products SET name = ?, brand = ?, category = ?, package_size = ?, package_quantity = ?, package_unit = ?,
+                ingredients = ?, image_url = ?, source = ?, verification_status = ? WHERE id = ?`,
+        merge(p.name as string, name, status, 'user_submitted'),
+        merge(p.brand as string | null, brand, status, 'user_submitted'),
+        merge(p.category as string, category, status, 'user_submitted'),
+        merge(p.package_size as string | null, size, status, 'user_submitted'),
+        merge(p.package_quantity as number | null, quantity, status, 'user_submitted'),
+        merge(p.package_unit as string | null, unit, status, 'user_submitted'),
+        merge(p.ingredients as string | null, ingredients, status, 'user_submitted'),
+        merge(p.image_url as string | null, image, status, 'user_submitted'),
+        promote ? 'user' : String(p.source),
+        promote ? 'user_submitted' : status,
+        String(p.id)
+      );
+      return { product: await productApi(String(p.id)), correction_id: null, created: false };
+    }
+    const id = crypto.randomUUID();
+    try {
+      await db.batch([
+        db
+          .prepare(
+            `INSERT INTO catalog_products (id, name, brand, category, package_size, package_quantity, package_unit, image_url, ingredients,
+               source, verification_status, created_by, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'user', 'user_submitted', ?, ?, ?)`
+          )
+          .bind(id, name, brand, category, size, quantity, unit, image, ingredients, ctx.userId, ctx.now, ctx.now),
+        db
+          .prepare(`INSERT INTO catalog_barcodes (barcode, catalog_product_id, kind, source, created_by, created_at, updated_at) VALUES (?, ?, 'unit', 'user', ?, ?, ?)`)
+          .bind(barcode, id, ctx.userId, ctx.now, ctx.now),
+      ]);
+      return { product: await productApi(id), correction_id: null, created: true };
+    } catch {
+      // Someone added this barcode at the same moment: look again.
+    }
+  }
+  throw conflict(`Barcode ${barcode} is already in the catalog.`);
+}
+
+/** public.submit_catalog_correction: a shop flags wrong details on a verified catalog product. */
+export async function submitCatalogCorrection(db: D1Like, ctx: CatalogCtx, a: Args): Promise<string> {
+  const shopId = uuidArg(a.p_shop_id);
+  if (!shopId) throw forbidden();
+  await assertShopRole(db, ctx, shopId, ['owner', 'manager', 'staff']);
+  const reason = String(a.p_reason ?? '').trim();
+  if (reason === '' || [...reason].length > 200) throw invalid('A reason is required (up to 200 characters).');
+  const catalogId = uuidArg(a.p_catalog_product_id);
+  const product = catalogId ? await first<{ verification_status: string }>(db, 'SELECT verification_status FROM catalog_products WHERE id = ?', catalogId) : null;
+  if (!product) throw notFound('Catalog product not found.');
+  if (product.verification_status !== 'verified') throw invalid('Only a verified catalog product takes a correction.');
+  const id = crypto.randomUUID();
+  await run(
+    db,
+    `INSERT INTO catalog_corrections (id, catalog_product_id, shop_id, proposed_name, proposed_brand, proposed_category,
+       proposed_package_size, proposed_package_quantity, proposed_package_unit, proposed_ingredients, proposed_image_url,
+       reason, submitted_by, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    id,
+    catalogId,
+    shopId,
+    optionalText(a.p_name, 200, 'Product name'),
+    optionalText(a.p_brand, 80, 'Brand'),
+    a.p_category == null ? null : String(a.p_category),
+    optionalText(a.p_package_size, 40, 'Size'),
+    a.p_package_quantity == null ? null : Number(a.p_package_quantity),
+    optionalText(a.p_package_unit, 16, 'Unit'),
+    optionalText(a.p_ingredients, 4000, 'Ingredients'),
+    cleanHttpsUrl(a.p_image_url),
+    reason,
+    ctx.userId,
+    ctx.now,
+    ctx.now
+  );
+  return id;
+}

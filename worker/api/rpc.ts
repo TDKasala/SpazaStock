@@ -91,7 +91,8 @@ async function shopInputs(env: Env, name: string, shopId: string, args: Record<s
       );
     }
   }
-  const choices = name === 'confirm_shop_catalog' ? args.p_selections : name === 'review_shop_catalog' ? args.p_decisions : null;
+  const choices =
+    name === 'confirm_shop_catalog' ? args.p_selections : name === 'review_shop_catalog' ? args.p_decisions : name === 'confirm_catalog_intake' ? args.p_items : null;
   if (Array.isArray(choices)) {
     inputs.catalogEntries = await catalogEntries(env, (choices as Record<string, unknown>[]).map((s) => String(s?.catalog_product_id ?? '')));
   }

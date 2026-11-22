@@ -39,4 +39,5 @@ export const SHOP_FUNCTIONS: Record<string, ShopFunction> = {
   adopt_catalog_product: catalog.adoptCatalogProduct,
   confirm_shop_catalog: catalog.confirmShopCatalog,
   review_shop_catalog: catalog.reviewShopCatalog,
+  confirm_catalog_intake: catalog.confirmCatalogIntake,
 };

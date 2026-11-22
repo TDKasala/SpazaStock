@@ -6,7 +6,8 @@
 import { conflict, forbidden as forbiddenShop, invalid, notFound, suspended as suspendedShop } from '../db/errors';
 import { toApiRow, toApiRows, type ApiRow } from '../db/rows';
 import { one, type SyncSql } from '../db/sql';
-import { assertShopRole, type ShopCall } from './context';
+import { assertShopRole, localDate, type ShopCall } from './context';
+import { recordStockIn } from './stock';
 import { get, idArg, insert, optionalCents, timestampArg, uuid } from './common';
 
 type Args = Record<string, unknown>;
@@ -393,4 +394,117 @@ export function primaryBarcode(barcodes: CatalogBarcodeInput[]): string | undefi
         (x.created_at < y.created_at ? -1 : x.created_at > y.created_at ? 1 : 0) ||
         (x.barcode < y.barcode ? -1 : 1)
     )[0]?.barcode;
+}
+
+/**
+ * public.confirm_catalog_intake: the stock-taking wizard. Adopts each catalog product and records
+ * its counted batches in one go. inputs.catalogEntries holds the catalog rows by id.
+ */
+export function confirmCatalogIntake(call: ShopCall, sql: SyncSql, a: Args): ApiRow {
+  const { ctx } = call;
+  assertShopRole(ctx, ['owner', 'manager', 'staff']);
+  const items = a.p_items;
+  if (!Array.isArray(items) || items.length < 1 || items.length > 40) throw invalid('Choose between 1 and 40 products.');
+  const today = localDate(ctx.now, ctx.timezone);
+  const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const asUuid = (v: unknown, message: string) => {
+    if (v == null) return null;
+    if (typeof v !== 'string' || !uuidRe.test(v)) throw invalid(message);
+    return v.toLowerCase();
+  };
+  const seen = new Set<string>();
+  const productKeys = new Set<string>();
+  const batchIds = new Set<string>();
+  for (const raw of items as Record<string, unknown>[]) {
+    const item = raw ?? {};
+    const catalogId = asUuid(item.catalog_product_id, 'Each product needs a catalogue id and a product id.');
+    const productKey = asUuid(item.product_id, 'Each product needs a catalogue id and a product id.');
+    if (!catalogId || !productKey) throw invalid('Each product needs a catalogue id and a product id.');
+    if (seen.has(catalogId) || productKeys.has(productKey)) throw invalid('The same product was sent twice.');
+    seen.add(catalogId);
+    productKeys.add(productKey);
+    for (const key of ['buying_price', 'selling_price']) {
+      if (item[key] !== undefined && item[key] !== null) {
+        const cents = optionalCents(item[key]);
+        if (cents !== null && cents < 0) throw invalid('Prices cannot be negative.');
+      }
+    }
+    const batches = item.batches;
+    if (!Array.isArray(batches) || batches.length < 1 || batches.length > 8) throw invalid('Each product needs between 1 and 8 batches.');
+    for (const b of batches as Record<string, unknown>[]) {
+      const id = asUuid(b?.id, 'Each batch needs an id.');
+      if (!id || batchIds.has(id)) throw invalid('Each batch needs its own id.');
+      batchIds.add(id);
+      const q = b.quantity == null ? '' : typeof b.quantity === 'string' ? b.quantity : JSON.stringify(b.quantity);
+      if (!/^[0-9]+$/.test(q) || Number(q) < 1 || Number(q) > 1_000_000) throw invalid('Quantity must be a whole number from 1 to 1,000,000.');
+      const expiry = b.expiry_date == null || b.expiry_date === '' ? null : String(b.expiry_date);
+      if (expiry !== null) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(expiry) || Number.isNaN(Date.parse(`${expiry}T00:00:00Z`))) throw invalid('Expiry date must be a calendar date.');
+        if (expiry < today) throw invalid('Expiry date is already past.');
+      }
+    }
+  }
+
+  const entries = (call.inputs.catalogEntries as Record<string, CatalogEntryInput> | undefined) ?? {};
+  const results: ApiRow[] = [];
+  for (const raw of items as Record<string, unknown>[]) {
+    const catalogId = String(raw.catalog_product_id).toLowerCase();
+    const productKey = String(raw.product_id).toLowerCase();
+    const buying = raw.buying_price == null ? null : optionalCents(raw.buying_price);
+    const selling = raw.selling_price == null ? null : optionalCents(raw.selling_price);
+    const entry = entries[catalogId];
+    const adopt = adoptCatalogProduct(
+      { ...call, inputs: entry ? { catalogProduct: entry.product, catalogBarcodes: entry.barcodes } : {} },
+      sql,
+      {
+        p_id: productKey,
+        p_shop_id: ctx.shopId,
+        p_catalog_product_id: catalogId,
+        p_buying_price: buying === null ? null : buying / 100,
+        p_selling_price: selling === null ? null : selling / 100,
+        p_created_at: ctx.now,
+      }
+    );
+    const product = adopt.product as ApiRow;
+    if (product.archived_at) throw invalid('This product is archived in this shop.');
+    const productId = String(product.id);
+    const requested = (raw.batches as Record<string, unknown>[]).map((b) => String(b.id).toLowerCase());
+    const existing = sql.all<{ id: string }>('SELECT id FROM stock_batches WHERE shop_id = ? AND product_id = ?', ctx.shopId, productId).map((r) => r.id);
+    const known = existing.some((id) => requested.includes(id));
+    const other = existing.some((id) => !requested.includes(id));
+    const batches: ApiRow[] = [];
+    let status: string;
+    if (other && !known) {
+      status = 'already_in_shop';
+    } else {
+      let anyNew = false;
+      let anyDuplicate = false;
+      for (const b of raw.batches as Record<string, unknown>[]) {
+        const stock = recordStockIn(call, sql, {
+          p_batch_id: String(b.id).toLowerCase(),
+          p_shop_id: ctx.shopId,
+          p_product_id: productId,
+          p_quantity: Number(b.quantity),
+          p_expiry_date: b.expiry_date == null || b.expiry_date === '' ? null : String(b.expiry_date),
+          p_cost_price_per_unit: buying === null ? null : buying / 100,
+          p_received_at: ctx.now,
+          p_idempotency_key: String(b.id).toLowerCase(),
+        });
+        batches.push(stock);
+        if (stock.duplicate) anyDuplicate = true;
+        else anyNew = true;
+      }
+      status = anyDuplicate && !anyNew ? 'duplicate' : adopt.created ? 'created' : 'stocked';
+    }
+    results.push({
+      catalog_product_id: catalogId,
+      status,
+      created: adopt.created,
+      product,
+      packagings: adopt.packagings ?? [],
+      barcodes: adopt.barcodes ?? [],
+      batches,
+    });
+  }
+  return { items: results };
 }
