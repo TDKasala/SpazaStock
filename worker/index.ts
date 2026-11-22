@@ -18,6 +18,7 @@ import { handleTable } from './api/table';
 import { handleImages } from './api/images';
 import { readJson } from './api/http';
 import { handleProductLookup } from './productLookup';
+import { handleMigrate } from './api/migrate';
 import { runScheduled } from './cron';
 
 export { ShopObject } from './shop/ShopObject';
@@ -50,6 +51,9 @@ export default {
     if (path.startsWith('/api/images/')) return handleImages(request, env, path.slice('/api/images/'.length), await callerFor(request, env));
 
     if (path === '/api/product-lookup') return handleProductLookup(request, env);
+
+    // One-time data import at cutover; answers 404 unless the IMPORT_TOKEN secret is set.
+    if (path.startsWith('/api/migrate/')) return handleMigrate(request, env, path);
 
     if (path.startsWith('/api/')) {
       return Response.json({ error: 'Not found' }, { status: 404, headers: { 'Cache-Control': 'no-store' } });

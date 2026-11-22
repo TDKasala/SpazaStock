@@ -79,3 +79,18 @@ npx wrangler d1 execute spazastock --remote --file <export>/load/d1-data.sql
 
 The same two commands with `--local` load a local D1 for testing. The shop bundles are imported by the
 shop Durable Object, which is built next.
+
+## Import into the deployed Worker (cutover)
+
+```
+openssl rand -hex 32 | npx wrangler secret put IMPORT_TOKEN --env <env>   # keep the value for the next command
+npx wrangler d1 execute <database> --env <env> --remote --file <export>/load/d1-data.sql
+IMPORT_TOKEN=<same value> npm run data:import -- --export <export> --url https://<worker host>
+npx wrangler secret delete IMPORT_TOKEN --env <env>                       # closes /api/migrate/*
+```
+
+`data:import` sends each shop's bundle to its Durable Object (refusing a shop that already has data
+unless `--replace`), uploads every picture to R2 under its Supabase key, then checks each shop's rows and
+totals against the export manifest. It is safe to run again. Rehearsed end to end on `wrangler dev`:
+the imported owner signed in with their old Supabase password (re-saved as PBKDF2), saw their shop,
+stock, cost prices and picture, and recorded a sale.

@@ -22,8 +22,8 @@ own Durable Object (SQLite).
 | Sync pull, direct table reads, pictures (R2), product lookup | done | `worker/api`, `worker/productLookup.ts` |
 | Cron alerts + Web Push (WebCrypto) | done, tested with an independent receiver | `worker/cron.ts`, `worker/push` |
 | App switch | done: `VITE_BACKEND=cloudflare` uses `src/lib/cloud/cloudClient.ts`, without it the app still uses Supabase | `src/lib/supabase.ts` |
-| Data export, convert, verify, rehearse | done | `scripts/migrate-data` |
-| Platform admin console (27 `admin_*` functions) | **not yet ported** | see task list below |
+| Data export, convert, verify, rehearse, import into the Worker | done; full cutover rehearsed on `wrangler dev` | `scripts/migrate-data` |
+| Platform admin console (27 `admin_*` functions) | done, checked against Postgres (pg_cron history and Vault checks have no counterpart) | `worker/d1/admin.ts` |
 | Cloudflare resources | created: D1 `spazastock` (b231f3db…), `spazastock-staging` (bf9e655e…), R2 `spazastock-product-images[-staging]` | |
 | Staging/production deploy | **not done** (needs your Cloudflare API token on the machine that deploys) | runbook below |
 

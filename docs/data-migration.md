@@ -65,8 +65,9 @@ It is run against a staging Cloudflare environment as many times as needed befor
 ### Step 2: transform + load
 
 Status: schemas (`npm run data:schema`) and conversion + verification + local rehearsal
-(`npm run data:prepare`) are written and tested; D1 loading uses `wrangler d1 execute`. Still to build:
-the shop Durable Object's import endpoint, then the post-load verify against the live D1 and objects.
+(`npm run data:prepare`) are written and tested; D1 loading uses `wrangler d1 execute`. Shop import
+(`npm run data:import`) and the post-load verification are written too; see
+[`scripts/migrate-data/README.md`](../scripts/migrate-data/README.md).
 
 - Types as listed in section 1: numeric → integer cents (columns renamed `*_cents`), timestamps → ISO UTC with milliseconds, uuid/jsonb/array → text. The
   same UUIDs are kept everywhere, so every reference stays valid and phones' local IndexedDB copies still match.

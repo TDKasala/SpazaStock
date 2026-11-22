@@ -20,4 +20,6 @@ export interface Env {
   VAPID_PUBLIC_KEY?: string;
   VAPID_PRIVATE_KEY?: string;
   VAPID_SUBJECT?: string;
+  /** Set only during the cutover import (`wrangler secret put IMPORT_TOKEN`), then deleted. */
+  IMPORT_TOKEN?: string;
 }

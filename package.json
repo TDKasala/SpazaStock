@@ -18,7 +18,8 @@
     "cf:deploy": "npm run build && wrangler deploy",
     "data:export": "node --env-file-if-exists=scripts/migrate-data/.env scripts/migrate-data/export.ts",
     "data:schema": "node scripts/migrate-data/gen-schema.ts",
-    "data:prepare": "node scripts/migrate-data/prepare-load.ts"
+    "data:prepare": "node scripts/migrate-data/prepare-load.ts",
+    "data:import": "node scripts/migrate-data/import.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.3",

@@ -219,7 +219,16 @@ export class ShopObject extends DurableObject {
    * One-time import of this shop's rows from Supabase (scripts/migrate-data). Refuses to run on a
    * shop that already has data unless `replace` is set, and writes everything or nothing.
    */
-  async importBundle(bundle: ShopBundle, replace = false): Promise<Record<string, number>> {
+  async importBundle(bundle: ShopBundle, replace = false): Promise<{ counts: Record<string, number> } | { error: ApiErrorBody }> {
+    // Errors cross the Durable Object boundary as plain Errors, so they are returned as data.
+    try {
+      return { counts: this.importRows(bundle, replace) };
+    } catch (err) {
+      return { error: errorBody(err) };
+    }
+  }
+
+  private importRows(bundle: ShopBundle, replace: boolean): Record<string, number> {
     const hasData = this.sql.all('SELECT 1 AS x FROM products LIMIT 1').length > 0;
     if (hasData && !replace) throw new DbError('23505', 'This shop already has data.');
     const counts: Record<string, number> = {};
