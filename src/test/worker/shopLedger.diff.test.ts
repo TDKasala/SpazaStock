@@ -243,3 +243,105 @@ describe('stock', () => {
     for (const table of Object.keys(tables.pg)) expect(tables.sq[table], table).toEqual(tables.pg[table]);
   });
 });
+
+describe('wholesale', () => {
+  it('manages wholesalers, orders, purchases and deliveries the same way', async () => {
+    const a = await product('6010000000001');
+    const b = await product('6010000000002');
+    const w = id();
+    await same('manager', 'upsert_wholesaler', { p_id: w, p_shop_id: p.shopId, p_name: ' Makro ', p_phone: ' 0115550000 ', p_note: '' });
+    await same('manager', 'upsert_wholesaler', { p_id: id(), p_shop_id: p.shopId, p_name: 'makro' });
+    await same('manager', 'upsert_wholesaler', { p_id: id(), p_shop_id: p.shopId, p_name: '' });
+    await same('staff', 'upsert_wholesaler', { p_id: id(), p_shop_id: p.shopId, p_name: 'Staff try' });
+    const order = id();
+    const lineA = id();
+    const lineB = id();
+    const items = [
+      { id: lineA, product_id: a, quantity: 10, estimated_unit_cost: '12.345' },
+      { id: lineB, product_id: b, quantity: 4, estimated_unit_cost: null },
+    ];
+    await same('manager', 'save_wholesale_order', { p_shop_id: p.shopId, p_order_id: order, p_wholesaler_id: null, p_note: ' First ', p_items: items });
+    await same('manager', 'set_wholesale_order_status', { p_shop_id: p.shopId, p_order_id: order, p_status: 'approved' });
+    await same('manager', 'save_wholesale_order', { p_shop_id: p.shopId, p_order_id: order, p_wholesaler_id: w, p_note: null, p_items: [items[0]] });
+    await same('manager', 'save_wholesale_order', { p_shop_id: p.shopId, p_order_id: order, p_wholesaler_id: w, p_note: null, p_items: items });
+    await same('manager', 'save_wholesale_order', { p_shop_id: p.shopId, p_order_id: id(), p_wholesaler_id: null, p_note: null, p_items: [{ id: id(), product_id: a, quantity: '1.5' }] });
+    await same('manager', 'save_wholesale_order', { p_shop_id: p.shopId, p_order_id: id(), p_wholesaler_id: null, p_note: null, p_items: [{ id: id(), product_id: a, quantity: 1, estimated_unit_cost: 'cheap' }] });
+    await same('manager', 'save_wholesale_order', { p_shop_id: p.shopId, p_order_id: id(), p_wholesaler_id: null, p_note: null, p_items: [{ id: 'nope', product_id: a, quantity: 1 }] });
+    await same('manager', 'set_wholesale_order_status', { p_shop_id: p.shopId, p_order_id: order, p_status: 'received' });
+    await same('manager', 'set_wholesale_order_status', { p_shop_id: p.shopId, p_order_id: order, p_status: 'approved' });
+    await same('manager', 'set_wholesale_order_status', { p_shop_id: p.shopId, p_order_id: order, p_status: 'ordered' });
+    await same('manager', 'set_wholesale_item_purchased', { p_shop_id: p.shopId, p_item_id: lineA, p_purchased: true });
+    await same('manager', 'set_wholesale_item_purchased', { p_shop_id: p.shopId, p_item_id: lineA, p_purchased: true });
+    const receipt = id();
+    const deliver = [
+      { id: id(), order_item_id: lineA, batch_id: id(), quantity: 6, expiry_date: day(20) },
+      { id: id(), order_item_id: lineB, batch_id: id(), quantity: 4, expiry_date: '' },
+    ];
+    await same('owner', 'receive_wholesale_order', { p_shop_id: p.shopId, p_receipt_id: id(), p_order_id: order, p_lines: [{ ...deliver[0], quantity: 11 }] });
+    await same('owner', 'receive_wholesale_order', { p_shop_id: p.shopId, p_receipt_id: id(), p_order_id: order, p_lines: [{ ...deliver[0], expiry_date: '2026-02-30' }] });
+    await same('owner', 'receive_wholesale_order', { p_shop_id: p.shopId, p_receipt_id: receipt, p_order_id: order, p_lines: deliver });
+    await same('owner', 'receive_wholesale_order', { p_shop_id: p.shopId, p_receipt_id: receipt, p_order_id: order, p_lines: deliver });
+    await same('owner', 'receive_wholesale_order', { p_shop_id: p.shopId, p_receipt_id: id(), p_order_id: order, p_lines: [{ id: id(), order_item_id: lineA, batch_id: id(), quantity: 4 }] });
+    await same('owner', 'receive_wholesale_order', { p_shop_id: p.shopId, p_receipt_id: id(), p_order_id: order, p_lines: [{ id: id(), order_item_id: lineA, batch_id: id(), quantity: 1 }] });
+    await same('manager', 'archive_wholesaler', { p_shop_id: p.shopId, p_id: w });
+    await same('manager', 'archive_wholesaler', { p_shop_id: p.shopId, p_id: id() });
+    await same('manager', 'upsert_wholesaler', { p_id: w, p_shop_id: p.shopId, p_name: 'Makro again' });
+    await sameTables();
+  });
+});
+
+describe('scheduled alerts', () => {
+  it('generates expiry and low-stock alerts and their notifications the same way', async () => {
+    const { generateExpiryAlerts, generateLowStockAlerts } = await import('../../../worker/shop/alerts');
+    const a = await product('6020000000001');
+    const b = await product('6020000000002');
+    await same('owner', 'set_product_min_stock', { p_shop_id: p.shopId, p_product_id: b, p_min_stock: 3 });
+    await stockIn(a, 5, { p_expiry_date: day(6) });
+    await stockIn(a, 2, { p_expiry_date: day(-3) });
+    await stockIn(a, 1, { p_expiry_date: day(40) });
+    await stockIn(b, 2, { p_expiry_date: day(0) });
+    await stockIn(b, 9, { p_expiry_date: day(-1) });
+
+    const runBoth = async (at: string) => {
+      await p.pg.query('select private.generate_expiry_alerts($1::timestamptz)', [at]);
+      await p.pg.query('select private.generate_low_stock_alerts($1::timestamptz)', [at]);
+      const ctx = { ...(await p.ctxFor(null)), now: new Date(at).toISOString() };
+      const { rows } = await p.pg.query<{ d: number[] }>('select expiry_reminder_days as d from public.shops where id = $1', [p.shopId]);
+      const call = { ctx, effects: [] as import('../../../worker/shop/context').ShopEffect[], inputs: { reminderDays: rows[0].d } };
+      p.sql.transaction(() => {
+        generateExpiryAlerts(call, p.sql);
+        generateLowStockAlerts(call, p.sql);
+      });
+      return call.effects;
+    };
+
+    const notes = async (since: string) =>
+      (
+        await p.pg.query<{ type: string; title: string; body: string; data: Record<string, unknown>; push_next_at: string }>(
+          `select type, title, body, data, push_next_at from public.notifications
+            where shop_id = $1 and user_id = $2 and created_at >= $3 and type in ('expiry', 'low_stock') order by title`,
+          [p.shopId, p.owner.id, since]
+        )
+      ).rows.map((n) => ({ ...n, push_next_at: new Date(n.push_next_at).toISOString() }));
+    const asNotes = (effects: import('../../../worker/shop/context').ShopEffect[]) =>
+      effects.map((e) => ({ type: e.type, title: e.title, body: e.body, data: e.data, push_next_at: e.pushAt })).sort((x, y) => x.title.localeCompare(y.title));
+    const alertIds = (rows: unknown[]) => rows.map((r) => r);
+
+    const t1 = new Date().toISOString();
+    const first = await runBoth(t1);
+    const pgNotes = await notes(new Date(Date.now() - 60_000).toISOString());
+    // Alert ids are random on each side.
+    const strip = (n: { data: Record<string, unknown> }[]) => n.map((x) => ({ ...x, data: { ...x.data, alert_id: 'id' } }));
+    expect(strip(asNotes(first))).toEqual(strip(pgNotes));
+    expect(first.length).toBeGreaterThan(0);
+    await sameTables();
+
+    // A second run finds nothing new; a sale that sells product a out closes its alerts.
+    const second = await runBoth(new Date().toISOString());
+    expect(second).toEqual([]);
+    await same('owner', 'record_sale', sale([{ id: id(), product_id: a, quantity: 6 }]));
+    await runBoth(new Date().toISOString());
+    await sameTables();
+    void alertIds;
+  });
+});

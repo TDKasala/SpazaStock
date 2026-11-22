@@ -3,6 +3,7 @@ import type { ApiRow } from '../db/rows';
 import type { SyncSql } from '../db/sql';
 import type { ShopCall } from './context';
 import * as products from './products';
+import * as wholesale from './wholesale';
 import * as stock from './stock';
 
 export type ShopFunction = (call: ShopCall, sql: SyncSql, args: Record<string, unknown>) => ApiRow | ApiRow[] | null;
@@ -28,4 +29,10 @@ export const SHOP_FUNCTIONS: Record<string, ShopFunction> = {
   unlink_product_barcode: products.unlinkProductBarcode,
   dismiss_low_stock: products.dismissLowStock,
   clear_low_stock_dismissal: products.clearLowStockDismissal,
+  upsert_wholesaler: wholesale.upsertWholesaler,
+  archive_wholesaler: wholesale.archiveWholesaler,
+  save_wholesale_order: wholesale.saveWholesaleOrder,
+  set_wholesale_order_status: wholesale.setWholesaleOrderStatus,
+  set_wholesale_item_purchased: wholesale.setWholesaleItemPurchased,
+  receive_wholesale_order: wholesale.receiveWholesaleOrder,
 };

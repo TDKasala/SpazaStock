@@ -27,6 +27,8 @@ export type ShopEffect = {
   title: string;
   body: string | null;
   data: Record<string, unknown>;
+  /** When set, a Web Push is queued (push_status 'pending') for this time; otherwise in-app only. */
+  pushAt?: string;
 };
 
 export interface ShopCall {
@@ -82,4 +84,35 @@ export function localDate(at: string, timeZone: string): string {
     .formatToParts(new Date(at));
   const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
   return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
+/** The UTC instant of a wall-clock time on a date in a time zone ("07:00 shop time"). */
+export function zonedTime(date: string, time: string, timeZone: string): string {
+  const [y, m, d] = date.split('-').map(Number);
+  const [hh, mm] = time.split(':').map(Number);
+  const wanted = Date.UTC(y, m - 1, d, hh, mm);
+  // Two passes settle the offset, including on a daylight-saving change.
+  let guess = wanted;
+  for (let i = 0; i < 2; i++) guess = wanted - offsetMs(guess, timeZone);
+  return new Date(guess).toISOString();
+}
+
+function offsetMs(at: number, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hourCycle: 'h23',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).formatToParts(new Date(at));
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? 0);
+  return Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'), get('second')) - at;
+}
+
+/** Whole days from one calendar date to another (date - date in Postgres). */
+export function daysBetween(from: string, to: string): number {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
 }
