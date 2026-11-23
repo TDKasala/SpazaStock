@@ -52,7 +52,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3.5">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
           <ActionTile
             id="add_stock"
             title={dict.dashboard.actions.addStock.title}

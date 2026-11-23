@@ -16,7 +16,7 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({ title, subtitle, banner,
   const { t } = useLanguage();
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col items-center justify-center px-5 py-10">
-      <div className="w-full max-w-sm space-y-6">
+      <div className="w-full max-w-sm sm:max-w-md space-y-6">
         <div className="flex flex-col items-center text-center gap-3">
           <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center shadow-lg shadow-emerald-950/50">
             <Package className="w-7 h-7 text-white" />

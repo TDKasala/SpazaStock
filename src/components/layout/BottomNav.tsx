@@ -2,6 +2,7 @@ import React from 'react';
 import { LayoutGrid, Boxes, ShoppingCart, Bell, ClipboardList, Ellipsis } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import type { AppTab } from '../../App';
+import { SHOP_SHELL_WIDTH } from './shell';
 
 export interface BottomNavProps {
   currentTab: AppTab;
@@ -22,7 +23,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentTab, onSelectTab })
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 bg-zinc-950/90 backdrop-blur-md border-t border-zinc-800/80 pb-[env(safe-area-inset-bottom,0px)]">
-      <div className="max-w-md sm:max-w-xl mx-auto px-2 grid grid-cols-6 h-16 items-center">
+      <div className={`${SHOP_SHELL_WIDTH} mx-auto px-2 grid grid-cols-6 h-16 items-center`}>
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = currentTab === tab.id;

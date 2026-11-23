@@ -37,7 +37,7 @@ export const ShopOnboarding: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col items-center justify-center px-5 py-10">
-      <div className="w-full max-w-sm space-y-6">
+      <div className="w-full max-w-sm sm:max-w-md space-y-6">
         <div className="text-center space-y-2">
           <div className="w-14 h-14 mx-auto rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
             <Store className="w-7 h-7 text-emerald-400" />

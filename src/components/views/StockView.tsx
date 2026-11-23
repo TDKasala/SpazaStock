@@ -130,7 +130,7 @@ export const StockView: React.FC<StockViewProps> = ({
           leftIcon={<Search className="w-4 h-4" />}
         />
         {!isLoading && summaries.length > 0 && (
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <label className="block min-w-0">
               <span className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-zinc-500">
                 {t('stock.categoryFilters')}

@@ -56,9 +56,18 @@ async function pbkdf2(password: string, salt: Uint8Array, iterations: number): P
 /**
  * Checks a password against a stored hash: PBKDF2 for accounts created or signed in on Cloudflare,
  * bcrypt for accounts imported from Supabase (rehashed by the caller after a match).
+ *
+ * Use compareSync for bcrypt: the async compare path is unreliable in the Workers runtime with
+ * bcryptjs (imported Supabase $2a$ hashes were rejected even when the password was correct).
  */
 export async function verifyPassword(password: string, stored: string, kind: 'bcrypt' | 'pbkdf2'): Promise<boolean> {
-  if (kind === 'bcrypt') return bcrypt.compare(password, stored);
+  if (kind === 'bcrypt') {
+    try {
+      return bcrypt.compareSync(password, stored);
+    } catch {
+      return false;
+    }
+  }
   const [scheme, iterations, salt, hash] = stored.split('$');
   if (scheme !== 'pbkdf2-sha256' || !iterations || !salt || !hash) return false;
   return timingSafeEqual(await pbkdf2(password, fromBase64url(salt), Number(iterations)), hash);

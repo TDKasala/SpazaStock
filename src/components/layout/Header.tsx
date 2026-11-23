@@ -9,6 +9,7 @@ import { PWAInstallButton } from '../pwa/PWAInstallButton';
 import { AppWhatsAppInvite } from '../pwa/AppWhatsAppInvite';
 import { ShopMenu } from './ShopMenu';
 import { AccountDialog } from '../account/AccountDialog';
+import { SHOP_SHELL_WIDTH } from './shell';
 
 export const Header: React.FC<{ onOpenTeam: () => void }> = ({ onOpenTeam }) => {
   const { t } = useLanguage();
@@ -59,7 +60,7 @@ export const Header: React.FC<{ onOpenTeam: () => void }> = ({ onOpenTeam }) => 
   return (
     <>
       <header className="sticky top-0 z-40 w-full bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800/80 pt-[env(safe-area-inset-top,0px)]">
-        <div className="max-w-md sm:max-w-xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+        <div className={`${SHOP_SHELL_WIDTH} mx-auto px-4 py-3 flex items-center justify-between gap-3`}>
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-9 h-9 shrink-0 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center text-white shadow-md shadow-emerald-950/50">
               <Package className="w-5 h-5 text-white" />

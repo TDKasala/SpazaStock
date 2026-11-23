@@ -4,6 +4,7 @@ import { usePWAInstall } from '../../hooks/usePWAInstall';
 import { useLanguage } from '../../context/LanguageContext';
 import { Button } from '../ui/Button';
 import { IOSInstallGuideDialog } from './IOSInstallGuideDialog';
+import { SHOP_SHELL_WIDTH } from '../layout/shell';
 
 /**
  * Persistent install call-to-action above the bottom nav. No dismiss control — it stays until
@@ -39,7 +40,7 @@ export const PWAInstallBanner: React.FC<PWAInstallBannerProps> = ({ aboveBottomN
         }}
       >
         <div
-          className="pointer-events-auto max-w-md sm:max-w-xl mx-auto p-3.5 rounded-2xl border border-emerald-500/50 bg-gradient-to-br from-emerald-950/95 via-zinc-950/98 to-zinc-950 shadow-[0_-8px_32px_rgba(0,0,0,0.45),0_0_24px_rgba(16,185,129,0.15)] animate-in slide-in-from-bottom-4 fade-in duration-300"
+          className={`pointer-events-auto ${SHOP_SHELL_WIDTH} mx-auto p-3.5 rounded-2xl border border-emerald-500/50 bg-gradient-to-br from-emerald-950/95 via-zinc-950/98 to-zinc-950 shadow-[0_-8px_32px_rgba(0,0,0,0.45),0_0_24px_rgba(16,185,129,0.15)] animate-in slide-in-from-bottom-4 fade-in duration-300`}
         >
           <div className="flex items-start gap-3">
             <div className="w-11 h-11 shrink-0 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center">

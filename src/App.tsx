@@ -5,6 +5,7 @@ import { ShopProvider, useShop, useShopId } from './context/ShopContext';
 import { SyncProvider } from './context/SyncContext';
 import { Header } from './components/layout/Header';
 import { BottomNav } from './components/layout/BottomNav';
+import { SHOP_SHELL_WIDTH } from './components/layout/shell';
 import { Dashboard } from './components/dashboard/Dashboard';
 import { StockView } from './components/views/StockView';
 import { SalesView } from './components/views/SalesView';
@@ -214,7 +215,7 @@ export function AppContent() {
       <Header onOpenTeam={() => setCurrentTab('team')} />
 
       <main
-        className={`flex-1 w-full max-w-md sm:max-w-xl mx-auto px-4 py-5 ${pwaInstallLayoutPadding(needsInstallPrompt)}`}
+        className={`flex-1 w-full ${SHOP_SHELL_WIDTH} mx-auto px-4 py-5 ${pwaInstallLayoutPadding(needsInstallPrompt)}`}
       >
         <RevokedNotice className="mb-4" />
         <SuspendedNotice />
