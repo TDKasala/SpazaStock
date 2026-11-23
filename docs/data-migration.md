@@ -99,22 +99,16 @@ Status: schemas (`npm run data:schema`) and conversion + verification + local re
 
 ## 4. Order of events
 
-1. **Now (no risk):** I write the export script and run it against production. It is read-only. The data
-   goes to a staging environment only.
-2. **Rehearsals:** load into staging D1/R2 (or a staging Postgres) and run verify. Repeat after every code change
-   in phase 3 until verify is green and the staging app works end to end. Note the timings.
-3. **Before cutover:** ship one app release that tells users about a short maintenance window, and blocks
-   sign-out while there are unsynced changes (that already exists). Announce the window to the shops.
-4. **Cutover (about 30 minutes, at a quiet hour):**
-   1. Turn on maintenance mode: suspend writes on Supabase (a migration that makes the write RPCs answer
-      "maintenance") and pause the 3 cron jobs. Phones keep working offline and keep their outbox.
-   2. Final export → load → verify against production Cloudflare.
-   3. Deploy the Cloudflare build and switch DNS.
-   4. Phones sign in again. Their outbox then replays to the new API. Every queued write carries an
-      idempotency key, so anything that already reached Supabase is not applied twice.
-5. **Rollback:** Supabase is left as is (read-only), so going back means pointing DNS back at Vercel and lifting
-   maintenance. Only writes made on Cloudflare after cutover would need replaying, which the verify script can export.
-6. **After 30 days:** final `pg_dump` + bucket archive kept in R2 (cold), then pause and delete the Supabase project.
+1. **Done:** export script + production export (read-only) into gitignored `scripts/migrate-data/export/`.
+2. **Done:** load + verify into staging, then production D1/R2 (2026-11-23).
+3. **Done (cutover 2026-11-23):** Cloudflare production is canonical at
+   https://spazastock.swipe-a-bill.com (backup https://spazastock.deniskasala17.workers.dev).
+   Workers Builds deploys `main` with `VITE_BACKEND=cloudflare`. Email Sending is on
+   `swipe-a-bill.com` (`noreply@swipe-a-bill.com`).
+4. **Rollback window (~30 days):** keep the Supabase project and the Vercel `spazastock` project as-is
+   for emergency rollback. Do not point users at `spazastock.vercel.app` for day-to-day use.
+5. **After 30 days:** final `pg_dump` + bucket archive in R2 (cold), pause/delete Supabase, retire the
+   Vercel project.
 
 ## 5. What I need from you
 

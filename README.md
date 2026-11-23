@@ -261,11 +261,14 @@ To add a schema change, create a new file with `npx supabase migration new <name
 
 ### Deploying to Cloudflare Workers
 
-SpazaStock is moving to Cloudflare; the full plan and audit are in [`docs/cloudflare-migration.md`](docs/cloudflare-migration.md). The hosting step is ready: `wrangler.jsonc` serves `dist/` as Workers static assets with SPA fallback, `public/_headers` carries the same headers as `vercel.json`, and `worker/index.ts` serves Smart Product Scan at `/api/product-lookup`.
+**Production is on Cloudflare.** Canonical URL: https://spazastock.swipe-a-bill.com  
+Backup: https://spazastock.deniskasala17.workers.dev  
 
-1. `npx wrangler login`, then set `SUPABASE_URL` in `wrangler.jsonc` and add the secrets: `npx wrangler secret put SUPABASE_ANON_KEY` and `npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY`.
-2. Set the build variables where the build runs (Workers Builds settings, or `.env.production.local` locally): `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and `VITE_PRODUCT_LOOKUP_URL=/api/product-lookup`.
-3. `npm run cf:dev` to try it locally, `npm run cf:deploy` to deploy. Add the new domain to Supabase's redirect URLs.
+The app talks to the Worker API when built with `VITE_BACKEND=cloudflare` (set in Workers Builds). Details: [`docs/cloudflare-migration.md`](docs/cloudflare-migration.md).
+
+1. `npx wrangler login`. Secrets already on the Worker: `AUTH_SECRET`, `VAPID_*`.
+2. Local: `VITE_BACKEND=cloudflare npm run cf:dev`. Deploy: `VITE_BACKEND=cloudflare npm run cf:deploy`.
+3. Pushes to `main` on GitHub deploy via Workers Builds.
 
 ### Scheduling and push deployment
 

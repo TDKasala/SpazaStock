@@ -35,13 +35,20 @@
     }
   ],
   "r2_buckets": [{ "binding": "IMAGES", "bucket_name": "spazastock-product-images" }],
+  // Production hostname on the only Cloudflare zone in this account (swipe-a-bill.com).
+  // workers.dev stays on as a backup origin; Vercel spazastock.vercel.app is retired at cutover.
+  "workers_dev": true,
+  "preview_urls": true,
+  "routes": [{ "pattern": "spazastock.swipe-a-bill.com", "custom_domain": true }],
+  "send_email": [{ "name": "EMAIL" }],
+  "vars": {
+    "EMAIL_FROM": "noreply@swipe-a-bill.com"
+  },
   // Secrets (never in this file), per environment:
   //   wrangler secret put AUTH_SECRET            32+ random characters, signs access tokens
   //   wrangler secret put VAPID_PUBLIC_KEY       copied unchanged from Supabase Vault
   //   wrangler secret put VAPID_PRIVATE_KEY      copied unchanged from Supabase Vault
   //   wrangler secret put VAPID_SUBJECT          copied unchanged from Supabase Vault
-  // Email: add "send_email": [{ "name": "EMAIL" }] and the EMAIL_FROM var once a domain is
-  // onboarded to Cloudflare Email Sending. Until then sign-in codes are written to the logs.
 
   "env": {
     "staging": {
@@ -55,7 +62,11 @@
           "migrations_dir": "migrations/d1"
         }
       ],
-      "r2_buckets": [{ "binding": "IMAGES", "bucket_name": "spazastock-product-images-staging" }]
+      "r2_buckets": [{ "binding": "IMAGES", "bucket_name": "spazastock-product-images-staging" }],
+      "send_email": [{ "name": "EMAIL" }],
+      "vars": {
+        "EMAIL_FROM": "noreply@swipe-a-bill.com"
+      }
     }
   }
 }

@@ -8,10 +8,16 @@ This document has three parts: what the app uses today, how each piece maps onto
 and the order to move it in. Phase 1 (hosting) is already in the repository and works next to
 Vercel, so nothing in production changes until DNS is switched.
 
-## 0. Status (2026-11-22): Option A is built; deploy and data load are next
+## 0. Status (2026-11-23): Production cutover to Cloudflare is live
 
 **Decision:** Option A, fully Cloudflare. Shared data lives in D1. Each shop's ledger lives in its
 own Durable Object (SQLite).
+
+**Canonical production URL:** https://spazastock.swipe-a-bill.com  
+**Backup origin:** https://spazastock.deniskasala17.workers.dev  
+**CI:** Workers Builds on `TDKasala/SpazaStock` `main` (`VITE_BACKEND=cloudflare`).  
+**Email:** Cloudflare Email Sending on `swipe-a-bill.com` (`EMAIL` binding, `EMAIL_FROM=noreply@swipe-a-bill.com`).  
+**Rollback:** leave Supabase + Vercel untouched for ~30 days, then pause/delete.
 
 | Piece | State | Where |
 |---|---|---|
@@ -22,10 +28,11 @@ own Durable Object (SQLite).
 | Sync pull, direct table reads, pictures (R2), product lookup | done | `worker/api`, `worker/productLookup.ts` |
 | Cron alerts + Web Push (WebCrypto) | done, tested with an independent receiver | `worker/cron.ts`, `worker/push` |
 | App switch | done: `VITE_BACKEND=cloudflare` uses `src/lib/cloud/cloudClient.ts`, without it the app still uses Supabase | `src/lib/supabase.ts` |
-| Data export, convert, verify, rehearse, import into the Worker | done; full cutover rehearsed on `wrangler dev` | `scripts/migrate-data` |
+| Data export, convert, verify, rehearse, import into the Worker | done; loaded into production D1/R2 | `scripts/migrate-data` |
 | Platform admin console (27 `admin_*` functions) | done, checked against Postgres (pg_cron history and Vault checks have no counterpart) | `worker/d1/admin.ts` |
 | Cloudflare resources | created: D1 `spazastock` (b231f3db…), `spazastock-staging` (bf9e655e…), R2 `spazastock-product-images[-staging]` | |
-| Staging/production deploy | **not done** (needs your Cloudflare API token on the machine that deploys) | runbook below |
+| Staging/production deploy | **done** (production Worker + custom domain + Workers Builds) | runbook below |
+| Email Sending | **done** on `swipe-a-bill.com` | `wrangler.jsonc` `send_email` / `EMAIL_FROM` |
 
 Proof so far: the differential tests in `src/test/worker` run each ported function against the original
 Postgres function (PGlite with the real migrations) and the TypeScript port, then compare results, error
