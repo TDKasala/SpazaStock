@@ -1,7 +1,7 @@
 # SpazaStock for Android
 
 `android/` is a Trusted Web Activity (TWA): a small Android app, package
-`za.co.kasalatechnologies.spazastock`, that opens https://spazastock.swipe-a-bill.com full screen
+`za.co.kasalatechnologies.spazastock`, that opens https://spazastock.kasalatechnologies.co.za full screen
 in Chrome. Every website deploy updates the app; only icon, name or colour changes need a new
 Play upload. Web Push alerts show as SpazaStock app notifications.
 
@@ -32,7 +32,7 @@ The version code is the workflow run number, so each build can be uploaded.
    *App signing key* SHA-256 fingerprint into `public/.well-known/assetlinks.json` (replacing
    `REPLACE_WITH_PLAY_APP_SIGNING_SHA256`; add the upload key's fingerprint too if you sideload
    release builds) and deploy. Check it at
-   https://spazastock.swipe-a-bill.com/.well-known/assetlinks.json.
+   https://spazastock.kasalatechnologies.co.za/.well-known/assetlinks.json.
    Until it matches, the app works but shows a thin address bar at the top.
 
 ## Changing things

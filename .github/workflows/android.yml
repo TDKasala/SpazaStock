@@ -1,4 +1,4 @@
-# Builds the SpazaStock Android app (a Trusted Web Activity for spazastock.swipe-a-bill.com).
+# Builds the SpazaStock Android app (a Trusted Web Activity for spazastock.kasalatechnologies.co.za).
 # Always: a debug APK to install and test. With the upload-key secrets set (docs/android.md):
 # a signed release bundle (.aab) for Google Play.
 name: Android

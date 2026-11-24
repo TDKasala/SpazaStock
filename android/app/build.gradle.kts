@@ -1,4 +1,4 @@
-// SpazaStock for Android: a Trusted Web Activity that opens https://spazastock.swipe-a-bill.com
+// SpazaStock for Android: a Trusted Web Activity that opens https://spazastock.kasalatechnologies.co.za
 // full screen in Chrome. The app itself holds no web code; updates ship with every website deploy.
 
 plugins {
@@ -6,7 +6,7 @@ plugins {
 }
 
 // The live site the app opens. Must match public/.well-known/assetlinks.json on that host.
-val siteHost = "spazastock.swipe-a-bill.com"
+val siteHost = "spazastock.kasalatechnologies.co.za"
 
 android {
     namespace = "za.co.kasalatechnologies.spazastock"

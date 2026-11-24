@@ -102,7 +102,7 @@ Status: schemas (`npm run data:schema`) and conversion + verification + local re
 1. **Done:** export script + production export (read-only) into gitignored `scripts/migrate-data/export/`.
 2. **Done:** load + verify into staging, then production D1/R2 (2026-11-23).
 3. **Done (cutover 2026-11-23):** Cloudflare production is canonical at
-   https://spazastock.swipe-a-bill.com (backup https://spazastock.deniskasala17.workers.dev).
+   https://spazastock.kasalatechnologies.co.za (old spazastock.swipe-a-bill.com still attached; backup https://spazastock.deniskasala17.workers.dev).
    Workers Builds deploys `main` with `VITE_BACKEND=cloudflare`. Email Sending is on
    `swipe-a-bill.com` (`noreply@swipe-a-bill.com`).
 4. **Rollback window (~30 days):** keep the Supabase project and the Vercel `spazastock` project as-is

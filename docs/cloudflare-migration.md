@@ -13,7 +13,7 @@ Vercel, so nothing in production changes until DNS is switched.
 **Decision:** Option A, fully Cloudflare. Shared data lives in D1. Each shop's ledger lives in its
 own Durable Object (SQLite).
 
-**Canonical production URL:** https://spazastock.swipe-a-bill.com  
+**Canonical production URL:** https://spazastock.kasalatechnologies.co.za (old: https://spazastock.swipe-a-bill.com, still attached)  
 **Backup origin:** https://spazastock.deniskasala17.workers.dev  
 **CI:** Workers Builds on `TDKasala/SpazaStock` `main` (`VITE_BACKEND=cloudflare`).  
 **Email:** Cloudflare Email Sending on `swipe-a-bill.com` (`EMAIL` binding, `EMAIL_FROM=noreply@swipe-a-bill.com`).  
