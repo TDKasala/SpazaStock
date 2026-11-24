@@ -14,6 +14,8 @@ export function usePWAInstall() {
     // Detect standalone mode (already installed or running as PWA)
     const isStandalone =
       window.matchMedia('(display-mode: standalone)').matches ||
+      // The Android app (Trusted Web Activity) opens the site with this referrer.
+      document.referrer.startsWith('android-app://') ||
       (window.navigator as unknown as { standalone?: boolean }).standalone === true;
     setIsInstalled(isStandalone);
 

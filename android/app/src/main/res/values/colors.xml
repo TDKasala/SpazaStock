@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Same colours as the web app manifest (vite.config.ts) and the icon. -->
+<resources>
+    <color name="colorPrimary">#09090B</color>
+    <color name="navigationColor">#09090B</color>
+    <color name="backgroundColor">#09090B</color>
+    <color name="iconBackground">#0F172A</color>
+</resources>
