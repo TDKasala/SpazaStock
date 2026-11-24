@@ -78,7 +78,7 @@
 
         <!-- Web Push from the site is shown as this app's notifications. -->
         <service
-            android:name=".DelegationService"
+            android:name="com.google.androidbrowserhelper.trusted.DelegationService"
             android:enabled="true"
             android:exported="true">
             <meta-data
