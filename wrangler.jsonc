@@ -35,14 +35,12 @@
     }
   ],
   "r2_buckets": [{ "binding": "IMAGES", "bucket_name": "spazastock-product-images" }],
-  // Production hostname is spazastock.kasalatechnologies.co.za. The old swipe-a-bill.com hostname
-  // stays attached so existing bookmarks and installed apps keep working; workers.dev is a backup.
+  // Production hostname is spazastock.kasalatechnologies.co.za; workers.dev is a backup.
   // Custom domains must be listed here: Workers Builds deploys this file on every push to main.
   "workers_dev": true,
   "preview_urls": true,
   "routes": [
-    { "pattern": "spazastock.kasalatechnologies.co.za", "custom_domain": true },
-    { "pattern": "spazastock.swipe-a-bill.com", "custom_domain": true }
+    { "pattern": "spazastock.kasalatechnologies.co.za", "custom_domain": true }
   ],
   "send_email": [{ "name": "EMAIL" }],
   "vars": {

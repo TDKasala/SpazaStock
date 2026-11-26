@@ -261,7 +261,7 @@ To add a schema change, create a new file with `npx supabase migration new <name
 
 ### Deploying to Cloudflare Workers
 
-**Production is on Cloudflare.** Canonical URL: https://spazastock.swipe-a-bill.com  
+**Production is on Cloudflare.** Canonical URL: https://spazastock.kasalatechnologies.co.za  
 Backup: https://spazastock.deniskasala17.workers.dev  
 
 The app talks to the Worker API when built with `VITE_BACKEND=cloudflare` (set in Workers Builds). Details: [`docs/cloudflare-migration.md`](docs/cloudflare-migration.md).
